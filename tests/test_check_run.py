@@ -278,6 +278,67 @@ class CheckRunTest(unittest.TestCase):
                 replace(run / "reports" / "T1-generalist-engineer.md", "FAILED (errors=1)", placeholder)
                 self.assertProblem(self.problems(repo, run), "T1-generalist-engineer.md", "Test first (failing)")
 
+    # --- a returned task, checked before review ---------------------------------------------
+
+    def test_returned_task_with_reported_owned_changes_passes(self):
+        repo, run = make_run(self.tmp)
+        (repo / "a.py").write_text("changed\n")  # BUILDER_REPORT lists a.py under Files changed
+        self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
+
+    def test_change_the_report_does_not_claim_is_reported(self):
+        # A real run had files brought to the contract by a writer no report accounted for.
+        repo, run = make_run(self.tmp)
+        (repo / "tests" / "test_a.py").write_text("changed\n")
+        self.assertProblem(self.cr.check_task(run, repo, "T1"), "tests/test_a.py", "not listed", "T1-generalist-engineer.md")
+
+    def test_change_no_task_owns_is_reported(self):
+        repo, run = make_run(self.tmp)
+        (repo / "sub").mkdir()
+        (repo / "sub" / "stray.json").write_text("{}\n")
+        self.assertProblem(self.cr.check_task(run, repo, "T1"), "sub/stray.json", "no task owns")
+
+    def test_changes_owned_by_another_task_are_left_to_that_task(self):
+        repo, run = make_run(self.tmp)
+        (repo / "b.py").write_text("changed\n")  # T2's file, T2 may still be running
+        self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
+
+    def test_unknown_task_is_reported_not_raised(self):
+        repo, run = make_run(self.tmp)
+        self.assertProblem(self.cr.check_task(run, repo, "T7"), "T7", "not in plan.md")
+
+    def test_plan_changed_after_sealing_is_reported(self):
+        # A real run had plan.md replaced mid-build by a version with no tasks.
+        repo, run = make_run(self.tmp)
+        self.cr.seal_plan(run)
+        self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
+        replace(run / "plan.md", "First thing", "Something else")
+        self.assertProblem(self.cr.check_task(run, repo, "T1"), "plan.md", "changed since it was sealed")
+        self.assertProblem(self.problems(repo, run), "plan.md", "changed since it was sealed")
+
+    def test_resealing_accepts_an_amended_plan(self):
+        repo, run = make_run(self.tmp)
+        self.cr.seal_plan(run)
+        replace(run / "plan.md", "First thing", "First thing, amended")
+        self.cr.seal_plan(run)
+        self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
+
+    def test_cli_seal_and_task(self):
+        repo, run = make_run(self.tmp)
+        sealed = self.cli("--seal", str(run))
+        self.assertEqual(sealed.returncode, 0, sealed.stdout)
+        self.assertIn("Plan checksum: ", (run / "decisions.md").read_text())
+        self.assertEqual(self.cli("--task", "T1", str(run)).returncode, 0)
+        (repo / "stray.txt").write_text("x\n")
+        bad = self.cli("--task", "T1", str(run))
+        self.assertEqual(bad.returncode, 1)
+        self.assertIn("stray.txt", bad.stdout)
+
+    def test_cli_will_not_seal_a_broken_plan(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Files: b.py\n", "")
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
+        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+
     def test_missing_dashboard_is_reported(self):
         # A pilot showed the principal skipping the dashboard as if it were optional.
         repo, run = make_run(self.tmp)

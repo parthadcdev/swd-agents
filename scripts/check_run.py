@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Validate an swd run folder.
 
-    python3 check_run.py --plan <run_dir>   check spec.md and plan.md only (before the gate)
-    python3 check_run.py <run_dir>          check a finished run
+    python3 check_run.py --plan <run_dir>      check spec.md and plan.md only (before the gate)
+    python3 check_run.py --seal <run_dir>      record the approved plan's checksum in decisions.md
+    python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review
+    python3 check_run.py <run_dir>             check a finished run
 
 <run_dir> is .swd/runs/<name>/ in the project. A project folder also works: its last run by
 name is checked.
@@ -11,6 +13,7 @@ Prints one problem per line. Exit 0 when there are none, 1 otherwise.
 The formats checked here are documented in standards/run-folder.md.
 """
 import argparse
+import hashlib
 import posixpath
 import re
 import subprocess
@@ -33,6 +36,7 @@ EVIDENCE_SECTIONS = ("Test first (failing)", "Test after (passing)")
 TASK_RE = re.compile(r"^### (T\d+): (.+)$")
 TASK_LIKE_RE = re.compile(r"^#+\s*T(ask)?\s*\d+\b", re.I)  # a heading that was meant to be a task
 BASE_RE = re.compile(r"^Base commit: (\S+)", re.M)
+SEAL_RE = re.compile(r"^Plan checksum: ([0-9a-f]{64})\s*$", re.M)
 FIELD_RE = re.compile(r"^- (%s): (.*)$" % "|".join(TASK_FIELDS))
 ACTIVITY_RE = re.compile(r"^- \d{2}:\d{2}:\d{2} (\S+)( .*)?$")
 COMMIT_RE = re.compile(r"^([TW]\d+):")
@@ -193,21 +197,85 @@ def git(repo_dir, *args):
     ).stdout
 
 
+def plan_checksum(run_dir):
+    return hashlib.sha256((run_dir / "plan.md").read_bytes()).hexdigest()
+
+
+def seal_plan(run_dir):
+    """Record plan.md's checksum in decisions.md. Done at the gate, and again after an approved re-plan."""
+    checksum = plan_checksum(run_dir)
+    with open(run_dir / "decisions.md", "a") as f:
+        f.write(f"Plan checksum: {checksum}\n")
+    return checksum
+
+
+def check_seal(run_dir):
+    """plan.md must still be what was last sealed. An unsealed run has nothing to compare."""
+    seals = SEAL_RE.findall(read(run_dir / "decisions.md") or "")
+    try:
+        current = plan_checksum(run_dir)
+    except OSError:
+        return ["missing plan.md"] if seals else []
+    if seals and seals[-1] != current:
+        return ["plan.md: changed since it was sealed; only the architect amends it, and the principal seals it again"]
+    return []
+
+
+def changed_files(repo_dir):
+    """Uncommitted paths in the working copy, outside the run folder."""
+    names = []
+    for line in git(repo_dir, "status", "--porcelain", "--untracked-files=all").splitlines():
+        name = line[3:].split(" -> ")[-1].strip('"')
+        if not name.startswith(".swd/"):
+            names.append(name)
+    return names
+
+
+def check_task(run_dir, repo_dir, task_id):
+    """Before a returned task is reviewed: every uncommitted change must be owned, and the task's
+    own changes must be ones its report claims. A change nobody claims means something wrote
+    outside the process, and that is for the user to look at, not for the run to absorb."""
+    problems = check_seal(run_dir)
+    tasks, _ = load_plan(run_dir)
+    task = next((t for t in tasks if t["id"] == task_id), None)
+    if task is None:
+        return problems + [f"{task_id} is not in plan.md"]
+
+    report_name = f"{task_id}-{task['role']}.md"
+    report = read(run_dir / "reports" / report_name)
+    claimed = set()
+    if report is None:
+        problems.append(f"missing reports/{report_name}")
+    else:
+        for line in sections(report).get("Files changed", "").splitlines():
+            entry = line.strip().lstrip("-*").strip().strip("`")
+            if entry:  # "path", or "path (what changed)"
+                claimed |= {posixpath.normpath(entry), posixpath.normpath(entry.split()[0].strip("`"))}
+
+    owned_by_any = {name for t in tasks for name in t["files"]}
+    try:
+        changed = changed_files(repo_dir)
+    except (OSError, subprocess.CalledProcessError):
+        return problems + [f"{repo_dir}: cannot read git status"]
+    for name in changed:
+        if name not in owned_by_any:
+            problems.append(f"{name} changed, but no task owns it")
+        elif name in task["files"] and report is not None and name not in claimed:
+            problems.append(f"{name} changed, but is not listed under 'Files changed' in reports/{report_name}")
+    return problems
+
+
 def check_commits(run_dir, repo_dir, tasks):
     """Everything is committed, and each T<n>:/W<n>: commit of this run changes only files it owns."""
     # Only this run's commits count: an earlier run in the same project has its own T1.
     base = BASE_RE.search(read(run_dir / "decisions.md") or "")
     try:
         log = git(repo_dir, "log", "--name-only", "--format=%x00%s", *([f"{base.group(1)}..HEAD"] if base else []))
-        status = git(repo_dir, "status", "--porcelain")
+        uncommitted = changed_files(repo_dir)
     except (OSError, subprocess.CalledProcessError):
         return [f"{repo_dir}: cannot read git history"]
 
-    problems = []
-    for line in status.splitlines():
-        name = line[3:].split(" -> ")[-1]
-        if not name.startswith(".swd/"):
-            problems.append(f"uncommitted change: {name}")
+    problems = [f"uncommitted change: {name}" for name in uncommitted]
 
     by_task = {t["id"]: set(t["files"]) for t in tasks}
     by_wave = {}
@@ -235,7 +303,7 @@ def check_commits(run_dir, repo_dir, tasks):
 
 def check_run(run_dir, repo_dir):
     """Problems in a finished run. Includes everything check_plan reports."""
-    problems = check_plan(run_dir)
+    problems = check_plan(run_dir) + check_seal(run_dir)
     for name in ("requirement.md", "standards.md", "ledger.md", "decisions.md", "activity.md"):
         if read(run_dir / name) is None:
             problems.append(f"missing {name}")
@@ -316,6 +384,8 @@ def latest_run(repo_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--plan", action="store_true", help="check spec.md and plan.md only")
+    parser.add_argument("--seal", action="store_true", help="check the plan, then record its checksum")
+    parser.add_argument("--task", metavar="ID", help="check a returned task's changes before review")
     parser.add_argument("path", type=Path, help="a run folder, or a project folder")
     args = parser.parse_args(argv)
 
@@ -327,7 +397,16 @@ def main(argv=None):
     if run_dir is None or not run_dir.is_dir():
         print("no run folder found under .swd/runs/")
         return 1
-    problems = check_plan(run_dir) if args.plan else check_run(run_dir, repo_dir)
+    if args.seal:
+        problems = check_plan(run_dir)
+        if not problems:
+            print(f"sealed plan.md: {seal_plan(run_dir)}")
+    elif args.task:
+        problems = check_task(run_dir, repo_dir, args.task)
+    elif args.plan:
+        problems = check_plan(run_dir)
+    else:
+        problems = check_run(run_dir, repo_dir)
     for problem in problems:
         print(problem)
     return 1 if problems else 0

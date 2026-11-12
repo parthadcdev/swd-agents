@@ -210,6 +210,20 @@ class StructureTest(unittest.TestCase):
             with self.subTest(agent=name):
                 self.assertNotIn("test first", (ROOT / "agents" / f"{name}.md").read_text())
 
+    def test_run_integrity_lessons_are_pinned(self):
+        # From the first real run on this repo: refused writes burned three attempts, and files
+        # were changed by a writer no report accounted for.
+        text = PRINCIPAL.read_text()
+        for needle in (
+            "write-check.txt",                  # prove a subagent can write before spending a run on it
+            "check_run.py --seal <run>",        # fix the approved plan so a silent rewrite is caught
+            "check_run.py --task",              # compare a returned task's changes with its report
+            "do not decide it is acceptable",   # unexplained changes stop the run
+            "refused by the permission system", # a refusal is a blocker, not a failed attempt
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
+
 
 if __name__ == "__main__":
     unittest.main()

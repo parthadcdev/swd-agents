@@ -61,6 +61,21 @@ Work through the sections below in order.
    first line `Base commit: <sha>`. Every later decision is appended below
    it; `check_run.py` uses that line to tell this run's commits from
    earlier ones.
+6. Prove that a subagent can write files in this session before spending a
+   run on it. Dispatch `swd:generalist-engineer` on `haiku` with only this
+   brief:
+
+   ```
+   Write check only. With the Write tool, create <run>/write-check.txt
+   containing the word: written. Then, with the Edit tool, change that
+   word to: edited. Do nothing else and report what happened.
+   ```
+
+   Then read `<run>/write-check.txt`. If it does not contain `edited`, stop
+   here and tell the user: the session's permission mode is refusing file
+   writes from subagents, the team cannot build until that is changed, and
+   they should run `/swd:build` again once it is. Do not start a run you
+   already know cannot write.
 
 ## Intake
 
@@ -139,6 +154,18 @@ back to revise the plan for it.
 If the user's original message explicitly approved in advance, record that
 in `<run>/decisions.md` and continue without waiting.
 
+Once the plan is approved, seal it:
+
+```bash
+python3 <plugin>/scripts/check_run.py --seal <run>
+```
+
+This records the plan's checksum in `decisions.md`. From here on the checker
+reports any change to `plan.md` that was not sealed, so a plan that is
+rewritten behind the run's back is caught before anyone builds against it.
+Seal again each time the architect amends the plan and you accept the
+amendment.
+
 This is the only planned stop. After it, you stop only for the reasons under
 Never.
 
@@ -206,9 +233,25 @@ Then, for each wave in order:
    ```
 
 2. **When a task returns**, read its report. If the report is missing or
-   unusable, see Fix loop. Run `git status --short` and confirm the task
-   changed only files it owns (ignore `.swd/` and files owned by tasks still
-   running).
+   unusable, see Fix loop. Then check what actually changed against what
+   the report claims:
+
+   ```bash
+   python3 <plugin>/scripts/check_run.py --task T2 <run>
+   ```
+
+   It prints nothing when every uncommitted change is owned by a task, the
+   returned task's changes are all listed in its report, and the plan is
+   still the sealed one. Also confirm from the report that the task did not
+   touch a file owned by a task that is still running.
+
+   If it prints a problem, something changed that no report accounts for.
+   Stop: do not send the task to review, do not commit, and
+   do not decide it is acceptable because the content looks right. Tell the user exactly
+   which files changed and what the reports say, and wait. Unexplained
+   writes are theirs to judge. The one exception is a report that simply
+   forgot to list a file the builder says it changed: send it back to the
+   builder to correct the report.
 
 What happens next depends on the mode.
 
@@ -269,6 +312,12 @@ finished while a test fails or a finding is open.
   evidence.
 - **A missing or unusable report:** re-dispatch the same task. It counts
   as an attempt like any other dispatch.
+- **A dispatch refused by the permission system** did no work, so it is a
+  blocker and not a failed attempt. If an agent reports that its Write,
+  Edit or Bash calls were refused, set the task's `Attempts` back to what
+  it was, set the task `blocked`, log `blocked`, and stop and ask the user
+  to change the permission mode. Do not dispatch again into the same
+  refusal, and do not do the agent's writing for it.
 - **A builder changed files it does not own:** reject the task and send it
   back to undo those changes.
 - **A builder's `## Concerns` says the plan is missing something or wrong:**

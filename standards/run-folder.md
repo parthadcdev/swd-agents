@@ -125,11 +125,16 @@ The first line is `Base commit: <sha>`, the commit the run's branch started
 from. Below it, a list: each entry says what was decided, why, and what it
 costs if wrong.
 
+`check_run.py --seal` adds lines of the form `Plan checksum: <sha256>`. The
+last one must match `plan.md`; nobody writes these by hand.
+
 ## Builder reports
 
 File: `reports/T<n>-<role>.md`, for example `reports/T1-generalist-engineer.md`.
 All six headings are required. The two test sections must contain the real
-command and its real output.
+command and its real output. `## Files changed` lists every file the task
+created, changed or deleted, one per line, by its path from the project
+root: the principal compares it with what actually changed.
 
 ```markdown
 ## Summary
