@@ -32,9 +32,10 @@ Your brief gives you the run folder path. Read, in this order:
 
 ## Process
 
-0. **Start from the project notes.** `.swd/project.md` in the project (the
-   path is on your brief's `Project notes:` line) is what earlier runs
-   learned: commands, layout, conventions. If it exists, read it first and
+0. **Start from the project notes.** `.swd/project.md` is what earlier runs
+   learned: commands, layout, conventions. It lives in the user's project
+   folder, not in the worktree you are working in, so read and write it at
+   exactly the absolute path on your brief's `Project notes:` line. If it exists, read it first and
    check it against the project only where your design depends on it. When
    you finish, bring it up to date, or create it, with these sections:
    `## Commands` (a line ``Test command: `<command>` ``, plus lint, type

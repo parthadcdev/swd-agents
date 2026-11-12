@@ -37,7 +37,8 @@ class SetupTest(unittest.TestCase):
         (self.project / ".swd" / "project.md").write_text("## Commands\nTest command: `npm test`\n")
         self.assertEqual(self.setup().returncode, 0)
         allow = self.allow()
-        for rule in ("Bash(git *)", "Bash(gh pr *)", "Bash(npm test)", "Bash(npm test *)", "Edit(/.swd/**)", "Bash(pwd)"):
+        for rule in ("Bash(git *)", "Bash(gh pr *)", "Bash(npm test)", "Bash(npm test *)", "Edit(/.swd/**)", "Bash(pwd)",
+                     "Bash(echo *)", "Bash(cat *)", "Bash(mkdir *)"):   # the principal's own chained commands use these
             with self.subTest(rule=rule):
                 self.assertIn(rule, allow)
         self.assertTrue(any(r.startswith("Bash(python3 ") and "swd" in r for r in allow))  # the plugin's scripts

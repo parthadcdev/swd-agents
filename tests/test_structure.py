@@ -293,6 +293,9 @@ class StructureTest(unittest.TestCase):
             with self.subTest(needle=needle):
                 self.assertIn(needle, text)
         self.assertIn(".swd/project.md", (ROOT / "agents" / "architect.md").read_text())
+        # A pilot's principal had the architect write the notes inside the worktree, where no later run finds them.
+        self.assertIn("not in the worktree", text)
+        self.assertIn("not in the worktree", (ROOT / "agents" / "architect.md").read_text())
         self.assertIn("quick", (ROOT / "agents" / "code-reviewer.md").read_text())
 
 

@@ -26,7 +26,8 @@ user's project. The run's branch is checked out there, and every change the
 team makes to the project happens there. The user's own working copy stays
 on its branch and is never touched, so they can keep working in it.
 
-`.swd/project.md` in the user's project is the team's memory of the project:
+`.swd/project.md` in the user's project folder (not in the worktree, which
+is removed when the run ends) is the team's memory of the project:
 its test, lint and build commands, its layout and its conventions. It
 outlives runs, so each run starts from what the last one learned.
 `.swd/findings.md` beside it is the backlog of defects the team has seen
@@ -204,8 +205,10 @@ After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
 ## Design
 
 1. Dispatch `swd:architect` with the run folder path. The architect reads
-   `.swd/project.md`, checks it against the project, and creates or updates
-   it; the plan check fails if it does not exist.
+   the project notes, checks them against the project, and creates or
+   updates them; the plan check fails if they do not exist. The notes live
+   at `<user's project folder>/.swd/project.md`, not in the worktree, so
+   the `Project notes:` line of the brief must be that absolute path.
 
    **In quick mode there is no architect.** Write `plan.md` yourself: the
    `Test command:` line copied from `.swd/project.md`, and one task, `T1`,

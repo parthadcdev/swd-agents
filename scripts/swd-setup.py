@@ -18,7 +18,9 @@ import re
 import sys
 from pathlib import Path
 
-READ_ONLY = ["pwd", "ls *", "date *", "wc *", "diff *", "head *", "tail *", "grep *", "find *", "which *"]
+# Read-only commands, plus the three the principal chains into its own commands (echo, cat, mkdir).
+READ_ONLY = ["pwd", "ls *", "date *", "wc *", "diff *", "head *", "tail *", "grep *", "find *", "which *",
+             "echo *", "cat *", "mkdir *"]
 
 
 def plugin_prefix(root):
