@@ -39,7 +39,10 @@ Read:
    - changes only the files the task owns.
 3. **Check performance** as `standards.md` requires. Fail the patterns it
    lists as rejected.
-4. **Run the task's check command** yourself and confirm it passes.
+4. **Run the task's check command** yourself and confirm it passes. If you
+   cannot run commands in this session, say so under `## Findings`, and
+   pass only when a builder or QA report in the run folder shows that
+   command passing on the current code. Otherwise the verdict is fail.
 5. Decide. Fail for anything that is wrong, unsafe, untested or below the
    standard. Do not fail for style preferences the project does not share.
 

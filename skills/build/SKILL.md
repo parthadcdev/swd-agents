@@ -55,13 +55,43 @@ Work through the sections below in order.
 
 ## Delivery mode
 
-Write the line `Mode: production` in `spec.md`, with one sentence saying why.
+Judge what outcome the user needs, and choose the mode that serves it.
 
-Then write the run's standards file:
+- **`Mode: prototype`** when the requirement says prototype, MVP, proof of
+  concept, demo, spike or quick, or when it is a small requirement in an
+  empty folder. The goal is the fastest working result for the fewest
+  tokens.
+- **`Mode: production`** when the requirement says production, or the work is
+  in an existing codebase that people depend on. The goal is quality.
+- When you cannot tell, choose production.
+
+Write the mode line in `spec.md` with one sentence saying why. The user can
+change it at the gate.
+
+Then write the run's standards file from the standard for that mode:
 
 ```bash
-cat <plugin>/standards/production.md <plugin>/standards/run-folder.md > <run>/standards.md
+cat <plugin>/standards/<mode>.md <plugin>/standards/run-folder.md > <run>/standards.md
 ```
+
+The mode is a starting point, not a fixed setting. If one task in a
+prototype carries real risk (money, authentication, a data migration), hold
+that task to the production standard: review it on its own before it is
+committed, and say so in its brief. Record the call in `decisions.md`.
+
+**Staffing.** Dispatch only the roles the plan names. In prototype mode, tell
+the architect to use the fewest tasks and roles that can deliver.
+
+**Model per dispatch.** Set the Agent tool's `model` parameter on every
+dispatch:
+
+| Mode | Architect, reviewers | Builders, QA |
+|---|---|---|
+| prototype | `sonnet` | `haiku` |
+| production | leave unset, so it uses your own model | `sonnet` |
+
+After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
+`sonnet` to unset) for the next attempt.
 
 ## Design
 
@@ -133,19 +163,37 @@ Then, for each wave in order:
 2. **When a task returns**, read its report. If the report is missing or
    unusable, see Fix loop. Run `git status --short` and confirm the task
    changed only files it owns (ignore `.swd/` and files owned by tasks still
-   running). Then set it `in-review` and dispatch `swd:code-reviewer` with
-   the run folder path and the task id.
-3. **On `Verdict: pass`**, commit the task's files and set it `done`:
+   running).
+
+What happens next depends on the mode.
+
+**Production mode:**
+
+3. Set the task `in-review` and dispatch `swd:code-reviewer` with the run
+   folder path and the task id.
+4. On `Verdict: pass`, commit the task's files and set it `done`:
 
    ```bash
    git add -- <the task's files> && git commit -m "T2: <title>"
    ```
 
    On `Verdict: fail`, see Fix loop.
-4. **When every task in the wave is `done`**, dispatch `swd:qa-engineer` with
+5. When every task in the wave is `done`, dispatch `swd:qa-engineer` with
    the run folder path and the wave number, so the full suite runs before
    the next wave builds on it. A failing wave goes to the Fix loop. A
    passing wave gets a `wave-done` line.
+
+**Prototype mode:**
+
+3. If the report shows the task's own tests passing, set the task `done`.
+   There is no per-task review and no per-wave QA. If they are not passing,
+   see Fix loop.
+4. When every task in the wave is `done`, commit the wave's files in one
+   commit with the subject `W<n>: <summary>`, and log `wave-done`:
+
+   ```bash
+   git add -- <every file the wave's tasks own> && git commit -m "W1: <summary>"
+   ```
 
 ## Fix loop
 
@@ -185,7 +233,9 @@ costs if wrong.
 ## Final verification
 
 1. Dispatch `swd:qa-engineer` with `final`, and `swd:code-reviewer` with
-   `final` and the base commit, in one message.
+   `final` and the base commit, in one message. This happens in both modes;
+   in prototype mode it is the only review, and the reviewer writes
+   `reports/final-code-reviewer.md`.
 2. Send any failure through the Fix loop, then repeat step 1.
 3. Append the `done` line to `activity.md`, then check the run:
 
@@ -219,7 +269,10 @@ The branch is theirs to merge.
 
 ## Never
 
-- Never write product code or tests yourself.
+- Never write product code or tests yourself. That includes housekeeping
+  such as a `.gitignore`: if the project needs it, it belongs to a task.
+- Never use `git add -A` or `git add .`. Stage only the files the task or
+  wave owns, so build output and other stray files stay out of the commit.
 - Never edit `plan.md` or an agent's report.
 - Never push, merge, or change the user's main branch.
 - Never run a destructive action (deleting data, dropping tables,

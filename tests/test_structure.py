@@ -14,6 +14,8 @@ REQUIRED_FILES = [
     "standards/production.md",
     "skills/build/SKILL.md",
     "scripts/swd-watch.sh",
+    "scripts/swd-log.sh",
+    "standards/prototype.md",
 ]
 REQUIRED_AGENTS = ["architect", "generalist-engineer", "code-reviewer", "qa-engineer"]
 CHECKERS = ["code-reviewer", "security-reviewer", "qa-engineer"]
@@ -117,9 +119,20 @@ class StructureTest(unittest.TestCase):
         self.assertIn("uncommitted", text)
         self.assertIn("check_run.py --plan", text)
 
+    def test_pilot_lessons_are_pinned(self):
+        # Each of these was a real failure in a pilot run.
+        self.assertIn("git add -A", PRINCIPAL.read_text())
+        self.assertIn(".gitignore", (ROOT / "agents" / "architect.md").read_text())
+        self.assertIn("cannot run", (ROOT / "agents" / "code-reviewer.md").read_text())
+
     def test_principal_watch_and_activity(self):
         text = PRINCIPAL.read_text()
         for needle in ("activity.md", "swd-watch.sh", "swd-log.sh", "HERDR_PANE_ID"):
+            self.assertIn(needle, text)
+
+    def test_principal_covers_both_modes(self):
+        text = PRINCIPAL.read_text()
+        for needle in ("Mode: prototype", "Mode: production", "W<n>:", "model"):
             self.assertIn(needle, text)
 
 

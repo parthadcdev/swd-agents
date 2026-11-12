@@ -27,18 +27,22 @@ export GIT_AUTHOR_NAME=pilot GIT_AUTHOR_EMAIL=pilot@example.com
 export GIT_COMMITTER_NAME=pilot GIT_COMMITTER_EMAIL=pilot@example.com
 
 # Headless runs cannot answer permission prompts, so the tools the team needs are allowed
-# up front. Edits are limited to the temp project by acceptEdits; Bash is limited to this list.
+# up front. Edits are limited to the temp project by acceptEdits; Bash is limited to this list,
+# which leaves out anything that deletes files or reaches the network.
 ALLOWED=(
   Read Write Edit Glob Grep Agent Skill
   "Bash(git *)" "Bash(python3 *)" "Bash(echo *)" "Bash(cat *)" "Bash(mkdir *)"
-  "Bash(date *)" "Bash(ls *)" "Bash($ROOT/scripts/swd-watch.sh *)" "Bash($ROOT/scripts/swd-log.sh *)"
+  "Bash(date *)" "Bash(ls *)" "Bash(cd *)" "Bash(pwd)" "Bash(wc *)" "Bash(diff *)"
+  "Bash(head *)" "Bash(tail *)" "Bash(grep *)" "Bash(find *)" "Bash(printf *)" "Bash(sort *)"
+  "Bash(test *)" "Bash(touch *)" "Bash(cp *)" "Bash(mv *)" "Bash(chmod *)" "Bash(which *)"
+  "Bash($ROOT/scripts/swd-watch.sh *)" "Bash($ROOT/scripts/swd-log.sh *)"
 )
 
 # Sonnet keeps a pilot affordable; the principal's playbook is written to work on a mid-tier model.
 # User-level settings are left out so the run sees only this plugin: a user hook that rewrites
 # shell commands would stop them matching the allowlist above.
 claude -p --plugin-dir "$ROOT" --model sonnet --permission-mode acceptEdits \
-  --setting-sources project,local \
+  --setting-sources project,local --add-dir "$ROOT" \
   --allowedTools "${ALLOWED[@]}" \
   -- "Use the swd:build skill for this requirement: $(cat "$PILOT/requirement.txt")" \
   | tee "$TMP.output.txt"

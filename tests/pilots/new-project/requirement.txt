@@ -1,0 +1,1 @@
+Build a quick prototype command-line tool in Python. `python3 wc_lite.py <file>` prints `<lines> <words> <bytes> <file>` on one line, like `wc`. A missing file prints an error to stderr and exits 1. This is a prototype; favour speed. I pre-approve the spec and plan; do not wait for me.

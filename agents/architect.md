@@ -46,7 +46,11 @@ Your brief gives you the run folder path. Read, in this order:
 6. **Group tasks into waves.** Tasks in the same wave run at the same time,
    so no file may appear in two tasks of one wave, and a task may depend
    only on tasks in earlier waves. Put as much as possible in the same wave.
-7. **Keep it small.** A one-line change is one task in one wave. Do not
+7. **Keep stray files out.** If the project has no `.gitignore` covering
+   the build and cache output its tools produce (for example `__pycache__/`
+   or `node_modules/`), add `.gitignore` to the first task's files and say
+   in the design what it must ignore.
+8. **Keep it small.** A one-line change is one task in one wave. Do not
    create a task for a role the requirement does not need.
 
 When you are dispatched for a **re-plan**, your brief names failing reports.
