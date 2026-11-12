@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Housekeeping at the start of every run (`scripts/swd-clean.py`): removes
+  the worktrees of finished and abandoned runs, and deletes `swd/` branches
+  that are already merged, locally and on `origin`. A branch whose pull
+  request was merged on GitHub counts as merged. Unfinished runs, worktrees
+  with uncommitted changes and unmerged branches are kept and listed.
+
 ## 0.3.0
 
 - A run now works in its own git worktree, `.swd/worktrees/<name>/`, on the

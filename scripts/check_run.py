@@ -146,6 +146,8 @@ def check_plan(run_dir):
     for key in ("Base branch", "Branch", "Worktree"):
         if not decision(run_dir, key):
             problems.append(f"decisions.md: needs a line '{key}: ...'; the run works on its own branch in its own worktree")
+    if not decision(run_dir, "Housekeeping"):
+        problems.append("decisions.md: needs a 'Housekeeping:' line; run swd-clean.py <run> in preflight")
     if (read(run_dir / "write-check.txt") or "").strip() != "edited":
         problems.append("write-check.txt: the preflight write check has not passed (a subagent must write, then edit, this file)")
     spec = read(run_dir / "spec.md")

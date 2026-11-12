@@ -83,6 +83,12 @@ it at the approval gate.
   - push the run's branch and open a pull request (needs the `gh` CLI);
   - leave the branch for you and push nothing.
 - **Clean-up is part of the run.** The worktree is removed in every case.
+- **Housekeeping runs at the start of every run.** It removes the worktrees
+  of finished and abandoned runs and deletes `swd/` branches that are
+  already merged, locally and on `origin`, including branches whose pull
+  request you merged on GitHub. Anything that could lose work (an
+  unfinished run, uncommitted changes, an unmerged branch) is kept and
+  listed for you.
 - **It stops and asks** on a merge conflict or a rejected push. It never
   force-pushes and never deletes a branch that is not merged.
 

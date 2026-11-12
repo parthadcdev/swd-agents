@@ -17,6 +17,7 @@ REQUIRED_FILES = [
     "scripts/swd-watch.sh",
     "scripts/swd-log.sh",
     "scripts/swd-dashboard.py",
+    "scripts/swd-clean.py",
     "hooks/hooks.json",
     "hooks/swd-mode.py",
     "skills/on/SKILL.md",
@@ -260,6 +261,7 @@ class StructureTest(unittest.TestCase):
         self.assertIn("one plain command", shared)
         self.assertIn("Read tool", shared)
         self.assertIn("one plain command", text)
+        self.assertIn("swd-clean.py <run>", text)  # housekeeping of stale worktrees and branches, every run
         # A pilot's team saw a bug in existing code, left it alone, and the principal never recorded it.
         self.assertIn("Finding:", text)
         # A pilot's QA wrote sample input files into the project. Scratch files belong to the run folder.

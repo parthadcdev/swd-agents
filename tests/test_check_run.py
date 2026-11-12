@@ -97,7 +97,7 @@ def make_run(tmp, mode="production", single=False):
     commit(repo, "T9: task from an earlier run", ["old/x.py"])
     base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     (run / "decisions.md").write_text(
-        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nFinish: branch\n\n- None.\n")
+        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nHousekeeping: removed 0, kept 0\nFinish: branch\n\n- None.\n")
     if mode == "production":
         names = ["T1-code-reviewer", "T1-security-reviewer"]
         if not single:  # a one-task run needs no final reviews: the task's own reviews covered the whole change
@@ -342,7 +342,7 @@ class CheckRunTest(unittest.TestCase):
         self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
 
     def test_plan_check_requires_the_worktree_lines(self):
-        for line in ("Worktree: ", "Branch: ", "Base branch: "):
+        for line in ("Worktree: ", "Branch: ", "Base branch: ", "Housekeeping: "):
             with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp:
                 repo, run = make_run(tmp)
                 text = (run / "decisions.md").read_text()

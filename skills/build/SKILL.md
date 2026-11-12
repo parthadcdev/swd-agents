@@ -95,7 +95,22 @@ Work through the sections below in order.
    Branch: swd/<short-name>
    Worktree: <absolute path of <work>>
    ```
-6. Prove that a subagent can write files in this session before spending a
+6. Housekeeping. Clear out what earlier runs left behind:
+
+   ```bash
+   python3 <plugin>/scripts/swd-clean.py <run>
+   ```
+
+   It removes the worktrees of finished and abandoned runs, and deletes
+   `swd/` branches that are already merged, locally and on `origin`. It
+   never removes anything that could lose work: an unfinished run, a
+   worktree with uncommitted changes and an unmerged branch are kept and
+   printed on lines starting `kept`. Pass those lines on to the user in a
+   sentence or two and carry on; what to do with them is the user's
+   decision, so do not delete or merge them yourself. The script records a
+   `Housekeeping:` line in `decisions.md`, and the plan check fails without
+   it.
+7. Prove that a subagent can write files in this session before spending a
    run on it. This is required in every run, in both modes; the plan check
    fails without it. Dispatch `swd:generalist-engineer` on `haiku` with only this
    brief:

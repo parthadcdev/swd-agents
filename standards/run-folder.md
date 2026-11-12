@@ -152,7 +152,8 @@ line of a finished run is a `done` event.
 
 It starts with four lines the principal writes in preflight:
 `Base commit: <sha>`, `Base branch: <name>`, `Branch: swd/<short-name>` and
-`Worktree: <path>`. At the gate it gains `Finish: merge-push`, `Finish: pr`
+`Worktree: <path>`. Preflight housekeeping adds `Housekeeping: removed <n>,
+kept <m>`. At the gate it gains `Finish: merge-push`, `Finish: pr`
 or `Finish: branch`. Below those, a list: each entry says what was decided,
 why, and what it costs if wrong.
 

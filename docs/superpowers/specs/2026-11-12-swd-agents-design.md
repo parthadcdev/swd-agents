@@ -215,6 +215,11 @@ complete with a failing test; destructive actions need the user's yes.
   without a choice means `branch`.
 - After the run passes, the principal carries out the finish, removes the
   worktree, and `check_run.py --finish` confirms it.
+- Preflight runs `scripts/swd-clean.py`: it removes worktrees of finished
+  and abandoned runs and deletes `swd/` branches already merged into their
+  base (by ancestry, or as the head of a merged pull request), locally and
+  on `origin`. It touches nothing outside `swd/` branches and
+  `.swd/worktrees/`, and keeps and lists anything that could lose work.
 - The team never force-pushes, never deletes an unmerged branch, and never
   merges or pushes other than as the chosen finish says. A merge conflict or
   a rejected push stops the run and goes to the user.
