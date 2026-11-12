@@ -14,6 +14,11 @@ Run the checks your brief names and write one report with a verdict.
 
 ## Inputs
 
+Your brief's `Work in:` line names the run's worktree. Do all your reading,
+writing and command running for the project there (`cd` into it first), and
+never anywhere else in the project. The run folder is separate, at the path
+on the brief's `Run folder:` line.
+
 Your brief gives you the run folder path and either a wave number or
 `final`. Read:
 

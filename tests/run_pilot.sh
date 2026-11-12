@@ -50,9 +50,16 @@ claude -p --plugin-dir "$ROOT" --model sonnet --permission-mode acceptEdits \
 
 pkill -f "swd-dashboard.py --watch.*$TMP" 2>/dev/null || true  # in case the run stopped before 'done'
 
+# A run left on its branch is graded there; a merged run is already on the base branch.
+branch="$(git branch --list 'swd/*' --format='%(refname:short)' | head -1)"
+[ -n "$branch" ] && git checkout -q "$branch"
+
 status=0
 echo "--- check_run"
 python3 "$ROOT/scripts/check_run.py" "$TMP" || status=1
+echo "--- finish"
+python3 "$ROOT/scripts/check_run.py" --finish "$TMP" || status=1
+[ -z "$(git worktree list --porcelain | grep -c '^worktree' | grep -v '^1$')" ] || { echo "a worktree was left behind"; status=1; }
 echo "--- acceptance"
 python3 "$PILOT/acceptance.py" || status=1
 [ "$status" -eq 0 ] && echo "PILOT PASS: $1" || echo "PILOT FAIL: $1 (project kept at $TMP)"

@@ -96,7 +96,8 @@ def make_run(tmp, mode="production", single=False):
     # History from before this run, including an old run's task commit, must be ignored.
     commit(repo, "T9: task from an earlier run", ["old/x.py"])
     base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    (run / "decisions.md").write_text(f"Base commit: {base}\n\n- None.\n")
+    (run / "decisions.md").write_text(
+        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nFinish: branch\n\n- None.\n")
     if mode == "production":
         names = ["T1-code-reviewer", "T1-security-reviewer"]
         if not single:  # a one-task run needs no final reviews: the task's own reviews covered the whole change
@@ -339,6 +340,36 @@ class CheckRunTest(unittest.TestCase):
         replace(run / "plan.md", "- Files: b.py\n", "")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
         self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+
+    def test_plan_check_requires_the_worktree_lines(self):
+        for line in ("Worktree: ", "Branch: ", "Base branch: "):
+            with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                text = (run / "decisions.md").read_text()
+                (run / "decisions.md").write_text("".join(l for l in text.splitlines(True) if not l.startswith(line)))
+                self.assertProblem(self.cr.check_plan(run), "decisions.md", line.strip())
+
+    def test_seal_requires_a_finish_choice(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "decisions.md", "Finish: branch\n", "")
+        refused = self.cli("--seal", str(run))
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("Finish:", refused.stdout)
+        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+        with open(run / "decisions.md", "a") as f:
+            f.write("Finish: sometime\n")
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
+
+    def test_git_checks_run_in_the_worktree_not_the_users_copy(self):
+        repo, run = make_run(self.tmp)
+        with tempfile.TemporaryDirectory() as elsewhere:
+            work = Path(elsewhere) / "work"
+            subprocess.run(["git", "clone", "-q", str(repo), str(work)], check=True, capture_output=True)
+            replace(run / "decisions.md", f"Worktree: {repo}", f"Worktree: {work}")
+            (repo / "notes.txt").write_text("the user's own uncommitted work\n")
+            self.assertEqual(self.cli(str(run)).stdout, "")
+            (work / "stray.txt").write_text("x\n")
+            self.assertIn("stray.txt", self.cli(str(run)).stdout)
 
     def test_plan_check_requires_the_write_check(self):
         # A pilot showed the principal skipping the write check in prototype mode.

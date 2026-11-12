@@ -2,7 +2,8 @@
 
 A Claude Code plugin. A principal software engineer agent takes a requirement,
 gets one approval from you on the spec and plan, then runs a team of
-specialist agents until the work is built, tested and committed on a branch.
+specialist agents until the work is built, tested and delivered the way you
+chose: merged and pushed, in a pull request, or left on a branch.
 
 ## Requirements
 
@@ -56,6 +57,21 @@ it at the approval gate.
   the end.
 - **Production:** every task reviewed for quality and security, full suite
   after every wave.
+
+## Git
+
+- **Your working copy is left alone.** Each run works on a branch
+  `swd/<name>` in its own worktree at `.swd/worktrees/<name>/`, so you can
+  keep working while it runs. Uncommitted changes in your copy are not part
+  of the run.
+- **You choose the finish at the approval gate:**
+  - merge into the branch you started from, push it, and delete the run's
+    branch;
+  - push the run's branch and open a pull request (needs the `gh` CLI);
+  - leave the branch for you and push nothing.
+- **Clean-up is part of the run.** The worktree is removed in every case.
+- **It stops and asks** on a merge conflict or a rejected push. It never
+  force-pushes and never deletes a branch that is not merged.
 
 ## Watching a run
 

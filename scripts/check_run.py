@@ -5,6 +5,7 @@
     python3 check_run.py --seal <run_dir>      record the approved plan's checksum in decisions.md
     python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review
     python3 check_run.py <run_dir>             check a finished run
+    python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
 
 <run_dir> is .swd/runs/<name>/ in the project. A project folder also works: its last run by
 name is checked.
@@ -36,6 +37,7 @@ EVIDENCE_SECTIONS = ("Test first (failing)", "Test after (passing)")
 TASK_RE = re.compile(r"^### (T\d+): (.+)$")
 TASK_LIKE_RE = re.compile(r"^#+\s*T(ask)?\s*\d+\b", re.I)  # a heading that was meant to be a task
 BASE_RE = re.compile(r"^Base commit: (\S+)", re.M)
+FINISHES = ("merge-push", "pr", "branch")
 SEAL_RE = re.compile(r"^Plan checksum: ([0-9a-f]{64})\s*$", re.M)
 FIELD_RE = re.compile(r"^- (%s): (.*)$" % "|".join(TASK_FIELDS))
 ACTIVITY_RE = re.compile(r"^- \d{2}:\d{2}:\d{2} (\S+)( .*)?$")
@@ -110,6 +112,24 @@ def read(path):
         return None
 
 
+def decision(run_dir, key):
+    """The value of the last 'Key: value' line in decisions.md, or None."""
+    values = re.findall(rf"^{re.escape(key)}: (.+?)\s*$", read(run_dir / "decisions.md") or "", re.M)
+    return values[-1] if values else None
+
+
+def work_dir(run_dir, default):
+    """Where the run's code is: its worktree while that exists, otherwise the given folder."""
+    path = decision(run_dir, "Worktree")
+    return Path(path) if path and Path(path).is_dir() else default
+
+
+def check_finish_choice(run_dir):
+    if decision(run_dir, "Finish") not in FINISHES:
+        return ["decisions.md: needs a line 'Finish: merge-push', 'Finish: pr' or 'Finish: branch'"]
+    return []
+
+
 def run_mode(run_dir):
     match = re.search(r"^Mode: (prototype|production)\s*$", read(run_dir / "spec.md") or "", re.M)
     return match.group(1) if match else None
@@ -123,6 +143,9 @@ def load_plan(run_dir):
 def check_plan(run_dir):
     """Problems in spec.md and plan.md. Run before the approval gate."""
     problems = []
+    for key in ("Base branch", "Branch", "Worktree"):
+        if not decision(run_dir, key):
+            problems.append(f"decisions.md: needs a line '{key}: ...'; the run works on its own branch in its own worktree")
     if (read(run_dir / "write-check.txt") or "").strip() != "edited":
         problems.append("write-check.txt: the preflight write check has not passed (a subagent must write, then edit, this file)")
     spec = read(run_dir / "spec.md")
@@ -377,6 +400,55 @@ def check_run(run_dir, repo_dir):
     return problems + check_commits(run_dir, repo_dir, tasks)
 
 
+def check_finish(run_dir, project_dir):
+    """After delivery: the worktree is gone and the recorded finish really happened."""
+    problems = check_finish_choice(run_dir)
+    if problems:
+        return problems
+    finish = decision(run_dir, "Finish")
+    branch, base, work = (decision(run_dir, key) for key in ("Branch", "Base branch", "Worktree"))
+    if not (branch and base):
+        return ["decisions.md: needs 'Branch:' and 'Base branch:' lines"]
+    if work and Path(work).exists():
+        problems.append(f"worktree {work} is still there; remove it with git worktree remove")
+
+    def ref(name):
+        try:
+            return git(project_dir, "rev-parse", "--verify", "--quiet", name).strip() or None
+        except (OSError, subprocess.CalledProcessError):
+            return None
+
+    def contains(ancestor, descendant):
+        try:
+            git(project_dir, "merge-base", "--is-ancestor", ancestor, descendant)
+            return True
+        except (OSError, subprocess.CalledProcessError):
+            return False
+
+    try:
+        has_remote = "origin" in git(project_dir, "remote").split()
+    except (OSError, subprocess.CalledProcessError):
+        return problems + [f"{project_dir}: cannot read git remotes"]
+    branch_sha, base_sha = ref(f"refs/heads/{branch}"), ref(f"refs/heads/{base}")
+
+    if finish == "merge-push":
+        base_commit = BASE_RE.search(read(run_dir / "decisions.md") or "")
+        if branch_sha and base_sha and contains(branch_sha, base_sha):
+            problems.append(f"{branch} is merged; delete it with git branch -d")
+        elif branch_sha or (base_commit and base_sha and base_sha.startswith(base_commit.group(1))):
+            problems.append(f"{branch} is not merged into {base}")
+        if has_remote and base_sha != ref(f"refs/remotes/origin/{base}"):
+            problems.append(f"{base} is not pushed to origin")
+    elif not branch_sha:
+        problems.append(f"{branch} is gone; 'Finish: {finish}' keeps the branch")
+    elif finish == "pr":
+        if not has_remote:
+            problems.append("'Finish: pr' needs a remote; without one, record 'Finish: branch'")
+        elif ref(f"refs/remotes/origin/{branch}") != branch_sha:
+            problems.append(f"{branch} is not pushed to origin")
+    return problems
+
+
 def latest_run(repo_dir):
     runs = repo_dir / ".swd" / "runs"
     folders = sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []
@@ -388,19 +460,23 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true", help="check spec.md and plan.md only")
     parser.add_argument("--seal", action="store_true", help="check the plan, then record its checksum")
     parser.add_argument("--task", metavar="ID", help="check a returned task's changes before review")
+    parser.add_argument("--finish", action="store_true", help="check the run was delivered and cleaned up")
     parser.add_argument("path", type=Path, help="a run folder, or a project folder")
     args = parser.parse_args(argv)
 
     path = args.path.resolve()
     if path.parent.name == "runs" and path.parent.parent.name == ".swd":
-        run_dir, repo_dir = path, path.parents[2]
+        run_dir, project_dir = path, path.parents[2]
     else:
-        run_dir, repo_dir = latest_run(path), path
+        run_dir, project_dir = latest_run(path), path
     if run_dir is None or not run_dir.is_dir():
         print("no run folder found under .swd/runs/")
         return 1
-    if args.seal:
-        problems = check_plan(run_dir)
+    repo_dir = work_dir(run_dir, project_dir)  # git checks look at the run's worktree, not the user's copy
+    if args.finish:
+        problems = check_finish(run_dir, project_dir)
+    elif args.seal:
+        problems = check_plan(run_dir) + check_finish_choice(run_dir)
         if not problems:
             print(f"sealed plan.md: {seal_plan(run_dir)}")
     elif args.task:

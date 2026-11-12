@@ -26,8 +26,9 @@ through to completion.
 
 ## Assumptions
 
-- "Completion" means working, tested code committed on a branch. It does not
-  include deployment, pushing or merging.
+- "Completion" means working, tested code committed on a branch, then
+  delivered the way the user chose at the gate (merged and pushed, in a pull
+  request, or left on the branch). It does not include deployment.
 - One user, running the plugin from their own Claude Code session.
 - Support for other AI providers is a design constraint in this version, not
   something built in it.
@@ -202,11 +203,21 @@ complete with a failing test; destructive actions need the user's yes.
 
 ### Git
 
-- Work happens on a branch `swd/<short-name>`. A new project gets
-  `git init` first.
+- Work happens on a branch `swd/<short-name>`, checked out in its own
+  worktree at `.swd/worktrees/<short-name>/`. The user's working copy stays
+  on its branch and is never changed. A new project gets `git init` first.
 - A task is committed when it passes its checks (per task in production
   mode; per wave in prototype mode).
-- The team never pushes, merges, or changes the user's main branch.
+- At the approval gate the user chooses the finish, recorded in
+  `decisions.md`: `merge-push` (fast-forward the base branch, push it,
+  delete the run's branch), `pr` (push the run's branch and open a pull
+  request) or `branch` (leave the branch, push nothing). Pre-approval
+  without a choice means `branch`.
+- After the run passes, the principal carries out the finish, removes the
+  worktree, and `check_run.py --finish` confirms it.
+- The team never force-pushes, never deletes an unmerged branch, and never
+  merges or pushes other than as the chosen finish says. A merge conflict or
+  a rejected push stops the run and goes to the user.
 
 ## Watching a run
 

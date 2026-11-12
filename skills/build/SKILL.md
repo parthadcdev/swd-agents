@@ -21,6 +21,12 @@ that path. `<run>` means the run folder,
 `<short-name>` is two to four lowercase words joined by hyphens. Give agents
 the absolute path.
 
+`<work>` means the run's worktree, `.swd/worktrees/<short-name>/` in the
+user's project. The run's branch is checked out there, and every change the
+team makes to the project happens there. The user's own working copy stays
+on its branch and is never touched, so they can keep working in it. Run
+every git command for the run as `git -C <work> ...`.
+
 **The team.** Dispatch specialists with the Agent tool, using these agent
 types:
 
@@ -33,7 +39,8 @@ types:
 Each task in `plan.md` names its builder role; dispatch that agent type. A
 run uses only the roles its plan names, so a one-task plan gets one builder. An agent starts with no knowledge of this conversation.
 It knows only its brief and what is in the run folder, so anything it needs
-must be in one of those.
+must be in one of those. Every brief, to every agent, starts with the
+`Run folder:` line and the `Work in: <work>` line.
 
 Work through the sections below in order.
 
@@ -46,21 +53,38 @@ Work through the sections below in order.
    the line `Abandoned: <today's date>` to that run's `decisions.md`, so it
    is not offered again, and carry on here.
 2. If the project is a git repository with uncommitted changes (ignore
-   anything under `.swd/`), stop and ask the user to commit or stash them.
-   Their changes must not end up on the run's branch.
+   anything under `.swd/`), tell the user in one line that the run starts
+   from their last commit, so those changes are not part of it and are left
+   exactly as they are. If the requirement depends on them, stop and ask
+   the user to commit them first.
 3. If the folder is not a git repository and is empty, run `git init`, then
    `git commit --allow-empty -m "Initial commit"` so the run has a base.
    If it is not a git repository and already has files, stop and ask the
    user: the run needs those files committed as its base, and committing
    someone's files is their decision. With their yes, run `git init`, then
    add and commit the existing files as "Initial commit".
-4. Note the current commit as the base. Create and switch to the branch
-   `swd/<short-name>`. If that branch already exists, choose a different
-   short name.
-5. Create `<run>` and `<run>/reports/`. Write `<run>/decisions.md` with the
-   first line `Base commit: <sha>`. Every later decision is appended below
-   it; `check_run.py` uses that line to tell this run's commits from
-   earlier ones.
+4. Note the current commit as the base and the current branch as the base
+   branch. Create the run's branch in its own worktree, without switching
+   the user's copy:
+
+   ```bash
+   git worktree add .swd/worktrees/<short-name> -b swd/<short-name>
+   ```
+
+   If that branch already exists, choose a different short name. If
+   `git status --short` now lists `.swd/`, add the line `.swd/` to
+   `.git/info/exclude`: that keeps the run's folders out of the user's
+   status without touching any file of theirs.
+5. Create `<run>` and `<run>/reports/`. Write `<run>/decisions.md` starting
+   with these four lines; `check_run.py` reads them, and every later
+   decision is appended below:
+
+   ```
+   Base commit: <sha>
+   Base branch: <the branch the user's copy is on>
+   Branch: swd/<short-name>
+   Worktree: <absolute path of <work>>
+   ```
 6. Prove that a subagent can write files in this session before spending a
    run on it. This is required in every run, in both modes; the plan check
    fails without it. Dispatch `swd:generalist-engineer` on `haiku` with only this
@@ -152,10 +176,22 @@ If the mode changes, rewrite the `Mode:` line in `spec.md`, write
 `standards.md` again from the new mode's standard, and send the architect
 back to revise the plan for it.
 
-If the user's original message explicitly approved in advance, record that
-in `<run>/decisions.md` and continue without waiting.
+With the summary, ask how the result should be delivered when the run
+passes, and append the answer to `decisions.md` as one of these lines:
 
-Once the plan is approved, seal it:
+| Line | Meaning |
+|---|---|
+| `Finish: merge-push` | Merge into the base branch, push it, delete the run's branch |
+| `Finish: pr` | Push the run's branch and open a pull request |
+| `Finish: branch` | Leave the run's branch for the user; push nothing |
+
+If the user's original message explicitly approved in advance, record that
+in `<run>/decisions.md` and continue without waiting. Use the finish their
+message asked for; if it named none, record `Finish: branch`, because
+nothing leaves the user's machine without their say.
+
+Once the plan is approved, seal it. The seal is refused until a `Finish:`
+line is recorded:
 
 ```bash
 python3 <plugin>/scripts/check_run.py --seal <run>
@@ -228,6 +264,7 @@ Then, for each wave in order:
 
    ```
    Run folder: <absolute run path>
+   Work in: <work>
    Task: T2
    You own: src/api.py, tests/test_api.py
    Read first: reports/T1-generalist-engineer.md
@@ -264,7 +301,7 @@ What happens next depends on the mode.
 4. When both verdicts are `pass`, commit the task's files and set it `done`:
 
    ```bash
-   git add -- <the task's files that changed> && git commit -m "T2: <title>"
+   git -C <work> add -- <the task's files that changed> && git -C <work> commit -m "T2: <title>"
    ```
 
    On either `Verdict: fail`, see Fix loop.
@@ -283,7 +320,7 @@ What happens next depends on the mode.
    commit with the subject `W<n>: <summary>`, and log `wave-done`:
 
    ```bash
-   git add -- <the wave's files that changed> && git commit -m "W1: <summary>"
+   git -C <work> add -- <the wave's files that changed> && git -C <work> commit -m "W1: <summary>"
    ```
 
 ## Fix loop
@@ -356,31 +393,90 @@ costs if wrong.
    that means more work, log `done` again when the work is finished: the
    last line of the timeline must be a `done` event.
 
+## Finish
+
+Deliver the run the way the last `Finish:` line in `decisions.md` says, and
+only after `check_run.py <run>` prints nothing. Run these from the user's
+project folder unless a step says otherwise.
+
+**`Finish: merge-push`**
+
+1. If the base branch has moved since the base commit, bring the run's
+   branch up to date: `git -C <work> rebase <base branch>`. On a conflict,
+   run `git -C <work> rebase --abort`, stop and ask the user. After a
+   rebase that changed anything, run Final verification again before going
+   on.
+2. Fast-forward the base branch to the run's branch. If the user's copy is
+   on the base branch: `git merge --ff-only swd/<short-name>`. If it is on
+   another branch: `git fetch . swd/<short-name>:<base branch>`. If either
+   is refused, for example because the user's uncommitted changes are in
+   the way, stop and ask; never merge any other way.
+3. If the project has a remote named `origin`:
+   `git push origin <base branch>`. If the push is rejected, stop and ask.
+   If there is no remote, say that the merge is local and nothing was
+   pushed.
+4. Clean up: `git worktree remove .swd/worktrees/<short-name>`, then
+   `git branch -d swd/<short-name>`.
+
+**`Finish: pr`**
+
+1. If the project has no remote named `origin`, a pull request is not
+   possible: append `Finish: branch` to `decisions.md`, tell the user, and
+   follow that finish.
+2. `git push -u origin swd/<short-name>`.
+3. Write `<run>/pr-body.md`: what was built, each acceptance criterion and
+   its result, and the entries in `decisions.md`. Open the pull request:
+
+   ```bash
+   gh pr create --base <base branch> --head swd/<short-name> --title "<what was built>" --body-file <run>/pr-body.md
+   ```
+
+   If `gh` is not installed or not signed in, give the user the branch name
+   and the link the push printed, so they can open it themselves.
+4. Clean up: `git worktree remove .swd/worktrees/<short-name>`. Keep the
+   branch; the pull request needs it.
+
+**`Finish: branch`**
+
+1. Clean up: `git worktree remove .swd/worktrees/<short-name>`. The branch
+   keeps every commit.
+
+**Then check the finish**, whichever it was:
+
+```bash
+python3 <plugin>/scripts/check_run.py --finish <run>
+```
+
+Fix whatever it reports and run it again until it prints nothing.
+
 ## Report
 
 Tell the user:
 
-- what was built, and the branch it is on;
+- what was built, and where it is now: merged and pushed, in a pull request
+  (give the link), or on the branch `swd/<short-name>`;
 - the test evidence: the final QA verdict and each acceptance criterion's
   result;
 - every entry in `decisions.md`;
 - anything left open.
 
-The branch is theirs to merge.
+Whatever the finish did not do is theirs: merging a pull request, or
+merging and pushing a branch that was left for them.
 
 ## Resume
 
-1. Read `ledger.md`, `plan.md` and `decisions.md` in the unfinished run, and
-   switch to its `swd/` branch.
-2. For each task that is `in-progress`, run `git status --short` on its
-   files. Keep half-finished edits in place and set the task back to
+1. Read `ledger.md`, `plan.md` and `decisions.md` in the unfinished run.
+   Its `Worktree:` line is `<work>`. If that folder is missing, recreate it
+   from the run's branch: `git worktree add <work> swd/<short-name>`.
+2. For each task that is `in-progress`, run `git -C <work> status --short`
+   on its files. Keep half-finished edits in place and set the task back to
    `todo`; the builder will pick up from them. Do not reset its attempt
    count: the next dispatch will increment `Attempts` as usual.
 3. A task that is `in-review` and has a builder report goes straight back
    to review, not to the builder. Without a report, treat it as
    `in-progress`.
-4. If a wave's tasks are all `done` but not committed (`git status --short`
-   shows their files), commit that wave now as Build describes.
+4. If a wave's tasks are all `done` but not committed
+   (`git -C <work> status --short` shows their files), commit that wave now as Build describes.
 5. Tell the user in one line that you are resuming, then continue Build from
    the first wave with a task that is not `done`.
 
@@ -393,7 +489,12 @@ The branch is theirs to merge.
   Of those, name only the files that changed (`git status --short` lists
   them): a planned file that was never created makes `git add` fail.
 - Never edit `plan.md` or an agent's report.
-- Never push, merge, or change the user's main branch.
+- Never merge or push except as the recorded `Finish:` line says, and only
+  after the run check passes.
+- Never force-push. Never delete a branch that is not merged: use
+  `git branch -d`, never `-D`.
+- Never change a file in the user's working copy. The team works in
+  `<work>`; the only thing you write outside it is the run folder.
 - Never run a destructive action (deleting data, dropping tables,
   force-pushing, running migrations against a database that is not local)
   without the user's explicit yes, even if they approved in advance.

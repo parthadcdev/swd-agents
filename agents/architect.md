@@ -15,6 +15,11 @@ write product code or tests.
 
 ## Inputs
 
+Your brief's `Work in:` line names the run's worktree. Do all your reading,
+writing and command running for the project there (`cd` into it first), and
+never anywhere else in the project. The run folder is separate, at the path
+on the brief's `Run folder:` line.
+
 Your brief gives you the run folder path. Read, in this order:
 
 1. `requirement.md` and `spec.md`: what must be built and how it will be

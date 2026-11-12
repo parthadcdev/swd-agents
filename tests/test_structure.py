@@ -29,7 +29,7 @@ AGENT_SECTIONS = ["## Responsibility", "## Inputs", "## Process", "## Report", "
 PRINCIPAL = ROOT / "skills" / "build" / "SKILL.md"
 PRINCIPAL_SECTIONS = [
     "## Preflight", "## Intake", "## Delivery mode", "## Design", "## Gate", "## Build",
-    "## Fix loop", "## Final verification", "## Report", "## Resume", "## Never",
+    "## Fix loop", "## Final verification", "## Finish", "## Report", "## Resume", "## Never",
 ]
 STANDARD_SECTIONS = [
     "## Priority", "## Builder process", "## Testing", "## Review",
@@ -223,6 +223,27 @@ class StructureTest(unittest.TestCase):
         ):
             with self.subTest(needle=needle):
                 self.assertIn(needle, text)
+
+    def test_worktree_and_finish_are_pinned(self):
+        text = PRINCIPAL.read_text()
+        for needle in (
+            "git worktree add",                 # the run works in its own worktree
+            "Work in: <work>",                  # every brief says where to work
+            "Finish: merge-push",               # the three finishes, chosen at the gate
+            "Finish: pr",
+            "Finish: branch",
+            "gh pr create",
+            "git worktree remove",              # clean up afterwards
+            "git branch -d",                    # only ever a merged branch
+            "check_run.py --finish <run>",      # and the finish is checked
+            "Never force-push",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
+        self.assertNotIn("Never push, merge", text)
+        for path in agent_files():
+            with self.subTest(agent=path.name):
+                self.assertIn("`Work in:`", path.read_text())
 
 
 if __name__ == "__main__":

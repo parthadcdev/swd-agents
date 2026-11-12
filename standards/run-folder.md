@@ -24,6 +24,16 @@ report in `reports/` must say `Verdict: pass`.
 
 An agent writes only its owned files and its own report.
 
+## Where to work
+
+The run's code lives in a worktree of its own, not in the user's working
+copy. Your brief names it on the `Work in:` line. Read, write and run
+commands for the project only there: start shell commands with
+`cd <that path> &&`, and use paths under it with the file tools. File paths
+in `plan.md` and in reports are relative to it. The run folder is somewhere
+else, at the path your brief gives on the `Run folder:` line. Never change
+anything in the project outside the worktree.
+
 ## spec.md
 
 Must contain a mode line and an acceptance criteria section:
@@ -121,9 +131,11 @@ line of a finished run is a `done` event.
 
 ## decisions.md
 
-The first line is `Base commit: <sha>`, the commit the run's branch started
-from. Below it, a list: each entry says what was decided, why, and what it
-costs if wrong.
+It starts with four lines the principal writes in preflight:
+`Base commit: <sha>`, `Base branch: <name>`, `Branch: swd/<short-name>` and
+`Worktree: <path>`. At the gate it gains `Finish: merge-push`, `Finish: pr`
+or `Finish: branch`. Below those, a list: each entry says what was decided,
+why, and what it costs if wrong.
 
 `check_run.py --seal` adds lines of the form `Plan checksum: <sha256>`. The
 last one must match `plan.md`; nobody writes these by hand.
