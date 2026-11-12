@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - The principal now proves a subagent can write files before starting a
   run, and stops with an explanation if the session's permission mode

@@ -1,6 +1,6 @@
 {
   "name": "swd",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A principal engineer agent running a team of specialist software engineering agents, from requirement to tested code.",
   "author": {
     "name": "parthadcdev"
