@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Validate an swd run folder.
+
+    python3 check_run.py --plan <repo_dir>   check spec.md and plan.md only (before the gate)
+    python3 check_run.py <repo_dir>          check a finished run
+
+Prints one problem per line. Exit 0 when there are none, 1 otherwise.
+The formats checked here are documented in standards/run-folder.md.
+"""
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+BUILDERS = {
+    "generalist-engineer", "backend-engineer", "frontend-engineer",
+    "database-engineer", "devops-engineer", "docs-writer",
+}
+STATUSES = {"todo", "in-progress", "in-review", "done", "blocked"}
+EVENTS = {"dispatch", "return", "verdict", "commit", "fix", "replan", "ruling", "wave-done", "blocked", "done"}
+TASK_FIELDS = ("Role", "Wave", "Files", "Depends", "Check")
+BUILDER_SECTIONS = ("Summary", "Files changed", "Test first (failing)", "Test after (passing)", "Complexity", "Concerns")
+EVIDENCE_SECTIONS = ("Test first (failing)", "Test after (passing)")
+
+TASK_RE = re.compile(r"^### (T\d+): (.+)$")
+FIELD_RE = re.compile(r"^- (%s): (.*)$" % "|".join(TASK_FIELDS))
+ACTIVITY_RE = re.compile(r"^- \d{2}:\d{2}:\d{2} (\S+)( .*)?$")
+COMMIT_RE = re.compile(r"^([TW]\d+):")
+
+
+def parse_plan(text):
+    """Return (tasks, problems). A task is a dict: id, title, role, wave, files, depends, check."""
+    tasks, problems, raw, current = [], [], {}, None
+    for line in text.splitlines():
+        header = TASK_RE.match(line)
+        if header:
+            current = {"id": header.group(1), "title": header.group(2).strip()}
+            raw[current["id"]] = {}
+            tasks.append(current)
+            continue
+        if line.startswith("#"):
+            current = None  # any other heading ends the task
+            continue
+        field = FIELD_RE.match(line)
+        if field and current:
+            raw[current["id"]][field.group(1)] = field.group(2).strip()
+
+    for task in tasks:
+        fields = raw[task["id"]]
+        for name in TASK_FIELDS:
+            if not fields.get(name):
+                problems.append(f"plan.md: {task['id']} is missing '- {name}:'")
+        task["role"] = fields.get("Role", "")
+        task["check"] = fields.get("Check", "")
+        task["files"] = [f.strip().strip("`") for f in fields.get("Files", "").split(",") if f.strip()]
+        depends = fields.get("Depends", "")
+        task["depends"] = [] if depends.lower() in ("", "none") else [d.strip() for d in depends.split(",")]
+        wave = fields.get("Wave", "")
+        task["wave"] = int(wave) if wave.isdigit() else None
+        if wave and task["wave"] is None:
+            problems.append(f"plan.md: {task['id']} Wave must be a number, got '{wave}'")
+    return tasks, problems
+
+
+def parse_ledger(text):
+    """Return ({task id: {role, status, attempts}}, problems)."""
+    rows, problems = {}, []
+    for number, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if cells[0] == "Task" or set(cells[0]) <= set("-: "):
+            continue  # header and separator rows
+        if len(cells) != 4:
+            problems.append(f"ledger.md line {number}: expected 4 columns, got {len(cells)}")
+            continue
+        task_id, role, status, attempts = cells
+        if status not in STATUSES:
+            problems.append(f"ledger.md line {number}: unknown status '{status}'")
+        if not attempts.isdigit():
+            problems.append(f"ledger.md line {number}: Attempts must be a number, got '{attempts}'")
+        rows[task_id] = {"role": role, "status": status, "attempts": int(attempts) if attempts.isdigit() else 0}
+    return rows, problems
+
+
+def read(path):
+    """File text, or None when the file is missing or unreadable."""
+    try:
+        return path.read_text()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def run_mode(run_dir):
+    match = re.search(r"^Mode: (prototype|production)\s*$", read(run_dir / "spec.md") or "", re.M)
+    return match.group(1) if match else None
+
+
+def load_plan(run_dir):
+    text = read(run_dir / "plan.md")
+    return parse_plan(text) if text is not None else ([], [])
+
+
+def check_plan(run_dir):
+    """Problems in spec.md and plan.md. Run before the approval gate."""
+    problems = []
+    spec = read(run_dir / "spec.md")
+    if spec is None:
+        problems.append("missing spec.md")
+    else:
+        if run_mode(run_dir) is None:
+            problems.append("spec.md: needs a line 'Mode: prototype' or 'Mode: production'")
+        if "## Acceptance criteria" not in spec:
+            problems.append("spec.md: needs a '## Acceptance criteria' section")
+
+    plan = read(run_dir / "plan.md")
+    if plan is None:
+        return problems + ["missing plan.md"]
+    if not re.search(r"^Test command: `.+`", plan, re.M):
+        problems.append("plan.md: needs a line 'Test command: `<command>`'")
+    tasks, parse_problems = parse_plan(plan)
+    problems += parse_problems
+    if not tasks:
+        problems.append("plan.md: has no tasks")
+
+    by_id = {}
+    for task in tasks:
+        if task["id"] in by_id:
+            problems.append(f"plan.md: task id {task['id']} is used twice")
+        by_id[task["id"]] = task
+        if task["role"] and task["role"] not in BUILDERS:
+            problems.append(f"plan.md: {task['id']} Role '{task['role']}' is not a builder role")
+
+    owners = {}  # (wave, file) -> first task id that owns it
+    for task in tasks:
+        for dep in task["depends"]:
+            other = by_id.get(dep)
+            if other is None:
+                problems.append(f"plan.md: {task['id']} depends on {dep}, which does not exist")
+            elif None not in (task["wave"], other["wave"]) and other["wave"] >= task["wave"]:
+                problems.append(f"plan.md: {task['id']} depends on {dep}, which is not in an earlier wave")
+        for name in task["files"]:
+            first = owners.setdefault((task["wave"], name), task["id"])
+            if first != task["id"]:
+                problems.append(f"plan.md: {first} and {task['id']} both own {name} in wave {task['wave']}")
+    return problems
+
+
+def sections(text):
+    """Map each '## Heading' to the text under it."""
+    out, current = {}, None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            current = line[3:].strip()
+            out[current] = ""
+        elif current is not None:
+            out[current] += line + "\n"
+    return out
+
+
+def check_verdict(run_dir, name):
+    text = read(run_dir / "reports" / name)
+    if text is None:
+        return [f"missing reports/{name}"]
+    if not re.search(r"^Verdict: pass\s*$", text, re.M):
+        return [f"reports/{name}: Verdict is not pass"]
+    return []
+
+
+def check_commits(repo_dir, tasks):
+    """Each T<n>:/W<n>: commit may change only files that task or wave owns, plus the run folder."""
+    # shortcut: reads the whole branch history, so an older unrelated commit titled "T1: ..." would be
+    # checked too; pass a base commit if that ever happens.
+    try:
+        log = subprocess.run(
+            ["git", "-C", str(repo_dir), "log", "--name-only", "--format=%x00%s"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return [f"{repo_dir}: cannot read git history"]
+
+    by_task = {t["id"]: set(t["files"]) for t in tasks}
+    by_wave = {}
+    for task in tasks:
+        by_wave.setdefault(f"W{task['wave']}", set()).update(task["files"])
+
+    problems = []
+    for entry in log.split("\0")[1:]:
+        lines = [l for l in entry.splitlines() if l.strip()]
+        if not lines:
+            continue
+        subject, changed = lines[0], lines[1:]
+        match = COMMIT_RE.match(subject)
+        if not match:
+            continue
+        key = match.group(1)
+        owned = by_task.get(key) if key.startswith("T") else by_wave.get(key)
+        if owned is None:
+            problems.append(f"commit '{subject}': {key} is not in plan.md")
+            continue
+        for name in changed:
+            if name not in owned and not name.startswith(".swd/"):
+                problems.append(f"commit '{subject}' changes {name}, which {key} does not own")
+    return problems
+
+
+def check_run(run_dir, repo_dir):
+    """Problems in a finished run. Includes everything check_plan reports."""
+    problems = check_plan(run_dir)
+    for name in ("requirement.md", "standards.md", "ledger.md", "decisions.md", "activity.md"):
+        if read(run_dir / name) is None:
+            problems.append(f"missing {name}")
+
+    tasks, _ = load_plan(run_dir)
+    mode = run_mode(run_dir)
+
+    rows, ledger_problems = parse_ledger(read(run_dir / "ledger.md") or "")
+    problems += ledger_problems
+    for task in tasks:
+        row = rows.get(task["id"])
+        if row is None:
+            problems.append(f"ledger.md: no row for {task['id']}")
+        elif row["status"] != "done":
+            problems.append(f"ledger.md: {task['id']} is {row['status']}, not done")
+
+    for task in tasks:
+        if task["role"] not in BUILDERS:
+            continue
+        name = f"{task['id']}-{task['role']}.md"
+        text = read(run_dir / "reports" / name)
+        if text is None:
+            problems.append(f"missing reports/{name}")
+        else:
+            found = sections(text)
+            for heading in BUILDER_SECTIONS:
+                if heading not in found:
+                    problems.append(f"reports/{name}: missing section '{heading}'")
+                elif heading in EVIDENCE_SECTIONS and not found[heading].strip():
+                    problems.append(f"reports/{name}: section '{heading}' is empty")
+        if mode == "production":
+            problems += check_verdict(run_dir, f"{task['id']}-code-reviewer.md")
+
+    problems += check_verdict(run_dir, "final-qa-engineer.md")
+    if mode == "prototype":
+        problems += check_verdict(run_dir, "final-code-reviewer.md")
+        for path in sorted((run_dir / "reports").glob("T*-code-reviewer.md")):
+            problems.append(f"reports/{path.name}: per-task review is not expected in prototype mode")
+
+    activity = read(run_dir / "activity.md")
+    if activity is not None:
+        events = []  # (event, detail)
+        for number, line in enumerate(activity.splitlines(), 1):
+            if not line.strip():
+                continue
+            match = ACTIVITY_RE.match(line)
+            if not match or match.group(1) not in EVENTS:
+                problems.append(f"activity.md line {number}: expected '- HH:MM:SS <event> <detail>'")
+                continue
+            events.append((match.group(1), match.group(2) or ""))
+        for task in tasks:
+            if not any(e == "dispatch" and re.search(rf"\b{task['id']}\b", d) for e, d in events):
+                problems.append(f"activity.md: no dispatch line for {task['id']}")
+        if not events or events[-1][0] != "done":
+            problems.append("activity.md: last line must be a 'done' event")
+
+    return problems + check_commits(repo_dir, tasks)
+
+
+def latest_run(repo_dir):
+    runs = repo_dir / ".swd" / "runs"
+    folders = sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []
+    return folders[-1] if folders else None
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--plan", action="store_true", help="check spec.md and plan.md only")
+    parser.add_argument("repo_dir", type=Path)
+    args = parser.parse_args(argv)
+
+    run_dir = latest_run(args.repo_dir)
+    if run_dir is None:
+        print("no run folder found under .swd/runs/")
+        return 1
+    problems = check_plan(run_dir) if args.plan else check_run(run_dir, args.repo_dir)
+    for problem in problems:
+        print(problem)
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

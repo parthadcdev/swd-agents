@@ -6,7 +6,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-REQUIRED_FILES = [".claude-plugin/plugin.json", "README.md"]
+REQUIRED_FILES = [
+    ".claude-plugin/plugin.json",
+    "README.md",
+    "standards/run-folder.md",
+    "scripts/check_run.py",
+]
 REQUIRED_AGENTS: list[str] = []
 AGENT_SECTIONS = ["## Responsibility", "## Inputs", "## Process", "## Report", "## Never"]
 

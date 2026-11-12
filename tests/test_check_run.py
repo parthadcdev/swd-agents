@@ -1,0 +1,228 @@
+"""Tests for scripts/check_run.py. Run from the repo root: python3 -m unittest tests.test_check_run"""
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = ROOT / "scripts" / "check_run.py"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+PLAN = """# Plan
+
+Test command: `python3 -m unittest`
+
+### T1: First thing
+- Role: generalist-engineer
+- Wave: 1
+- Files: a.py, tests/test_a.py
+- Depends: none
+- Check: `python3 -m unittest tests.test_a`
+
+### T2: Second thing
+- Role: backend-engineer
+- Wave: 2
+- Files: b.py
+- Depends: T1
+- Check: `python3 -m unittest tests.test_b`
+"""
+
+LEDGER = """| Task | Role | Status | Attempts |
+|---|---|---|---|
+| T1 | generalist-engineer | done | 1 |
+| T2 | backend-engineer | done | 2 |
+"""
+
+BUILDER_REPORT = """## Summary
+Did it.
+## Files changed
+- a.py
+## Test first (failing)
+FAILED (errors=1)
+## Test after (passing)
+OK
+## Complexity
+O(n) time, O(1) space.
+## Concerns
+None.
+"""
+
+CHECKER_REPORT = "Verdict: pass\n\n## Findings\nNone.\n"
+
+ACTIVITY = """- 10:00:00 dispatch T1 generalist-engineer
+- 10:05:00 return T1
+- 10:06:00 dispatch T2 backend-engineer
+- 10:09:00 done all tasks complete
+"""
+
+
+def git(repo, *args):
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.com",
+         "-c", "commit.gpgsign=false", *args],
+        check=True, capture_output=True,
+    )
+
+
+def commit(repo, subject, files):
+    for name in files:
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(path.read_text() + "x\n" if path.exists() else "x\n")
+    git(repo, "add", "-A", "--", *files)
+    git(repo, "commit", "-m", subject)
+
+
+def make_run(tmp, mode="production"):
+    """A valid two-task, two-wave run in a fresh git repo. Returns (repo, run)."""
+    repo = Path(tmp)
+    run = repo / ".swd" / "runs" / "2026-11-12-demo"
+    (run / "reports").mkdir(parents=True)
+    (run / "requirement.md").write_text("Do the thing.\n")
+    (run / "spec.md").write_text(f"# Spec\n\nMode: {mode}\n\n## Acceptance criteria\n- It works.\n")
+    (run / "standards.md").write_text("standards\n")
+    (run / "plan.md").write_text(PLAN)
+    (run / "ledger.md").write_text(LEDGER)
+    (run / "decisions.md").write_text("None.\n")
+    (run / "activity.md").write_text(ACTIVITY)
+    (run / "reports" / "T1-generalist-engineer.md").write_text(BUILDER_REPORT)
+    (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT)
+    (run / "reports" / "final-qa-engineer.md").write_text(CHECKER_REPORT)
+    git(repo, "init", "-q")
+    if mode == "production":
+        (run / "reports" / "T1-code-reviewer.md").write_text(CHECKER_REPORT)
+        (run / "reports" / "T2-code-reviewer.md").write_text(CHECKER_REPORT)
+        commit(repo, "T1: First thing", ["a.py", "tests/test_a.py"])
+        commit(repo, "T2: Second thing", ["b.py"])
+    else:
+        (run / "reports" / "final-code-reviewer.md").write_text(CHECKER_REPORT)
+        commit(repo, "W1: first wave", ["a.py", "tests/test_a.py"])
+        commit(repo, "W2: second wave", ["b.py"])
+    return repo, run
+
+
+def replace(path, old, new):
+    text = path.read_text()
+    assert old in text, f"{old!r} not in {path}"
+    path.write_text(text.replace(old, new))
+
+
+class CheckRunTest(unittest.TestCase):
+    def setUp(self):
+        import check_run
+        self.cr = check_run
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = self._tmp.name
+
+    def problems(self, repo, run):
+        return self.cr.check_run(run, repo)
+
+    def assertProblem(self, problems, *needles):
+        self.assertTrue(
+            any(all(n in p for n in needles) for p in problems),
+            f"no problem mentioning {needles}; got {problems}",
+        )
+
+    def test_valid_production_run_has_no_problems(self):
+        repo, run = make_run(self.tmp)
+        self.assertEqual(self.problems(repo, run), [])
+
+    def test_valid_prototype_run_has_no_problems(self):
+        repo, run = make_run(self.tmp, mode="prototype")
+        self.assertEqual(self.problems(repo, run), [])
+
+    def test_single_task_plan_is_valid(self):
+        repo, run = make_run(self.tmp)
+        (run / "plan.md").write_text(PLAN.split("### T2")[0])
+        self.assertEqual(self.cr.check_plan(run), [])
+
+    def test_same_wave_shared_file_is_reported(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Wave: 2\n- Files: b.py\n- Depends: T1", "- Wave: 1\n- Files: b.py, a.py\n- Depends: none")
+        self.assertProblem(self.cr.check_plan(run), "T1", "T2", "a.py")
+
+    def test_dependency_in_same_or_later_wave_is_reported(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Wave: 2", "- Wave: 1")
+        self.assertProblem(self.cr.check_plan(run), "T2", "T1", "earlier wave")
+
+    def test_missing_test_command_is_reported(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "Test command: `python3 -m unittest`\n", "")
+        self.assertProblem(self.cr.check_plan(run), "Test command")
+
+    def test_malformed_task_is_reported_not_raised(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Files: b.py\n", "")
+        self.assertProblem(self.cr.check_plan(run), "T2", "Files")
+
+    def test_malformed_ledger_row_is_reported_not_raised(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "ledger.md", "| T2 | backend-engineer | done | 2 |", "| T2 | backend-engineer | finished | x |")
+        problems = self.problems(repo, run)
+        self.assertProblem(problems, "ledger.md", "finished")
+        self.assertProblem(problems, "ledger.md", "Attempts")
+
+    def test_task_not_done_is_reported(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "ledger.md", "| T2 | backend-engineer | done |", "| T2 | backend-engineer | in-review |")
+        self.assertProblem(self.problems(repo, run), "T2", "in-review")
+
+    def test_missing_fail_then_pass_evidence_is_reported(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "reports" / "T1-generalist-engineer.md", "FAILED (errors=1)\n", "")
+        self.assertProblem(self.problems(repo, run), "T1-generalist-engineer.md", "Test first (failing)")
+
+    def test_commit_outside_owned_files_is_reported(self):
+        repo, run = make_run(self.tmp)
+        commit(repo, "T2: sneaky fix", ["a.py"])
+        self.assertProblem(self.problems(repo, run), "T2", "a.py")
+
+    def test_missing_task_review_in_production_is_reported(self):
+        repo, run = make_run(self.tmp)
+        (run / "reports" / "T2-code-reviewer.md").unlink()
+        self.assertProblem(self.problems(repo, run), "T2-code-reviewer.md")
+
+    def test_per_task_review_in_prototype_is_reported(self):
+        repo, run = make_run(self.tmp, mode="prototype")
+        (run / "reports" / "T1-code-reviewer.md").write_text(CHECKER_REPORT)
+        self.assertProblem(self.problems(repo, run), "T1-code-reviewer.md", "prototype")
+
+    def test_failing_qa_verdict_is_reported(self):
+        repo, run = make_run(self.tmp)
+        (run / "reports" / "final-qa-engineer.md").write_text("Verdict: fail\n\n## Findings\n- broken\n")
+        self.assertProblem(self.problems(repo, run), "final-qa-engineer.md", "Verdict")
+
+    def test_missing_dispatch_in_activity_is_reported(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "activity.md", "- 10:06:00 dispatch T2 backend-engineer\n", "")
+        self.assertProblem(self.problems(repo, run), "activity.md", "T2")
+
+    def cli(self, *args):
+        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
+
+    def test_cli_exit_codes(self):
+        repo, run = make_run(self.tmp)
+        ok = self.cli(str(repo))
+        self.assertEqual((ok.returncode, ok.stdout), (0, ""))
+        (run / "decisions.md").unlink()
+        bad = self.cli(str(repo))
+        self.assertEqual(bad.returncode, 1)
+        self.assertIn("decisions.md", bad.stdout)
+        self.assertNotIn("Traceback", bad.stderr)
+        with tempfile.TemporaryDirectory() as empty:
+            none = self.cli(empty)
+            self.assertEqual(none.returncode, 1)
+            self.assertIn("no run folder found", none.stdout)
+
+    def test_cli_plan_mode_ignores_missing_ledger(self):
+        repo, run = make_run(self.tmp)
+        (run / "ledger.md").unlink()
+        self.assertEqual(self.cli("--plan", str(repo)).returncode, 0)
+        self.assertEqual(self.cli(str(repo)).returncode, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
