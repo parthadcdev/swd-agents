@@ -18,10 +18,18 @@ The plugin root is two directories above this skill's base directory;
    `.swd/project.md` records them once a run has happened; before that,
    look in the README, the package manifest, the Makefile and the CI
    configuration. Pass each one with `--command`.
+
+   Also pass the command that runs the project's own code, such as
+   `python3`, `node` or `go run`. QA and the reviewers have to run the
+   software to check each acceptance criterion, and a rule for the test
+   command alone does not cover that; without it a run stops at its final
+   checks. This is the broadest rule in the set: it lets agents run any
+   program with that interpreter in this project. Say so when you list the
+   rules.
 2. Show what would be added, changing nothing:
 
    ```bash
-   python3 <plugin>/scripts/swd-setup.py --print --command "<test command>" <project>
+   python3 <plugin>/scripts/swd-setup.py --print --command "<test command>" --command "<interpreter>" <project>
    ```
 
 3. Tell the user, in a short list, what the rules allow in this project:
@@ -37,7 +45,7 @@ The plugin root is two directories above this skill's base directory;
    arguments:
 
    ```bash
-   python3 <plugin>/scripts/swd-setup.py --command "<test command>" <project>
+   python3 <plugin>/scripts/swd-setup.py --command "<test command>" --command "<interpreter>" <project>
    ```
 
    Report what it printed. Tell the user the rules apply from the next

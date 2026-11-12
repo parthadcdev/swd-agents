@@ -57,7 +57,8 @@ ALLOWED=(
 )
 
 if [ -n "${SWD_PILOT_SETUP:-}" ]; then
-  python3 "$ROOT/scripts/swd-setup.py" --command "python3 -m unittest" "$TMP"
+  # python3 as well as the test command: QA runs the software itself to check each acceptance criterion.
+  python3 "$ROOT/scripts/swd-setup.py" --command "python3 -m unittest" --command "python3" "$TMP"
   if [ -d .git ]; then echo ".claude/" >> .git/info/exclude; fi  # the harness's own settings file, not the team's work
   PERMISSIONS=()
 else
