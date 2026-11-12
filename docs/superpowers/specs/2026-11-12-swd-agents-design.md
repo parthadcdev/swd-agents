@@ -221,6 +221,13 @@ showing `ledger.md` refreshed every two seconds, one following
 `activity.md`. Outside herdr the script prints the two commands so they can
 be run in any terminal. herdr is optional; the plugin works without it.
 
+The principal also starts `scripts/swd-dashboard.py --watch --open` in the
+background when the build begins. It writes `dashboard.html` in the run
+folder and opens it in the browser: tasks in columns by wave, coloured by
+status, with the timeline below. The script rebuilds the page every two
+seconds from `plan.md`, `ledger.md` and `activity.md` and stops when the
+timeline's last event is `done`, so the view costs no agent work.
+
 Specialists are subagents inside the principal's session and do not get
 panes of their own. Running each specialist as its own process in a herdr
 pane is a possible later change, tied to supporting other AI providers.

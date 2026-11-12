@@ -148,7 +148,19 @@ in exactly this form (`check_run.py` reads it):
 | T1 | generalist-engineer | todo | 0 |
 ```
 
-Also create an empty `<run>/activity.md`. If the `HERDR_PANE_ID` environment variable is
+Also create an empty `<run>/activity.md`.
+
+Then start the live dashboard. Run this as a background command, so it does
+not block you, and tell the user the page is at `<run>/dashboard.html`:
+
+```bash
+python3 <plugin>/scripts/swd-dashboard.py --watch --open <run>
+```
+
+It opens a page in the user's browser showing the tasks by wave and the
+timeline, rebuilds it every two seconds from the ledger and `activity.md`,
+and stops by itself once you log `done`. It needs nothing more from you,
+which is one more reason to keep the ledger and timeline current. If the `HERDR_PANE_ID` environment variable is
 set, run this once:
 
 ```bash

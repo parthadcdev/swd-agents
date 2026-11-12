@@ -25,6 +25,7 @@ fi
 # The team commits as the pilot user, not as whoever runs the pilot.
 export GIT_AUTHOR_NAME=pilot GIT_AUTHOR_EMAIL=pilot@example.com
 export GIT_COMMITTER_NAME=pilot GIT_COMMITTER_EMAIL=pilot@example.com
+export SWD_NO_BROWSER=1  # the dashboard is still written, but a pilot must not open browser tabs
 
 # Headless runs cannot answer permission prompts, so the tools the team needs are allowed
 # up front. Edits are limited to the temp project by acceptEdits; Bash is limited to this list,
@@ -46,6 +47,8 @@ claude -p --plugin-dir "$ROOT" --model sonnet --permission-mode acceptEdits \
   --allowedTools "${ALLOWED[@]}" \
   -- "Use the swd:build skill for this requirement: $(cat "$PILOT/requirement.txt")" \
   | tee "$TMP.output.txt"
+
+pkill -f "swd-dashboard.py --watch.*$TMP" 2>/dev/null || true  # in case the run stopped before 'done'
 
 status=0
 echo "--- check_run"

@@ -57,9 +57,16 @@ it at the approval gate.
 ## Watching a run
 
 Each run keeps its records in `.swd/runs/<date>-<name>/` in your project:
-the spec, the plan, a task ledger and a live activity timeline. If you run
-Claude Code inside [herdr](https://herdr.dev), the principal opens two extra
-panes showing the ledger and the timeline as the run proceeds.
+the spec, the plan, a task ledger and a live activity timeline.
+
+- **In the browser:** when the build starts, the principal opens
+  `dashboard.html` from the run folder. It shows the tasks in columns by
+  wave, coloured by status, with the timeline below, and refreshes every two
+  seconds until the run is done. You can also build it for any run with
+  `python3 scripts/swd-dashboard.py <run folder>`.
+- **In the terminal:** if you run Claude Code inside
+  [herdr](https://herdr.dev), the principal also opens two extra panes
+  showing the ledger and the timeline.
 
 ## Develop
 
