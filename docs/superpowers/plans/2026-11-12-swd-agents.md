@@ -34,6 +34,8 @@
 | `standards/run-folder.md` | The exact format of every run-folder file and report |
 | `standards/production.md`, `standards/prototype.md` | The engineering bar per delivery mode |
 | `scripts/check_run.py` | Validates a plan (`--plan`) or a finished run |
+| `scripts/swd-watch.sh` | Opens the herdr ledger and activity panes for a run |
+| `tests/test_watch.py` | Tests `swd-watch.sh` against a stub `herdr` |
 | `tests/test_structure.py` | Plugin files exist and have their required parts |
 | `tests/test_check_run.py` | Unit tests for `check_run.py` |
 | `tests/pilots/existing-repo/` | Sample repo with a planted bug, requirement, acceptance test |
@@ -138,7 +140,9 @@ Checker report headings: `## Findings` and a line `Verdict: pass` or `Verdict: f
 
 **Rules `check_plan` enforces:** `spec.md` and `plan.md` exist; `Mode:` line valid; `Test command:` present; at least one task; every task has all five fields; ids unique; `Role` is a known agent name; every `Depends` id exists and is in an earlier wave; no file appears in two tasks of the same wave.
 
-**Rules `check_run` adds:** `requirement.md`, `standards.md`, `ledger.md`, `decisions.md` exist; every plan task has a ledger row with status `done`; every builder task has its report with all six headings, and the two test sections are non-empty; `reports/final-qa-engineer.md` exists with `Verdict: pass`; production mode: every builder task has `reports/T<n>-code-reviewer.md` with `Verdict: pass`; prototype mode: `reports/final-code-reviewer.md` exists with `Verdict: pass` and there are no `T<n>-code-reviewer.md` files; for each commit on the current branch whose subject starts `T<n>:` every changed path is in that task's `Files` or under `.swd/`; for `W<n>:` every changed path is in some wave-`n` task's `Files` or under `.swd/`. Commits come from `git log --name-only --format=%x00%s` run in `repo_dir`.
+`activity.md` is a list of lines `- <HH:MM:SS> <event> <detail>` where `<event>` is one of `dispatch`, `return`, `verdict`, `commit`, `fix`, `replan`, `ruling`, `wave-done`, `blocked`, `done`.
+
+**Rules `check_run` adds:** `requirement.md`, `standards.md`, `ledger.md`, `decisions.md`, `activity.md` exist; `activity.md` has at least one `dispatch` line per plan task and ends with a `done` line; every plan task has a ledger row with status `done`; every builder task has its report with all six headings, and the two test sections are non-empty; `reports/final-qa-engineer.md` exists with `Verdict: pass`; production mode: every builder task has `reports/T<n>-code-reviewer.md` with `Verdict: pass`; prototype mode: `reports/final-code-reviewer.md` exists with `Verdict: pass` and there are no `T<n>-code-reviewer.md` files; for each commit on the current branch whose subject starts `T<n>:` every changed path is in that task's `Files` or under `.swd/`; for `W<n>:` every changed path is in some wave-`n` task's `Files` or under `.swd/`. Commits come from `git log --name-only --format=%x00%s` run in `repo_dir`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -159,6 +163,7 @@ def test_commit_outside_owned_files_is_reported(self)
 def test_missing_task_review_in_production_is_reported(self)
 def test_per_task_review_in_prototype_is_reported(self)
 def test_failing_qa_verdict_is_reported(self)
+def test_missing_dispatch_in_activity_is_reported(self)
 def test_cli_exit_codes(self)                             # 0 valid, 1 invalid, 1 and "no run folder found" for an empty dir
 def test_cli_plan_mode_ignores_missing_ledger(self)
 ```
@@ -236,12 +241,12 @@ Every agent's `## Never` section: never push or merge; never run a destructive a
 ### Task 4: The principal engineer skill
 
 **Files:**
-- Create: `skills/build/SKILL.md`
+- Create: `skills/build/SKILL.md`, `scripts/swd-watch.sh`, `tests/test_watch.py`
 - Modify: `tests/test_structure.py`
 
 **Interfaces:**
 - Consumes: `swd:architect`, `swd:generalist-engineer`, `swd:code-reviewer`, `swd:qa-engineer`; `scripts/check_run.py` CLI; `standards/production.md`, `standards/run-folder.md`.
-- Produces: `/swd:build <requirement>`.
+- Produces: `/swd:build <requirement>`; `scripts/swd-watch.sh <run_dir>` (exit 0 always).
 
 - [ ] **Step 1: Extend the test first**
 
@@ -253,6 +258,16 @@ PRINCIPAL_SECTIONS = ["## Preflight", "## Intake", "## Delivery mode", "## Desig
 def test_principal_sections(self):          # all present, in this order
 def test_principal_frontmatter(self):       # name == "build", non-empty description
 def test_principal_pins_review_focus(self): # text contains "uncommitted" and "check_run.py --plan"
+def test_principal_watch_and_activity(self): # text contains "activity.md", "swd-watch.sh" and "HERDR_PANE_ID"
+```
+
+`tests/test_watch.py` puts a stub `herdr` on `PATH` (a shell script that appends its arguments to a log file and prints `{"result":{"pane":{"pane_id":"p2"}}}`):
+
+```python
+def test_outside_herdr_prints_fallback(self):  # HERDR_PANE_ID unset: exit 0, stdout contains "ledger.md" and "tail -f", stub never called
+def test_inside_herdr_opens_two_panes(self):   # HERDR_PANE_ID=p1: log has two "pane split" calls (first with --current --direction right,
+                                               # second with p2 --direction down) and two "pane run" calls, one mentioning ledger.md, one activity.md
+def test_herdr_failure_is_not_fatal(self):     # stub exits 1: script still exits 0
 ```
 
 - [ ] **Step 2: Run to see it fail** — `python3 -m unittest tests.test_structure -v`; expected FAIL.
@@ -266,16 +281,20 @@ Each section states these decisions:
 - **Delivery mode.** In this task: write `Mode: production` and say why. (Task 6 adds prototype.) Write the run's `standards.md` by concatenating `<plugin root>/standards/<mode>.md` and `<plugin root>/standards/run-folder.md`.
 - **Design.** Dispatch `swd:architect` with the run-folder path. Then run `python3 <plugin root>/scripts/check_run.py --plan <project>`; if it reports problems, send them back to the architect and repeat.
 - **Gate.** Show the user the spec and plan summary and wait for approval. If the user's original message explicitly pre-approved, record that in `decisions.md` and continue. This is the only planned stop.
-- **Build.** Write `ledger.md` with every task `todo`. For each wave: dispatch all its tasks in one message so they run in parallel; each brief names the task id, the run-folder path, the owned files, and earlier reports to read. When a task returns, verify with `git status` that only its owned files changed, set it `in-review`, dispatch its review. On `Verdict: pass`, commit `T<n>: <title>` and set `done`. When the wave is done, dispatch `swd:qa-engineer` for a full-suite run before the next wave. Only the principal writes the ledger.
+- **Build.** Write `ledger.md` with every task `todo` and create `activity.md`. If `HERDR_PANE_ID` is set, run `<plugin root>/scripts/swd-watch.sh <run folder>` once. Append one line to `activity.md` for every dispatch, return, verdict, commit, fix, re-plan, ruling, finished wave and blocker, and a final `done` line. For each wave: dispatch all its tasks in one message so they run in parallel; each brief names the task id, the run-folder path, the owned files, and earlier reports to read. When a task returns, verify with `git status` that only its owned files changed, set it `in-review`, dispatch its review. On `Verdict: pass`, commit `T<n>: <title>` and set `done`. When the wave is done, dispatch `swd:qa-engineer` for a full-suite run before the next wave. Only the principal writes the ledger.
 - **Fix loop.** Any failure becomes a fix dispatch to the builder that owns the code, naming the failing report; increment `Attempts`; re-check. At three attempts on the same failure dispatch `swd:architect` to re-plan; if the re-planned work fails, stop and report with the evidence. A missing or unusable report: re-dispatch once, then count it as an attempt. Out-of-scope edits: reject and send back to undo them. A plan amendment that changes the approved spec goes back to the user. Record every ruling in `decisions.md`.
 - **Final verification.** Dispatch `swd:qa-engineer` and `swd:code-reviewer` for `final` as the standard requires. Then run `python3 <plugin root>/scripts/check_run.py <project>` and fix whatever it reports.
 - **Report.** What was built, the branch name, test evidence, and the contents of `decisions.md`.
 - **Resume.** Read the ledger; treat `in-progress` and `in-review` tasks as `todo` after checking `git status` for half-finished edits in their owned files; continue from the first unfinished wave.
 - **Never.** Never write product code. Never push, merge or touch the main branch. Never run a destructive action (deleting data, dropping tables, force-pushing, migrating a non-local database) without the user's explicit yes. Never finish with a failing test. Stop and ask on a true blocker (missing credentials, external service down).
 
-- [ ] **Step 4: Run tests and validate** — `python3 -m unittest discover -s tests -v && claude plugin validate .`; expected PASS, exit 0.
+- [ ] **Step 4: Write `scripts/swd-watch.sh <run_dir>`**
 
-- [ ] **Step 5: Commit** — `git commit -m "Add principal engineer skill"`
+Bash, executable. Without `HERDR_PANE_ID`: print the two commands below and exit 0. With it: `herdr pane split --current --direction right --no-focus`, read the new pane id from `.result.pane.pane_id` with `python3 -c`, `herdr pane rename <id> "swd ledger"`, `herdr pane run <id> "while :; do clear; cat <run_dir>/ledger.md; sleep 2; done"`; then `herdr pane split <id> --direction down --no-focus`, rename it `swd activity`, and `herdr pane run <id2> "tail -f <run_dir>/activity.md"`. Any herdr failure prints a one-line warning and exits 0, so a run never fails because of the dashboard.
+
+- [ ] **Step 5: Run tests and validate** — `python3 -m unittest discover -s tests -v && claude plugin validate .`; expected PASS, exit 0.
+
+- [ ] **Step 6: Commit** — `git commit -m "Add principal engineer skill and herdr watch panes"`
 
 ---
 

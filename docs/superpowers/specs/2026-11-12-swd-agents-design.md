@@ -104,6 +104,7 @@ Whether it is committed or gitignored is left to each project.
 | `ledger.md` | Principal only | One line per task: status, role, attempt count |
 | `reports/<task>-<role>.md` | The agent that did the work | What it did, files changed, commands run with output, open concerns |
 | `decisions.md` | Principal | Every ruling and assumption made after the gate |
+| `activity.md` | Principal | A timeline: one line per dispatch, result, verdict, commit, fix and ruling |
 
 Each task in `plan.md` has: an id, the role, the files it owns, the tasks it
 depends on, and the check that proves it is done.
@@ -206,6 +207,23 @@ complete with a failing test; destructive actions need the user's yes.
 - A task is committed when it passes its checks (per task in production
   mode; per wave in prototype mode).
 - The team never pushes, merges, or changes the user's main branch.
+
+## Watching a run
+
+The principal appends one line to `activity.md` for every event, in the form
+`- <HH:MM:SS> <event> <detail>`. Events: `dispatch`, `return`, `verdict`,
+`commit`, `fix`, `replan`, `ruling`, `wave-done`, `blocked`, `done`.
+
+When the principal's session is running inside herdr (the `HERDR_PANE_ID`
+environment variable is set), it runs `scripts/swd-watch.sh` once the ledger
+exists. The script splits the principal's pane and opens two more: one
+showing `ledger.md` refreshed every two seconds, one following
+`activity.md`. Outside herdr the script prints the two commands so they can
+be run in any terminal. herdr is optional; the plugin works without it.
+
+Specialists are subagents inside the principal's session and do not get
+panes of their own. Running each specialist as its own process in a herdr
+pane is a possible later change, tied to supporting other AI providers.
 
 ## Failure handling
 
