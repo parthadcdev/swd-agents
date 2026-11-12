@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+- Quick mode: a small, low-risk change in a project the team already knows
+  takes a short path, with no architect, one builder, and one review that
+  also runs the tests and the acceptance criteria.
+- Project notes: `.swd/project.md` keeps the project's commands, layout and
+  conventions from one run to the next.
+- Findings backlog: defects the team sees and does not fix are collected in
+  `.swd/findings.md`.
+- `/swd:setup` adds the permission rules a run needs to the project's local
+  settings, after showing them and asking.
+- Agents give the shell one plain command per call and read files with the
+  Read tool, so their commands are not held for approval.
+
 ## 0.4.0
 
 - Housekeeping at the start of every run (`scripts/swd-clean.py`): removes

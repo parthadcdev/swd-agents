@@ -118,7 +118,7 @@ class StructureTest(unittest.TestCase):
                     self.assertIn(section, text)
 
     def test_no_dangling_agent_references(self):
-        known = {p.stem for p in agent_files()} | {"build", "on", "off", "setup", "follow", "queue"}
+        known = {p.stem for p in agent_files()} | {"build", "on", "off", "setup"}
         for folder in ("skills", "standards"):
             for path in (ROOT / folder).rglob("*.md"):
                 for name in re.findall(r"swd:([a-z-]+)", path.read_text()):

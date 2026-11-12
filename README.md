@@ -28,6 +28,15 @@ In the project you want work done in:
 /swd:build <your requirement>
 ```
 
+## First time in a project
+
+Run `/swd:setup` once. Agents work in the background, where nobody can
+answer a permission prompt, so the project has to allow what they need
+before a run starts. Setup shows you the rules (the plugin's scripts, git,
+`gh pr`, your test command, the command that runs your code, and edits
+inside `.swd/`) and adds them to `.claude/settings.local.json` when you
+agree.
+
 ## swd mode
 
 `/swd:build` handles one requirement. To keep the team on for the rest of a
@@ -66,6 +75,9 @@ needs.
 The principal picks a delivery mode from your requirement and you can change
 it at the approval gate.
 
+- **Quick:** a small, low-risk change in a project the team has worked in
+  before. One builder, then one reviewer who also runs the tests and checks
+  each acceptance criterion. No architect.
 - **Prototype / MVP:** fastest working result, fewest tokens, one review at
   the end.
 - **Production:** every task reviewed for quality and security, full suite
@@ -91,6 +103,16 @@ it at the approval gate.
   listed for you.
 - **It stops and asks** on a merge conflict or a rejected push. It never
   force-pushes and never deletes a branch that is not merged.
+
+## What the team remembers
+
+Two files in `.swd/` outlive runs:
+
+- `project.md`: the project's test, lint and build commands, its layout
+  and its conventions. The architect writes it on the first run and keeps
+  it current, so later runs do not rediscover the project.
+- `findings.md`: defects the team noticed and did not fix, as a checklist.
+  Give one to `/swd:build` as the requirement to have it fixed.
 
 ## Watching a run
 
