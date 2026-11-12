@@ -20,6 +20,12 @@ reading, writing and command running for the project there and never
 anywhere else in the project. The run folder is separate, at the path on
 the brief's `Run folder:` line.
 
+Read files with the Read tool, never with `cat`. Give the shell one plain
+command per call: no shell variable such as `R=/some/path`, no `;` or `&&`
+chain, no pipe. A command in any other form is refused in a background
+session, where nobody can approve it. If one is refused, run it again in
+plain form; do not conclude that you have no shell.
+
 Your brief gives you the run folder path and either a wave number or
 `final`. Read:
 

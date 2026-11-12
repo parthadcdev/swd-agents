@@ -118,7 +118,7 @@ class StructureTest(unittest.TestCase):
                     self.assertIn(section, text)
 
     def test_no_dangling_agent_references(self):
-        known = {p.stem for p in agent_files()} | {"build", "on", "off", "setup"}
+        known = {p.stem for p in agent_files()} | {"build", "on", "off", "setup", "follow", "queue"}
         for folder in ("skills", "standards"):
             for path in (ROOT / folder).rglob("*.md"):
                 for name in re.findall(r"swd:([a-z-]+)", path.read_text()):
@@ -259,6 +259,10 @@ class StructureTest(unittest.TestCase):
                 agent = path.read_text()
                 self.assertIn("`Work in:`", agent)
                 self.assertIn("without `cd`", agent)
+                # Pilots: an agent's first command set a shell variable and chained four more, and was refused.
+                # The rule has to be in the agent's own instructions: it has not read standards.md yet.
+                self.assertIn("Read tool", agent)
+                self.assertIn("shell variable", agent)
         self.assertIn("without `cd`", (ROOT / "standards" / "run-folder.md").read_text())
         # A pilot's builder had one chained command refused and gave up as if it had no shell.
         shared = (ROOT / "standards" / "run-folder.md").read_text()

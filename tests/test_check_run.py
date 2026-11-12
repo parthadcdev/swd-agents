@@ -88,6 +88,16 @@ def make_run(tmp, mode="production", single=False):
     (run / "activity.md").write_text(ACTIVITY.replace("- 10:06:00 dispatch T2 backend-engineer\n", "") if single else ACTIVITY)
     (run / "dashboard.html").write_text("<html></html>\n")
     (run / "write-check.txt").write_text("edited\n")
+    # What swd-test.py recorded: each task's check failing and then passing, the suite after
+    # wave 1 (production only checks between waves), and the whole suite at the end.
+    evidence = {"T1-001": 1, "T1-002": 0, "final-001": 0}
+    if not single:
+        evidence.update({"T2-001": 1, "T2-002": 0})
+        if mode == "production":
+            evidence["wave-1-001"] = 0
+    (run / "evidence").mkdir()
+    for name, code in evidence.items():
+        (run / "evidence" / f"{name}.txt").write_text(f"Command: python3 -m unittest\nExit: {code}\nWhen: now\n---\noutput\n")
     (repo / ".swd" / "project.md").write_text("# Project notes\n\n## Commands\nTest command: `python3 -m unittest`\n")
     (run / "reports" / "T1-generalist-engineer.md").write_text(BUILDER_REPORT)
     if not single:
@@ -371,6 +381,33 @@ class CheckRunTest(unittest.TestCase):
             self.assertEqual(self.cli(str(run)).stdout, "")
             (work / "stray.txt").write_text("x\n")
             self.assertIn("stray.txt", self.cli(str(run)).stdout)
+
+    # --- recorded evidence -------------------------------------------------------------------
+
+    def test_a_task_needs_a_recorded_failing_run_before_its_passing_one(self):
+        repo, run = make_run(self.tmp)
+        (run / "evidence" / "T1-001.txt").unlink()          # only the passing run is left
+        self.assertProblem(self.problems(repo, run), "T1", "failing", "swd-test.py")
+
+    def test_a_tasks_last_recorded_run_must_pass(self):
+        repo, run = make_run(self.tmp)
+        (run / "evidence" / "T2-003.txt").write_text("Command: x\nExit: 1\nWhen: now\n---\nboom\n")
+        self.assertProblem(self.problems(repo, run), "T2", "last recorded run")
+
+    def test_the_whole_suite_must_be_recorded_passing_at_the_end(self):
+        repo, run = make_run(self.tmp)
+        (run / "evidence" / "final-001.txt").unlink()
+        self.assertProblem(self.problems(repo, run), "final", "swd-test.py")
+        (run / "evidence" / "final-001.txt").write_text("Command: x\nExit: 1\nWhen: now\n---\nboom\n")
+        self.assertProblem(self.problems(repo, run), "final", "did not pass")
+
+    def test_production_records_the_suite_between_waves(self):
+        repo, run = make_run(self.tmp)
+        (run / "evidence" / "wave-1-001.txt").unlink()
+        self.assertProblem(self.problems(repo, run), "wave-1", "swd-test.py")
+        with tempfile.TemporaryDirectory() as tmp:           # a prototype runs the suite once, at the end
+            repo, run = make_run(tmp, mode="prototype")
+            self.assertEqual(self.problems(repo, run), [])
 
     # --- quick mode, project notes, findings backlog ------------------------------------------
 
