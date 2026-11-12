@@ -90,9 +90,14 @@ def make_run(tmp, mode="production"):
     (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT)
     (run / "reports" / "final-qa-engineer.md").write_text(CHECKER_REPORT)
     git(repo, "init", "-q")
+    # History from before this run, including an old run's task commit, must be ignored.
+    commit(repo, "T9: task from an earlier run", ["old/x.py"])
+    base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    (run / "decisions.md").write_text(f"Base commit: {base}\n\n- None.\n")
     if mode == "production":
-        (run / "reports" / "T1-code-reviewer.md").write_text(CHECKER_REPORT)
-        (run / "reports" / "T2-code-reviewer.md").write_text(CHECKER_REPORT)
+        for name in ("T1-code-reviewer", "T2-code-reviewer", "T1-security-reviewer", "T2-security-reviewer",
+                     "final-code-reviewer", "final-security-reviewer"):
+            (run / "reports" / f"{name}.md").write_text(CHECKER_REPORT)
         commit(repo, "T1: First thing", ["a.py", "tests/test_a.py"])
         commit(repo, "T2: Second thing", ["b.py"])
     else:
@@ -185,10 +190,54 @@ class CheckRunTest(unittest.TestCase):
         (run / "reports" / "T2-code-reviewer.md").unlink()
         self.assertProblem(self.problems(repo, run), "T2-code-reviewer.md")
 
-    def test_per_task_review_in_prototype_is_reported(self):
+    def test_per_task_review_in_prototype_is_allowed(self):
+        # The principal raises the bar for a risky task inside a prototype.
         repo, run = make_run(self.tmp, mode="prototype")
         (run / "reports" / "T1-code-reviewer.md").write_text(CHECKER_REPORT)
-        self.assertProblem(self.problems(repo, run), "T1-code-reviewer.md", "prototype")
+        self.assertEqual(self.problems(repo, run), [])
+
+    def test_malformed_task_heading_is_reported(self):
+        for heading in ("### T2 - Second thing", "## T2: Second thing", "### Task 2: Second thing"):
+            with self.subTest(heading=heading), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                replace(run / "plan.md", "### T2: Second thing", heading)
+                self.assertProblem(self.cr.check_plan(run), "plan.md line", "### T<n>: <title>")
+
+    def test_non_decimal_numbers_are_reported_not_raised(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Wave: 2", "- Wave: \u00b2")
+        replace(run / "ledger.md", "| done | 2 |", "| done | \u00b2 |")
+        problems = self.problems(repo, run)
+        self.assertProblem(problems, "T2", "Wave")
+        self.assertProblem(problems, "ledger.md", "Attempts")
+
+    def test_uncommitted_work_is_reported(self):
+        repo, run = make_run(self.tmp)
+        (repo / "a.py").write_text("changed\n")
+        (repo / "stray.txt").write_text("x\n")
+        problems = self.problems(repo, run)
+        self.assertProblem(problems, "uncommitted", "a.py")
+        self.assertProblem(problems, "uncommitted", "stray.txt")
+
+    def test_any_failing_checker_verdict_is_reported(self):
+        for name in ("T1-security-reviewer.md", "final-code-reviewer.md", "wave-1-qa-engineer.md"):
+            with self.subTest(report=name), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                (run / "reports" / name).write_text("Verdict: fail\n\n## Findings\n- broken\n")
+                self.assertProblem(self.problems(repo, run), name, "Verdict")
+
+    def test_missing_security_and_final_reviews_in_production_are_reported(self):
+        for name in ("T2-security-reviewer.md", "final-code-reviewer.md", "final-security-reviewer.md"):
+            with self.subTest(report=name), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                (run / "reports" / name).unlink()
+                self.assertProblem(self.problems(repo, run), "missing", name)
+
+    def test_non_ascii_file_names_work(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Files: b.py", "- Files: b.py, docs/caf\u00e9.md")
+        commit(repo, "T2: add docs", ["docs/caf\u00e9.md"])
+        self.assertEqual(self.problems(repo, run), [])
 
     def test_failing_qa_verdict_is_reported(self):
         repo, run = make_run(self.tmp)
@@ -216,6 +265,13 @@ class CheckRunTest(unittest.TestCase):
             none = self.cli(empty)
             self.assertEqual(none.returncode, 1)
             self.assertIn("no run folder found", none.stdout)
+
+    def test_cli_accepts_a_run_folder(self):
+        repo, run = make_run(self.tmp)
+        later = run.parent / "2026-11-12-zebra"  # sorts after the real run, and is empty
+        later.mkdir()
+        self.assertEqual(self.cli(str(repo)).returncode, 1)
+        self.assertEqual(self.cli(str(run)).returncode, 0)
 
     def test_cli_plan_mode_ignores_missing_ledger(self):
         repo, run = make_run(self.tmp)

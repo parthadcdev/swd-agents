@@ -127,6 +127,20 @@ class StructureTest(unittest.TestCase):
         # Each of these was a real failure in a pilot run.
         self.assertIn("git add -A", PRINCIPAL.read_text())
         self.assertIn("| Task | Role | Status | Attempts |", PRINCIPAL.read_text())
+
+    def test_review_findings_are_pinned(self):
+        # Each of these closes a hole the whole-branch review found in the principal's playbook.
+        text = PRINCIPAL.read_text()
+        for needle in (
+            "Abandoned:",                      # a blocked run must not hijack every later /swd:build
+            "resume it or start a new run",
+            "If the mode changes",             # standards.md must follow a mode change at the gate
+            "all `done` but not committed",    # resume must commit a finished, uncommitted wave
+            "increment `Attempts`",            # resume must not reset the attempt count
+            "check_run.py <run>",              # check the run in hand, not the latest by name
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
         self.assertIn(".gitignore", (ROOT / "agents" / "architect.md").read_text())
         self.assertIn("cannot run", (ROOT / "agents" / "code-reviewer.md").read_text())
 

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Validate an swd run folder.
 
-    python3 check_run.py --plan <repo_dir>   check spec.md and plan.md only (before the gate)
-    python3 check_run.py <repo_dir>          check a finished run
+    python3 check_run.py --plan <run_dir>   check spec.md and plan.md only (before the gate)
+    python3 check_run.py <run_dir>          check a finished run
+
+<run_dir> is .swd/runs/<name>/ in the project. A project folder also works: its last run by
+name is checked.
 
 Prints one problem per line. Exit 0 when there are none, 1 otherwise.
 The formats checked here are documented in standards/run-folder.md.
@@ -21,9 +24,12 @@ STATUSES = {"todo", "in-progress", "in-review", "done", "blocked"}
 EVENTS = {"dispatch", "return", "verdict", "commit", "fix", "replan", "ruling", "wave-done", "blocked", "done"}
 TASK_FIELDS = ("Role", "Wave", "Files", "Depends", "Check")
 BUILDER_SECTIONS = ("Summary", "Files changed", "Test first (failing)", "Test after (passing)", "Complexity", "Concerns")
+CHECKER_SUFFIXES = ("code-reviewer", "security-reviewer", "qa-engineer")
 EVIDENCE_SECTIONS = ("Test first (failing)", "Test after (passing)")
 
 TASK_RE = re.compile(r"^### (T\d+): (.+)$")
+TASK_LIKE_RE = re.compile(r"^#+\s*T(ask)?\s*\d+\b", re.I)  # a heading that was meant to be a task
+BASE_RE = re.compile(r"^Base commit: (\S+)", re.M)
 FIELD_RE = re.compile(r"^- (%s): (.*)$" % "|".join(TASK_FIELDS))
 ACTIVITY_RE = re.compile(r"^- \d{2}:\d{2}:\d{2} (\S+)( .*)?$")
 COMMIT_RE = re.compile(r"^([TW]\d+):")
@@ -32,7 +38,7 @@ COMMIT_RE = re.compile(r"^([TW]\d+):")
 def parse_plan(text):
     """Return (tasks, problems). A task is a dict: id, title, role, wave, files, depends, check."""
     tasks, problems, raw, current = [], [], {}, None
-    for line in text.splitlines():
+    for number, line in enumerate(text.splitlines(), 1):
         header = TASK_RE.match(line)
         if header:
             current = {"id": header.group(1), "title": header.group(2).strip()}
@@ -41,10 +47,14 @@ def parse_plan(text):
             continue
         if line.startswith("#"):
             current = None  # any other heading ends the task
+            if TASK_LIKE_RE.match(line):
+                problems.append(f"plan.md line {number}: a task heading must be '### T<n>: <title>'")
             continue
         field = FIELD_RE.match(line)
         if field and current:
             raw[current["id"]][field.group(1)] = field.group(2).strip()
+        elif field:
+            problems.append(f"plan.md line {number}: '- {field.group(1)}:' is not under a task heading")
 
     for task in tasks:
         fields = raw[task["id"]]
@@ -57,7 +67,7 @@ def parse_plan(text):
         depends = fields.get("Depends", "")
         task["depends"] = [] if depends.lower() in ("", "none") else [d.strip() for d in depends.split(",")]
         wave = fields.get("Wave", "")
-        task["wave"] = int(wave) if wave.isdigit() else None
+        task["wave"] = int(wave) if wave.isdecimal() else None
         if wave and task["wave"] is None:
             problems.append(f"plan.md: {task['id']} Wave must be a number, got '{wave}'")
     return tasks, problems
@@ -79,9 +89,9 @@ def parse_ledger(text):
         task_id, role, status, attempts = cells
         if status not in STATUSES:
             problems.append(f"ledger.md line {number}: unknown status '{status}'")
-        if not attempts.isdigit():
+        if not attempts.isdecimal():
             problems.append(f"ledger.md line {number}: Attempts must be a number, got '{attempts}'")
-        rows[task_id] = {"role": role, "status": status, "attempts": int(attempts) if attempts.isdigit() else 0}
+        rows[task_id] = {"role": role, "status": status, "attempts": int(attempts) if attempts.isdecimal() else 0}
     return rows, problems
 
 
@@ -169,24 +179,35 @@ def check_verdict(run_dir, name):
     return []
 
 
-def check_commits(repo_dir, tasks):
-    """Each T<n>:/W<n>: commit may change only files that task or wave owns, plus the run folder."""
-    # shortcut: reads the whole branch history, so an older unrelated commit titled "T1: ..." would be
-    # checked too; pass a base commit if that ever happens.
+def git(repo_dir, *args):
+    """Output of a git command in repo_dir. Paths come back unquoted, so non-ASCII names compare equal."""
+    return subprocess.run(
+        ["git", "-C", str(repo_dir), "-c", "core.quotePath=false", *args],
+        capture_output=True, text=True, check=True,
+    ).stdout
+
+
+def check_commits(run_dir, repo_dir, tasks):
+    """Everything is committed, and each T<n>:/W<n>: commit of this run changes only files it owns."""
+    # Only this run's commits count: an earlier run in the same project has its own T1.
+    base = BASE_RE.search(read(run_dir / "decisions.md") or "")
     try:
-        log = subprocess.run(
-            ["git", "-C", str(repo_dir), "log", "--name-only", "--format=%x00%s"],
-            capture_output=True, text=True, check=True,
-        ).stdout
+        log = git(repo_dir, "log", "--name-only", "--format=%x00%s", *([f"{base.group(1)}..HEAD"] if base else []))
+        status = git(repo_dir, "status", "--porcelain")
     except (OSError, subprocess.CalledProcessError):
         return [f"{repo_dir}: cannot read git history"]
+
+    problems = []
+    for line in status.splitlines():
+        name = line[3:].split(" -> ")[-1]
+        if not name.startswith(".swd/"):
+            problems.append(f"uncommitted change: {name}")
 
     by_task = {t["id"]: set(t["files"]) for t in tasks}
     by_wave = {}
     for task in tasks:
         by_wave.setdefault(f"W{task['wave']}", set()).update(task["files"])
 
-    problems = []
     for entry in log.split("\0")[1:]:
         lines = [l for l in entry.splitlines() if l.strip()]
         if not lines:
@@ -239,14 +260,20 @@ def check_run(run_dir, repo_dir):
                     problems.append(f"reports/{name}: missing section '{heading}'")
                 elif heading in EVIDENCE_SECTIONS and not found[heading].strip():
                     problems.append(f"reports/{name}: section '{heading}' is empty")
-        if mode == "production":
-            problems += check_verdict(run_dir, f"{task['id']}-code-reviewer.md")
 
-    problems += check_verdict(run_dir, "final-qa-engineer.md")
-    if mode == "prototype":
-        problems += check_verdict(run_dir, "final-code-reviewer.md")
-        for path in sorted((run_dir / "reports").glob("T*-code-reviewer.md")):
-            problems.append(f"reports/{path.name}: per-task review is not expected in prototype mode")
+    # Reports the mode requires, then every checker report that exists: none may be a fail.
+    # A prototype may still hold per-task reviews, for a risky task held to the production bar.
+    required = {"final-qa-engineer.md", "final-code-reviewer.md"}
+    if mode == "production":
+        required.add("final-security-reviewer.md")
+        for task in tasks:
+            if task["role"] in BUILDERS:
+                required |= {f"{task['id']}-code-reviewer.md", f"{task['id']}-security-reviewer.md"}
+    present = set()
+    for suffix in CHECKER_SUFFIXES:
+        present |= {p.name for p in (run_dir / "reports").glob(f"*-{suffix}.md")}
+    for name in sorted(required | present):
+        problems += check_verdict(run_dir, name)
 
     activity = read(run_dir / "activity.md")
     if activity is not None:
@@ -265,7 +292,7 @@ def check_run(run_dir, repo_dir):
         if not events or events[-1][0] != "done":
             problems.append("activity.md: last line must be a 'done' event")
 
-    return problems + check_commits(repo_dir, tasks)
+    return problems + check_commits(run_dir, repo_dir, tasks)
 
 
 def latest_run(repo_dir):
@@ -277,14 +304,18 @@ def latest_run(repo_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--plan", action="store_true", help="check spec.md and plan.md only")
-    parser.add_argument("repo_dir", type=Path)
+    parser.add_argument("path", type=Path, help="a run folder, or a project folder")
     args = parser.parse_args(argv)
 
-    run_dir = latest_run(args.repo_dir)
-    if run_dir is None:
+    path = args.path.resolve()
+    if path.parent.name == "runs" and path.parent.parent.name == ".swd":
+        run_dir, repo_dir = path, path.parents[2]
+    else:
+        run_dir, repo_dir = latest_run(path), path
+    if run_dir is None or not run_dir.is_dir():
         print("no run folder found under .swd/runs/")
         return 1
-    problems = check_plan(run_dir) if args.plan else check_run(run_dir, args.repo_dir)
+    problems = check_plan(run_dir) if args.plan else check_run(run_dir, repo_dir)
     for problem in problems:
         print(problem)
     return 1 if problems else 0

@@ -39,8 +39,12 @@ Work through the sections below in order.
 
 ## Preflight
 
-1. If `.swd/runs/` has a run whose `ledger.md` has any task not `done`, go to
-   Resume.
+1. Look in `.swd/runs/` for an unfinished run: one whose `ledger.md` has a
+   task that is not `done`, and whose `decisions.md` has no `Abandoned:`
+   line. If there is one, tell the user what it was for and ask whether to
+   resume it or start a new run. To resume, go to Resume. Otherwise append
+   the line `Abandoned: <today's date>` to that run's `decisions.md`, so it
+   is not offered again, and carry on here.
 2. If the project is a git repository with uncommitted changes (ignore
    anything under `.swd/`), stop and ask the user to commit or stash them.
    Their changes must not end up on the run's branch.
@@ -48,7 +52,10 @@ Work through the sections below in order.
    `git commit --allow-empty -m "Initial commit"` so the run has a base.
 4. Note the current commit as the base. Create and switch to the branch
    `swd/<short-name>`.
-5. Create `<run>` and `<run>/reports/`.
+5. Create `<run>` and `<run>/reports/`. Write `<run>/decisions.md` with the
+   first line `Base commit: <sha>`. Every later decision is appended below
+   it; `check_run.py` uses that line to tell this run's commits from
+   earlier ones.
 
 ## Intake
 
@@ -107,7 +114,7 @@ After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
 2. Check the plan:
 
    ```bash
-   python3 <plugin>/scripts/check_run.py --plan <project>
+   python3 <plugin>/scripts/check_run.py --plan <run>
    ```
 
 3. If it prints problems, send them to the architect and repeat until it
@@ -119,6 +126,10 @@ Show the user a short summary: what will be built, the acceptance criteria,
 the delivery mode, and the tasks by wave. Wait for approval. If they ask for
 changes, update the spec or send the architect back, re-check the plan, and
 show it again.
+
+If the mode changes, rewrite the `Mode:` line in `spec.md`, write
+`standards.md` again from the new mode's standard, and send the architect
+back to revise the plan for it.
 
 If the user's original message explicitly approved in advance, record that
 in `<run>/decisions.md` and continue without waiting.
@@ -137,8 +148,7 @@ in exactly this form (`check_run.py` reads it):
 | T1 | generalist-engineer | todo | 0 |
 ```
 
-Also write `<run>/decisions.md` beginning with the line
-`Base commit: <sha>`, and an empty `<run>/activity.md`. If the `HERDR_PANE_ID` environment variable is
+Also create an empty `<run>/activity.md`. If the `HERDR_PANE_ID` environment variable is
 set, run this once:
 
 ```bash
@@ -167,7 +177,7 @@ Then, for each wave in order:
 
 1. **Dispatch the whole wave at once.** Send every task in the wave in a
    single message with one Agent call each, so they run in parallel. Set
-   each task `in-progress` with `Attempts` 1. A brief looks like this:
+   each task `in-progress` and increment `Attempts`. A brief looks like this:
 
    ```
    Run folder: <absolute run path>
@@ -262,10 +272,12 @@ costs if wrong.
 3. Append the `done` line to `activity.md`, then check the run:
 
    ```bash
-   python3 <plugin>/scripts/check_run.py <project>
+   python3 <plugin>/scripts/check_run.py <run>
    ```
 
-   Fix whatever it reports and run it again until it prints nothing.
+   Fix whatever it reports and run it again until it prints nothing. If
+   that means more work, log `done` again when the work is finished: the
+   last line of the timeline must be a `done` event.
 
 ## Report
 
@@ -283,10 +295,16 @@ The branch is theirs to merge.
 
 1. Read `ledger.md`, `plan.md` and `decisions.md` in the unfinished run, and
    switch to its `swd/` branch.
-2. For each task that is `in-progress` or `in-review`, run
-   `git status --short` on its files. Keep half-finished edits in place and
-   set the task back to `todo`; the builder will pick up from them.
-3. Tell the user in one line that you are resuming, then continue Build from
+2. For each task that is `in-progress`, run `git status --short` on its
+   files. Keep half-finished edits in place and set the task back to
+   `todo`; the builder will pick up from them. Do not reset its attempt
+   count: the next dispatch will increment `Attempts` as usual.
+3. A task that is `in-review` and has a builder report goes straight back
+   to review, not to the builder. Without a report, treat it as
+   `in-progress`.
+4. If a wave's tasks are all `done` but not committed (`git status --short`
+   shows their files), commit that wave now as Build describes.
+5. Tell the user in one line that you are resuming, then continue Build from
    the first wave with a task that is not `done`.
 
 ## Never

@@ -5,6 +5,8 @@ project being worked on. It is the team's shared memory. An agent knows only
 what is in its brief and in this folder.
 
 These formats are checked by `scripts/check_run.py`. Follow them exactly.
+A finished run must also have every change committed, and every checker
+report in `reports/` must say `Verdict: pass`.
 
 ## Who writes what
 
@@ -118,7 +120,9 @@ line of a finished run is a `done` event.
 
 ## decisions.md
 
-A list. Each entry says what was decided, why, and what it costs if wrong.
+The first line is `Base commit: <sha>`, the commit the run's branch started
+from. Below it, a list: each entry says what was decided, why, and what it
+costs if wrong.
 
 ## Builder reports
 
