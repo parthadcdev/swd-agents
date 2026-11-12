@@ -10,7 +10,8 @@ if [ -z "$run_dir" ]; then
 fi
 
 # shortcut: a run folder path containing a single quote breaks these commands; quote properly if that ever comes up.
-ledger_cmd="while :; do clear; cat '$run_dir/ledger.md'; sleep 2; done"
+# Drop the markdown separator row and align the columns, so the pane reads as a table.
+ledger_cmd="while :; do clear; grep -v '^|-' '$run_dir/ledger.md' | column -t -s '|'; sleep 2; done"
 activity_cmd="tail -f '$run_dir/activity.md'"
 
 if [ -z "${HERDR_PANE_ID:-}" ]; then
