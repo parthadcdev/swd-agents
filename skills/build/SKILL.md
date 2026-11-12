@@ -380,6 +380,12 @@ finished while a test fails or a finding is open.
 Record every ruling in `decisions.md`: what you decided, why, and what it
 costs if wrong.
 
+Record known defects too. When any report (a builder's `## Concerns`, a
+reviewer, QA) points out a defect in existing code that this run is not
+fixing, append a line starting `Finding:` to `decisions.md` saying what is
+wrong, where, and why it was left. A bug the team saw and nobody wrote down
+is lost; the user reads `decisions.md` in the final report.
+
 ## Final verification
 
 1. Dispatch `swd:qa-engineer` with `final`, and `swd:code-reviewer` with

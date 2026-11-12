@@ -10,6 +10,14 @@
   the branch. The principal does it after the run passes, then removes the
   worktree and, after a merge, deletes the run's branch.
 - `check_run.py --finish` checks that the delivery and clean-up happened.
+- swd mode: `/swd:build` or the new `/swd:on` keeps the team on for the rest
+  of the session, so later code-change requests go through it too. Say
+  "stop swd" or run `/swd:off` to leave. New sessions start with it off.
+- Agents run one plain shell command per call and retry a refused command
+  in plain form before reporting a permission problem.
+- QA's throwaway files go in `scratch/` inside the run folder.
+- A defect the team sees in existing code and does not fix is recorded in
+  `decisions.md` as a `Finding:`.
 - Changed behaviour: the principal used to never merge or push. It now does
   so when, and only when, you choose that finish.
 

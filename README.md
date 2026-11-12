@@ -28,6 +28,19 @@ In the project you want work done in:
 /swd:build <your requirement>
 ```
 
+## swd mode
+
+`/swd:build` handles one requirement. To keep the team on for the rest of a
+session, use swd mode:
+
+- **On:** running `/swd:build` or `/swd:on` turns it on for that session.
+- **While on:** every request that changes the project's code, tests,
+  configuration or docs goes through the team, as if you had typed
+  `/swd:build` for it. Questions, reviews and status requests are answered
+  directly.
+- **Off:** say "stop swd" or run `/swd:off`. New sessions always start with
+  it off.
+
 ## The team
 
 | Role | Kind | Does |

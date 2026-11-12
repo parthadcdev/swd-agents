@@ -17,6 +17,10 @@ REQUIRED_FILES = [
     "scripts/swd-watch.sh",
     "scripts/swd-log.sh",
     "scripts/swd-dashboard.py",
+    "hooks/hooks.json",
+    "hooks/swd-mode.py",
+    "skills/on/SKILL.md",
+    "skills/off/SKILL.md",
     "standards/prototype.md",
 ]
 REQUIRED_AGENTS = [
@@ -109,7 +113,7 @@ class StructureTest(unittest.TestCase):
                     self.assertIn(section, text)
 
     def test_no_dangling_agent_references(self):
-        known = {p.stem for p in agent_files()} | {"build"}
+        known = {p.stem for p in agent_files()} | {"build", "on", "off"}
         for folder in ("skills", "standards"):
             for path in (ROOT / folder).rglob("*.md"):
                 for name in re.findall(r"swd:([a-z-]+)", path.read_text()):
@@ -256,9 +260,19 @@ class StructureTest(unittest.TestCase):
         self.assertIn("one plain command", shared)
         self.assertIn("Read tool", shared)
         self.assertIn("one plain command", text)
+        # A pilot's team saw a bug in existing code, left it alone, and the principal never recorded it.
+        self.assertIn("Finding:", text)
         # A pilot's QA wrote sample input files into the project. Scratch files belong to the run folder.
         self.assertIn("scratch/", (ROOT / "standards" / "run-folder.md").read_text())
         self.assertIn("scratch/", (ROOT / "agents" / "qa-engineer.md").read_text())
+
+    def test_mode_hook_is_registered(self):
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())["hooks"]
+        commands = [h["command"] for entry in hooks["UserPromptSubmit"] for h in entry["hooks"]]
+        self.assertTrue(any("swd-mode.py" in c and "CLAUDE_PLUGIN_ROOT" in c for c in commands))
+        for name in ("on", "off"):
+            with self.subTest(skill=name):
+                self.assertEqual(frontmatter(ROOT / "skills" / name / "SKILL.md").get("name"), name)
 
 
 if __name__ == "__main__":

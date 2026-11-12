@@ -219,6 +219,16 @@ complete with a failing test; destructive actions need the user's yes.
   merges or pushes other than as the chosen finish says. A merge conflict or
   a rejected push stops the run and goes to the user.
 
+## swd mode
+
+A `UserPromptSubmit` hook (`hooks/swd-mode.py`) keeps a session in swd mode
+once `/swd:build` or `/swd:on` has been run in it. While the mode is on, the
+hook adds a reminder to every prompt: requests that change the project go
+through `swd:build`; questions, reviews and status requests are answered
+directly. `/swd:off` or the words "stop swd" turn it off. The state is one
+flag file per session id under `~/.claude/swd-mode/`, so other sessions are
+unaffected and new sessions start with the mode off.
+
 ## Watching a run
 
 The principal appends one line to `activity.md` for every event, in the form
