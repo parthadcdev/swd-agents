@@ -1,5 +1,6 @@
 {
   "name": "swd",
   "version": "0.1.0",
-  "description": "A principal engineer agent running a team of specialist software engineering agents, from requirement to tested code."
+  "description": "A principal engineer agent running a team of specialist software engineering agents, from requirement to tested code.",
+  "license": "MIT"
 }
