@@ -17,6 +17,7 @@ CLAUDE_STUB = r"""#!/bin/sh
 n=$(($(cat "$STUB_DIR/count" 2>/dev/null || echo 0) + 1)); echo $n > "$STUB_DIR/count"
 for last; do :; done
 printf '%s\n' "$last" > "$STUB_DIR/prompt-$n.txt"
+printf '%s\n' "$*" > "$STUB_DIR/args-$n.txt"
 if grep -q "$STUB_FAIL_ON" "$STUB_DIR/prompt-$n.txt" 2>/dev/null && [ -n "$STUB_FAIL_ON" ]; then exit 0; fi
 git branch -q "swd/item-$n"
 run=".swd/runs/2026-11-12-item-$n"; mkdir -p "$run"
@@ -114,6 +115,14 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(len(self.prompts()), 2)
         self.assertIn("- [ ] never started", self.queue.read_text())
+
+    def test_the_queue_can_name_the_model_its_runs_use(self):
+        # An unattended backlog is where cost matters most.
+        self.work("--max", "1")
+        self.assertNotIn("--model", (self.stub / "args-1.txt").read_text())
+        self.queue.write_text("Model: sonnet\n\n- [ ] one more thing\n")
+        self.work()
+        self.assertIn("--model sonnet", (self.stub / "args-2.txt").read_text())
 
     def test_max_limits_how_many_items_run(self):
         self.work("--max", "1")

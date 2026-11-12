@@ -29,6 +29,9 @@ Finish: pr
 - `- [ ] #42` means GitHub issue 42: its title and body become the
   requirement, and the pull request says `Closes #42`.
 - `Finish:` is `pr` (the default), `merge-push` or `branch`, for every item.
+- `Model:` is optional, for example `Model: sonnet`. It sets the model each
+  run's principal uses; without it, runs use Claude Code's default. Offer
+  it when the user is concerned about cost.
 - When an item's run finishes it becomes `- [x] <item> — <link or branch>`.
   When it does not, `- [!] <item> — blocked: <run folder>`.
 
