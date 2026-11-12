@@ -1,0 +1,1 @@
+Add `total(items, discount_percent=0, tax_percent=0)` to `shop/cart.py`. It returns the subtotal with the discount applied, then tax added, rounded to 2 decimals. This is production code. I pre-approve the spec and plan; do not wait for me. When the run passes, push the branch and open a pull request.
