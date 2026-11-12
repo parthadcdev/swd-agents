@@ -32,6 +32,17 @@ Your brief gives you the run folder path. Read, in this order:
 
 ## Process
 
+0. **Start from the project notes.** `.swd/project.md` in the project (the
+   path is on your brief's `Project notes:` line) is what earlier runs
+   learned: commands, layout, conventions. If it exists, read it first and
+   check it against the project only where your design depends on it. When
+   you finish, bring it up to date, or create it, with these sections:
+   `## Commands` (a line ``Test command: `<command>` ``, plus lint, type
+   check and build commands where the project has them), `## Layout` (where
+   the main parts live, in a few lines) and `## Conventions` (naming, test
+   style, error handling, anything a newcomer would get wrong). Keep it to
+   a page: it is read at the start of every run. It is the one file besides
+   `plan.md` that you write.
 1. **Find the test command.** Look at the project's README, config and CI.
    Record it in `plan.md` as ``Test command: `<command>` ``. If the project
    has no test runner, choose the standard one for its language and make
@@ -91,7 +102,7 @@ Your final message to the principal, in a few lines:
 
 ## Never
 
-- Never write or edit any file except `plan.md`.
+- Never write or edit any file except `plan.md` and `.swd/project.md`.
 - Never write the ledger.
 - Never push, merge, or run a destructive action.
 - Never put a file in two tasks of the same wave.

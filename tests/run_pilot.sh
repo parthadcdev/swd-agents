@@ -5,6 +5,12 @@
 #   tests/run_pilot.sh new-project
 #   SWD_PILOT_REMOTE=https://github.com/<owner>/<sandbox-repo>.git tests/run_pilot.sh pr-finish
 #
+#   SWD_PILOT_SETUP=1 tests/run_pilot.sh fast-lane
+#
+# With SWD_PILOT_SETUP=1 the run gets its permissions from scripts/swd-setup.py, the way a
+# user's project does, and not from the allowlist below. A pilot with a requirement-2.txt
+# starts a second run in the same project after the first.
+#
 # pr-finish needs a real GitHub remote to push to and open a pull request against. Use a
 # throwaway repo. Each run pushes its own base branch (pilot-<time>), so runs never collide
 # and nothing is ever force-pushed.
@@ -50,18 +56,23 @@ ALLOWED=(
   "Bash($ROOT/scripts/swd-watch.sh *)" "Bash($ROOT/scripts/swd-log.sh *)"
 )
 
+if [ -n "${SWD_PILOT_SETUP:-}" ]; then
+  python3 "$ROOT/scripts/swd-setup.py" --command "python3 -m unittest" "$TMP"
+  if [ -d .git ]; then echo ".claude/" >> .git/info/exclude; fi  # the harness's own settings file, not the team's work
+  PERMISSIONS=()
+else
+  PERMISSIONS=(--permission-mode acceptEdits --add-dir "$ROOT" --allowedTools "${ALLOWED[@]}")
+fi
+
 # Sonnet keeps a pilot affordable; the principal's playbook is written to work on a mid-tier model.
 # User-level settings are left out so the run sees only this plugin: a user hook that rewrites
 # shell commands would stop them matching the allowlist above.
-claude -p --plugin-dir "$ROOT" --model sonnet --permission-mode acceptEdits \
-  --setting-sources project,local --add-dir "$ROOT" \
-  --allowedTools "${ALLOWED[@]}" \
-  --output-format json \
-  -- "Use the swd:build skill for this requirement: $(cat "$PILOT/requirement.txt")" \
-  > "$TMP.output.json" || true
-# Print the principal's final message, then every command the permission system refused:
-# a refused command is the usual reason a pilot stalls, and the allowlist above is the fix.
-python3 - "$TMP.output.json" <<'PY'
+run_team() {  # run_team <requirement file>
+  claude -p --plugin-dir "$ROOT" --model sonnet --setting-sources project,local \
+    ${PERMISSIONS[@]+"${PERMISSIONS[@]}"} --output-format json \
+    -- "Use the swd:build skill for this requirement: $(cat "$1")" \
+    > "$TMP.output.json" || true
+  python3 - "$TMP.output.json" <<'PY'
 import json, sys
 try:
     out = json.load(open(sys.argv[1]))
@@ -71,8 +82,15 @@ print(out.get("result", ""))
 for denial in out.get("permission_denials", []):
     print("REFUSED:", denial.get("tool_name"), json.dumps(denial.get("tool_input"))[:300])
 PY
-
-pkill -f "swd-dashboard.py --watch.*$TMP" 2>/dev/null || true  # in case the run stopped before 'done'
+  pkill -f "swd-dashboard.py --watch.*$TMP" 2>/dev/null || true  # in case the run stopped before 'done'
+}
+# Print the principal's final message, then every command the permission system refused:
+# a refused command is the usual reason a pilot stalls.
+run_team "$PILOT/requirement.txt"
+if [ -f "$PILOT/requirement-2.txt" ]; then
+  echo "--- second run"
+  run_team "$PILOT/requirement-2.txt"
+fi
 
 # A run left on its branch is graded there; a merged run is already on the base branch.
 branch="$(git branch --list 'swd/*' --format='%(refname:short)' | head -1)"

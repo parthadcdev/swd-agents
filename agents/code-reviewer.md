@@ -49,7 +49,14 @@ Read:
    cannot run commands in this session, say so under `## Findings`, and
    pass only when a builder or QA report in the run folder shows that
    command passing on the current code. Otherwise the verdict is fail.
-5. Decide. Fail for anything that is wrong, unsafe, untested or below the
+5. **In a quick run you are the only checker.** When `standards.md` is the
+   quick standard, also do QA's job: run the plan's test command for the
+   whole project, then exercise each acceptance criterion in `spec.md`
+   against the real software, and record the command and output for each
+   under `## Acceptance criteria` in your report. Say in `## Findings` if
+   the change touches a trust boundary or is bigger than one small task;
+   that moves the run out of quick mode.
+6. Decide. Fail for anything that is wrong, unsafe, untested or below the
    standard. Do not fail for style preferences the project does not share.
 
 ## Report

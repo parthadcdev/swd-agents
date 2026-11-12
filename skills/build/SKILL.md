@@ -26,6 +26,12 @@ user's project. The run's branch is checked out there, and every change the
 team makes to the project happens there. The user's own working copy stays
 on its branch and is never touched, so they can keep working in it.
 
+`.swd/project.md` in the user's project is the team's memory of the project:
+its test, lint and build commands, its layout and its conventions. It
+outlives runs, so each run starts from what the last one learned.
+`.swd/findings.md` beside it is the backlog of defects the team has seen
+and not fixed.
+
 Once the worktree exists you move into it and stay there until Finish. The
 agents you dispatch start in your working directory, so that is what puts
 them in the worktree without each having to change directory. Because you
@@ -44,8 +50,9 @@ types:
 Each task in `plan.md` names its builder role; dispatch that agent type. A
 run uses only the roles its plan names, so a one-task plan gets one builder. An agent starts with no knowledge of this conversation.
 It knows only its brief and what is in the run folder, so anything it needs
-must be in one of those. Every brief, to every agent, starts with the
-`Run folder:` line and the `Work in: <work>` line.
+must be in one of those. Every brief, to every agent, starts with three
+lines: `Run folder: <run>`, `Work in: <work>` and
+`Project notes: <absolute path of .swd/project.md>`.
 
 Work through the sections below in order.
 
@@ -124,8 +131,9 @@ Work through the sections below in order.
    Then read `<run>/write-check.txt`. If it does not contain `edited`, stop
    here and tell the user: the session's permission mode is refusing file
    writes from subagents, the team cannot build until that is changed, and
-   they should run `/swd:build` again once it is. Do not start a run you
-   already know cannot write.
+   they should run `/swd:build` again once it is. Suggest `/swd:setup`,
+   which adds the permission rules a run needs to this project. Do not
+   start a run you already know cannot write.
 
 ## Intake
 
@@ -135,13 +143,23 @@ Work through the sections below in order.
    assumptions instead.
 2. Write `<run>/requirement.md`: the requirement verbatim, then the user's
    answers.
-3. Write `<run>/spec.md`: what will be built, `## Acceptance criteria` that
+3. If `.swd/findings.md` exists, read it. When the requirement is about one
+   of its open items, quote that item in `requirement.md`.
+4. Write `<run>/spec.md`: what will be built, `## Acceptance criteria` that
    QA can check by running the software, and `## Assumptions`.
 
 ## Delivery mode
 
 Judge what outcome the user needs, and choose the mode that serves it.
 
+- **`Mode: quick`** for a small, low-risk change to a project the team
+  already knows. All of these must hold: `.swd/project.md` exists; the
+  change is one task touching a handful of files; it adds no dependency
+  and changes no public interface that other code relies on; and it does
+  not touch a trust boundary (authentication, secrets, user input that
+  reaches a query or a shell, payments) or a data migration. The goal is a
+  correct small change without the cost of a full run. If any of these is
+  in doubt, it is not quick.
 - **`Mode: prototype`** when the requirement says prototype, MVP, proof of
   concept, demo, spike or quick, or when it is a small requirement in an
   empty folder. The goal is the fastest working result for the fewest
@@ -159,7 +177,11 @@ Then write the run's standards file from the standard for that mode:
 cat <plugin>/standards/<mode>.md <plugin>/standards/run-folder.md > <run>/standards.md
 ```
 
-The mode is a starting point, not a fixed setting. If one task in a
+The mode is a starting point, not a fixed setting. If a quick run turns
+out bigger or riskier than it looked (the builder or the reviewer says so,
+or the fix needs a second task), move it up: rewrite the `Mode:` line to
+`production`, write `standards.md` again, and continue from Design with
+the architect. Record the call in `decisions.md`. If one task in a
 prototype carries real risk (money, authentication, a data migration), hold
 that task to the production standard: review it on its own before it is
 committed, and say so in its brief. Record the call in `decisions.md`.
@@ -172,6 +194,7 @@ dispatch:
 
 | Mode | Architect, reviewers | Builders, QA |
 |---|---|---|
+| quick | `sonnet` (the one reviewer; there is no architect) | `sonnet` |
 | prototype | `sonnet` | `haiku` |
 | production | leave unset, so it uses your own model | `sonnet` |
 
@@ -180,7 +203,14 @@ After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
 
 ## Design
 
-1. Dispatch `swd:architect` with the run folder path.
+1. Dispatch `swd:architect` with the run folder path. The architect reads
+   `.swd/project.md`, checks it against the project, and creates or updates
+   it; the plan check fails if it does not exist.
+
+   **In quick mode there is no architect.** Write `plan.md` yourself: the
+   `Test command:` line copied from `.swd/project.md`, and one task, `T1`,
+   in wave 1, with the builder role that fits, the files it may change, and
+   its check command. Nothing else belongs in a quick plan.
 2. Check the plan:
 
    ```bash
@@ -188,7 +218,8 @@ After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
    ```
 
 3. If it prints problems, send them to the architect and repeat until it
-   prints nothing. Do not edit `plan.md` yourself.
+   prints nothing. Do not edit `plan.md` yourself, except the one-task plan
+   you wrote in quick mode.
 
 ## Gate
 
@@ -290,6 +321,7 @@ Then, for each wave in order:
    ```
    Run folder: <absolute run path>
    Work in: <work>
+   Project notes: <absolute path of .swd/project.md>
    Task: T2
    You own: src/api.py, tests/test_api.py
    Read first: reports/T1-generalist-engineer.md
@@ -335,6 +367,16 @@ What happens next depends on the mode.
    the next wave builds on it. A failing wave goes to the Fix loop. A
    passing wave gets a `wave-done` line. Skip this for the last wave: final
    QA runs the same suite straight afterwards.
+
+**Quick mode:**
+
+3. Set the task `in-review` and dispatch `swd:code-reviewer` with `final`
+   and the base commit. It is the only checker in a quick run: it reviews
+   the change, runs the project's test command, and exercises each
+   acceptance criterion.
+4. On `Verdict: pass`, commit the task's files as `T1: <title>` and set it
+   `done`. On `Verdict: fail`, see Fix loop. There is no other review and
+   no QA dispatch in a quick run, so skip Final verification's step 1.
 
 **Prototype mode:**
 
@@ -417,7 +459,15 @@ is lost; the user reads `decisions.md` in the final report.
    alone. That task's own code and security reviews already covered the
    whole change, so final reviews would repeat them.
 2. Send any failure through the Fix loop, then repeat step 1.
-3. Append the `done` line to `activity.md`, then check the run:
+3. Copy the run's findings to the project's backlog, `.swd/findings.md`:
+
+   ```bash
+   python3 <plugin>/scripts/swd-findings.py <run>
+   ```
+
+   If this run fixed an item that was open in the backlog, tick it off
+   there (`- [x]`).
+4. Append the `done` line to `activity.md`, then check the run:
 
    ```bash
    python3 <plugin>/scripts/check_run.py <run>
@@ -524,7 +574,8 @@ merging and pushing a branch that was left for them.
   wave owns, so build output and other stray files stay out of the commit.
   Of those, name only the files that changed (`git status --short` lists
   them): a planned file that was never created makes `git add` fail.
-- Never edit `plan.md` or an agent's report.
+- Never edit `plan.md` or an agent's report. The one exception is the
+  one-task plan you write yourself in quick mode.
 - Never merge or push except as the recorded `Finish:` line says, and only
   after the run check passes.
 - Never force-push. Never delete a branch that is not merged: use

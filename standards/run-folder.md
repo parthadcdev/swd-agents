@@ -24,6 +24,13 @@ report in `reports/` must say `Verdict: pass`.
 
 An agent writes only its owned files and its own report.
 
+Two files outlive runs and sit beside the `runs/` folder, in `.swd/`:
+
+| File | Written by | Holds |
+|---|---|---|
+| `project.md` | Architect | The project notes: test, lint and build commands, layout, conventions. Your brief names its path on the `Project notes:` line. Read it before you start |
+| `findings.md` | `swd-findings.py`, run by the principal | The backlog of defects the team has seen and not fixed |
+
 ## Where to work
 
 The run's code lives in a worktree of its own, not in the user's working

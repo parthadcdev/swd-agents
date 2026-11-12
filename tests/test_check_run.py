@@ -88,6 +88,7 @@ def make_run(tmp, mode="production", single=False):
     (run / "activity.md").write_text(ACTIVITY.replace("- 10:06:00 dispatch T2 backend-engineer\n", "") if single else ACTIVITY)
     (run / "dashboard.html").write_text("<html></html>\n")
     (run / "write-check.txt").write_text("edited\n")
+    (repo / ".swd" / "project.md").write_text("# Project notes\n\n## Commands\nTest command: `python3 -m unittest`\n")
     (run / "reports" / "T1-generalist-engineer.md").write_text(BUILDER_REPORT)
     if not single:
         (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT)
@@ -370,6 +371,41 @@ class CheckRunTest(unittest.TestCase):
             self.assertEqual(self.cli(str(run)).stdout, "")
             (work / "stray.txt").write_text("x\n")
             self.assertIn("stray.txt", self.cli(str(run)).stdout)
+
+    # --- quick mode, project notes, findings backlog ------------------------------------------
+
+    def quick_run(self):
+        """A one-task run in quick mode: one builder, one final review that also does QA's job."""
+        repo, run = make_run(self.tmp, mode="prototype", single=True)
+        replace(run / "spec.md", "Mode: prototype", "Mode: quick")
+        (run / "reports" / "final-qa-engineer.md").unlink()
+        return repo, run
+
+    def test_quick_run_needs_only_its_builder_and_one_review(self):
+        repo, run = self.quick_run()
+        self.assertEqual(self.problems(repo, run), [])
+        (run / "reports" / "final-code-reviewer.md").unlink()
+        self.assertProblem(self.problems(repo, run), "missing", "final-code-reviewer.md")
+
+    def test_quick_mode_is_for_one_task(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "spec.md", "Mode: production", "Mode: quick")
+        self.assertProblem(self.cr.check_plan(run), "quick", "one task")
+
+    def test_plan_check_requires_project_notes(self):
+        repo, run = make_run(self.tmp)
+        (repo / ".swd" / "project.md").unlink()
+        self.assertProblem(self.cr.check_plan(run), "project.md")
+
+    def test_findings_must_reach_the_project_backlog(self):
+        repo, run = make_run(self.tmp)
+        with open(run / "decisions.md", "a") as f:
+            f.write("Finding: shop/cart.py apply_discount subtracts the percent as an amount. Left: out of scope.\n")
+        self.assertProblem(self.problems(repo, run), "findings.md", "swd-findings.py")
+        done = subprocess.run([sys.executable, str(ROOT / "scripts" / "swd-findings.py"), str(run)],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.problems(repo, run), [])
 
     def test_plan_check_requires_the_write_check(self):
         # A pilot showed the principal skipping the write check in prototype mode.

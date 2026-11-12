@@ -18,6 +18,10 @@ REQUIRED_FILES = [
     "scripts/swd-log.sh",
     "scripts/swd-dashboard.py",
     "scripts/swd-clean.py",
+    "scripts/swd-findings.py",
+    "scripts/swd-setup.py",
+    "standards/quick.md",
+    "skills/setup/SKILL.md",
     "hooks/hooks.json",
     "hooks/swd-mode.py",
     "skills/on/SKILL.md",
@@ -114,7 +118,7 @@ class StructureTest(unittest.TestCase):
                     self.assertIn(section, text)
 
     def test_no_dangling_agent_references(self):
-        known = {p.stem for p in agent_files()} | {"build", "on", "off"}
+        known = {p.stem for p in agent_files()} | {"build", "on", "off", "setup"}
         for folder in ("skills", "standards"):
             for path in (ROOT / folder).rglob("*.md"):
                 for name in re.findall(r"swd:([a-z-]+)", path.read_text()):
@@ -122,7 +126,7 @@ class StructureTest(unittest.TestCase):
                         self.assertIn(name, known)
 
     def test_standards_have_required_sections(self):
-        for mode in ("production", "prototype"):
+        for mode in ("production", "prototype", "quick"):
             path = ROOT / "standards" / f"{mode}.md"
             if not path.is_file():
                 continue
@@ -275,6 +279,21 @@ class StructureTest(unittest.TestCase):
         for name in ("on", "off"):
             with self.subTest(skill=name):
                 self.assertEqual(frontmatter(ROOT / "skills" / name / "SKILL.md").get("name"), name)
+
+    def test_fast_lane_memory_and_setup_are_pinned(self):
+        text = PRINCIPAL.read_text()
+        for needle in (
+            "Mode: quick",                       # the fast lane for small, low-risk changes
+            "Project notes: ",                   # every brief points at the project's notes
+            ".swd/project.md",
+            ".swd/findings.md",
+            "swd-findings.py <run>",
+            "/swd:setup",                        # what to tell the user when writes or commands are refused
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
+        self.assertIn(".swd/project.md", (ROOT / "agents" / "architect.md").read_text())
+        self.assertIn("quick", (ROOT / "agents" / "code-reviewer.md").read_text())
 
 
 if __name__ == "__main__":

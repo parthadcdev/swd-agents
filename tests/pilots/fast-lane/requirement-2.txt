@@ -1,0 +1,1 @@
+Add `item_count(items)` to `shop/cart.py`. It returns the total quantity across a list of (price, quantity) pairs, and 0 for an empty list. This is a small change to existing code. I pre-approve the spec and plan; do not wait for me. When the run passes, merge it into the base branch.

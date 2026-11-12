@@ -131,7 +131,7 @@ def check_finish_choice(run_dir):
 
 
 def run_mode(run_dir):
-    match = re.search(r"^Mode: (prototype|production)\s*$", read(run_dir / "spec.md") or "", re.M)
+    match = re.search(r"^Mode: (prototype|production|quick)\s*$", read(run_dir / "spec.md") or "", re.M)
     return match.group(1) if match else None
 
 
@@ -146,6 +146,8 @@ def check_plan(run_dir):
     for key in ("Base branch", "Branch", "Worktree"):
         if not decision(run_dir, key):
             problems.append(f"decisions.md: needs a line '{key}: ...'; the run works on its own branch in its own worktree")
+    if not (read(run_dir.parent.parent / "project.md") or "").strip():
+        problems.append("missing .swd/project.md: the project's notes (test command, conventions, layout)")
     if not decision(run_dir, "Housekeeping"):
         problems.append("decisions.md: needs a 'Housekeeping:' line; run swd-clean.py <run> in preflight")
     if (read(run_dir / "write-check.txt") or "").strip() != "edited":
@@ -155,7 +157,7 @@ def check_plan(run_dir):
         problems.append("missing spec.md")
     else:
         if run_mode(run_dir) is None:
-            problems.append("spec.md: needs a line 'Mode: prototype' or 'Mode: production'")
+            problems.append("spec.md: needs a line 'Mode: quick', 'Mode: prototype' or 'Mode: production'")
         if "## Acceptance criteria" not in spec:
             problems.append("spec.md: needs a '## Acceptance criteria' section")
 
@@ -168,6 +170,8 @@ def check_plan(run_dir):
     problems += parse_problems
     if not tasks:
         problems.append("plan.md: has no tasks")
+    if run_mode(run_dir) == "quick" and len(tasks) > 1:
+        problems.append("plan.md: quick mode is for one task; use prototype or production mode for more")
 
     by_id = {}
     for task in tasks:
@@ -367,7 +371,8 @@ def check_run(run_dir, repo_dir):
 
     # Reports the mode requires, then every checker report that exists: none may be a fail.
     # A prototype may still hold per-task reviews, for a risky task held to the production bar.
-    required = {"final-qa-engineer.md"}
+    # Quick mode has one checker: its final code review also runs the tests and the acceptance criteria.
+    required = set() if mode == "quick" else {"final-qa-engineer.md"}
     if mode == "production":
         for task in tasks:
             if task["role"] in BUILDERS:
@@ -381,6 +386,13 @@ def check_run(run_dir, repo_dir):
         present |= {p.name for p in (run_dir / "reports").glob(f"*-{suffix}.md")}
     for name in sorted(required | present):
         problems += check_verdict(run_dir, name)
+
+    # Defects the run saw and left must be in the project's backlog, where the next run can find them.
+    backlog = read(run_dir.parent.parent / "findings.md") or ""
+    for finding in re.findall(r"^Finding: (.+?)\s*$", read(run_dir / "decisions.md") or "", re.M):
+        if finding not in backlog:
+            problems.append("a Finding is not in .swd/findings.md: run swd-findings.py <run>")
+            break
 
     activity = read(run_dir / "activity.md")
     if activity is not None:
