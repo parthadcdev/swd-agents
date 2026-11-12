@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PILOT="$ROOT/tests/pilots/${1:?usage: run_pilot.sh <pilot-name>}"
 [ -f "$PILOT/requirement.txt" ] || { echo "no such pilot: $1"; exit 2; }
 
-TMP="$(mktemp -d)"
+TMP="$(cd "$(mktemp -d)" && pwd -P)"  # the physical path, so it matches what git reports
 echo "pilot project: $TMP"
 cd "$TMP"
 
@@ -52,7 +52,7 @@ pkill -f "swd-dashboard.py --watch.*$TMP" 2>/dev/null || true  # in case the run
 
 # A run left on its branch is graded there; a merged run is already on the base branch.
 branch="$(git branch --list 'swd/*' --format='%(refname:short)' | head -1)"
-[ -n "$branch" ] && git checkout -q "$branch"
+[ -n "$branch" ] && { git checkout -q "$branch" || true; }  # fails if the worktree was left behind; the finish check reports that
 
 status=0
 echo "--- check_run"

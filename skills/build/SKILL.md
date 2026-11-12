@@ -24,8 +24,13 @@ the absolute path.
 `<work>` means the run's worktree, `.swd/worktrees/<short-name>/` in the
 user's project. The run's branch is checked out there, and every change the
 team makes to the project happens there. The user's own working copy stays
-on its branch and is never touched, so they can keep working in it. Run
-every git command for the run as `git -C <work> ...`.
+on its branch and is never touched, so they can keep working in it.
+
+Once the worktree exists you move into it and stay there until Finish. The
+agents you dispatch start in your working directory, so that is what puts
+them in the worktree without each having to change directory. Because you
+are no longer in the project folder, always give `<run>` and `<plugin>` as
+absolute paths, and run git for the run as `git -C <work> ...`.
 
 **The team.** Dispatch specialists with the Agent tool, using these agent
 types:
@@ -71,10 +76,15 @@ Work through the sections below in order.
    git worktree add .swd/worktrees/<short-name> -b swd/<short-name>
    ```
 
-   If that branch already exists, choose a different short name. If
-   `git status --short` now lists `.swd/`, add the line `.swd/` to
-   `.git/info/exclude`: that keeps the run's folders out of the user's
-   status without touching any file of theirs.
+   If that branch already exists, choose a different short name. Then move
+   into the worktree, as a command of its own, and confirm with `pwd`:
+
+   ```bash
+   cd .swd/worktrees/<short-name>
+   ```
+
+   `.swd/` may now show as untracked in the user's `git status`. That is
+   harmless; mention it in the report and leave their git settings alone.
 5. Create `<run>` and `<run>/reports/`. Write `<run>/decisions.md` starting
    with these four lines; `check_run.py` reads them, and every later
    decision is appended below:
@@ -396,8 +406,9 @@ costs if wrong.
 ## Finish
 
 Deliver the run the way the last `Finish:` line in `decisions.md` says, and
-only after `check_run.py <run>` prints nothing. Run these from the user's
-project folder unless a step says otherwise.
+only after `check_run.py <run>` prints nothing. First move back to the
+user's project folder, as a command of its own (`cd <project folder>`): a
+worktree cannot be removed from inside it. Run the steps below from there.
 
 **`Finish: merge-push`**
 
@@ -467,7 +478,8 @@ merging and pushing a branch that was left for them.
 
 1. Read `ledger.md`, `plan.md` and `decisions.md` in the unfinished run.
    Its `Worktree:` line is `<work>`. If that folder is missing, recreate it
-   from the run's branch: `git worktree add <work> swd/<short-name>`.
+   from the run's branch: `git worktree add <work> swd/<short-name>`. Then
+   move into it (`cd <work>`) and confirm with `pwd`.
 2. For each task that is `in-progress`, run `git -C <work> status --short`
    on its files. Keep half-finished edits in place and set the task back to
    `todo`; the builder will pick up from them. Do not reset its attempt

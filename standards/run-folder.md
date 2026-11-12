@@ -27,12 +27,18 @@ An agent writes only its owned files and its own report.
 ## Where to work
 
 The run's code lives in a worktree of its own, not in the user's working
-copy. Your brief names it on the `Work in:` line. Read, write and run
-commands for the project only there: start shell commands with
-`cd <that path> &&`, and use paths under it with the file tools. File paths
-in `plan.md` and in reports are relative to it. The run folder is somewhere
-else, at the path your brief gives on the `Run folder:` line. Never change
-anything in the project outside the worktree.
+copy. Your brief names it on the `Work in:` line, and you start in it: your
+shell's working directory is already the worktree. Run `pwd` once to
+confirm; if it prints anything else, stop and say so in your report.
+
+Run commands plainly from there, without `cd` and without chaining commands
+with `&&` or pipes where you can avoid it. Plain commands are the least
+likely to be held for approval. With the file tools, use paths under the
+worktree. File paths in `plan.md` and in reports are relative to it.
+
+The run folder is somewhere else, at the path your brief gives on the
+`Run folder:` line. Never change anything in the project outside the
+worktree.
 
 ## spec.md
 

@@ -241,9 +241,16 @@ class StructureTest(unittest.TestCase):
             with self.subTest(needle=needle):
                 self.assertIn(needle, text)
         self.assertNotIn("Never push, merge", text)
+        # Pilots: builders told to chain `cd <worktree> && ...` had their shell refused. The principal
+        # moves into the worktree once and agents inherit it, so their commands stay plain.
+        self.assertIn("cd .swd/worktrees/<short-name>", text)
+        self.assertNotIn(".git/info/exclude", text)  # that write is refused by the permission system
         for path in agent_files():
             with self.subTest(agent=path.name):
-                self.assertIn("`Work in:`", path.read_text())
+                agent = path.read_text()
+                self.assertIn("`Work in:`", agent)
+                self.assertIn("without `cd`", agent)
+        self.assertIn("without `cd`", (ROOT / "standards" / "run-folder.md").read_text())
 
 
 if __name__ == "__main__":
