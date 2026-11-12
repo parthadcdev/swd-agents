@@ -12,10 +12,17 @@ REQUIRED_FILES = [
     "standards/run-folder.md",
     "scripts/check_run.py",
     "standards/production.md",
+    "skills/build/SKILL.md",
+    "scripts/swd-watch.sh",
 ]
 REQUIRED_AGENTS = ["architect", "generalist-engineer", "code-reviewer", "qa-engineer"]
 CHECKERS = ["code-reviewer", "security-reviewer", "qa-engineer"]
 AGENT_SECTIONS = ["## Responsibility", "## Inputs", "## Process", "## Report", "## Never"]
+PRINCIPAL = ROOT / "skills" / "build" / "SKILL.md"
+PRINCIPAL_SECTIONS = [
+    "## Preflight", "## Intake", "## Delivery mode", "## Design", "## Gate", "## Build",
+    "## Fix loop", "## Final verification", "## Report", "## Resume", "## Never",
+]
 STANDARD_SECTIONS = [
     "## Priority", "## Builder process", "## Testing", "## Review",
     "## Security", "## Performance", "## Docs", "## Commits",
@@ -93,6 +100,27 @@ class StructureTest(unittest.TestCase):
             tools = [t.strip() for t in frontmatter(path).get("tools", "").split(",")]
             with self.subTest(agent=name):
                 self.assertNotIn("Edit", tools)
+
+    def test_principal_sections(self):
+        text = PRINCIPAL.read_text()
+        positions = [text.find(f"\n{s}\n") for s in PRINCIPAL_SECTIONS]
+        self.assertNotIn(-1, positions, "a principal section is missing")
+        self.assertEqual(positions, sorted(positions), "principal sections are out of order")
+
+    def test_principal_frontmatter(self):
+        fm = frontmatter(PRINCIPAL)
+        self.assertEqual(fm.get("name"), "build")
+        self.assertTrue(fm.get("description"))
+
+    def test_principal_pins_review_focus(self):
+        text = PRINCIPAL.read_text()
+        self.assertIn("uncommitted", text)
+        self.assertIn("check_run.py --plan", text)
+
+    def test_principal_watch_and_activity(self):
+        text = PRINCIPAL.read_text()
+        for needle in ("activity.md", "swd-watch.sh", "HERDR_PANE_ID"):
+            self.assertIn(needle, text)
 
 
 if __name__ == "__main__":
