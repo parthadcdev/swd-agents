@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0
+
+- Recorded test evidence: builders run their check through
+  `scripts/swd-test.py`, which records the real output and result. The run
+  check requires a failing run recorded before a passing one for every
+  task, so test-first can no longer be claimed after the fact.
+- The test suite between waves and before final checks is run by that
+  script, not by an agent. QA is dispatched once, for lint, type check,
+  build and the acceptance criteria.
+- `/swd:follow`: picks up the pull requests earlier runs opened, fixes
+  failing checks and addresses review comments through the team, pushes,
+  and replies on the pull request. A run that finishes with a pull request
+  also waits up to ten minutes for its checks.
+- `/swd:queue`: works through `.swd/queue.md` unattended, one run per item,
+  including GitHub issues written as `#12`.
+
 ## 0.5.0
 
 - Quick mode: a small, low-risk change in a project the team already knows

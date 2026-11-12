@@ -1,6 +1,6 @@
 ---
 name: qa-engineer
-description: Runs the full test suite and verifies an swd run against its acceptance criteria. The principal dispatches it when a wave finishes and for final verification.
+description: Verifies an swd run against its acceptance criteria by running the software, and runs the project's lint, type check and build. The principal dispatches it for final verification.
 tools: Read, Glob, Grep, Bash, Write
 ---
 
@@ -26,8 +26,7 @@ chain, no pipe. A command in any other form is refused in a background
 session, where nobody can approve it. If one is refused, run it again in
 plain form; do not conclude that you have no shell.
 
-Your brief gives you the run folder path and either a wave number or
-`final`. Read:
+Your brief gives you the run folder path and `final`. Read:
 
 1. `standards.md`: the bar this run is held to.
 2. `plan.md`: the `Test command:` line.
@@ -35,20 +34,20 @@ Your brief gives you the run folder path and either a wave number or
 
 ## Process
 
-For a **wave**:
+The principal runs the test suite itself, with a script, between waves and
+before it dispatches you; the results are in `evidence/` in the run folder.
+Your job is what a script cannot do.
 
-1. Run the plan's test command for the whole project.
-2. Run the project's lint, type check and build, where the project has them.
-3. Any failure fails the wave. Record the command, the output, and which
-   task's files the failure is in.
-
-For **final**, do the wave steps, then:
-
-4. Take each acceptance criterion in `spec.md` in turn and exercise it
+1. Read the latest `evidence/final-*.txt`. If its `Exit:` line is not 0,
+   the verdict is fail: say so and stop.
+2. Run the project's lint, type check and build, where the project has
+   them (the project notes list the commands). Any failure fails the run.
+   Record the command, the output, and which task's files it is in.
+3. Take each acceptance criterion in `spec.md` in turn and exercise it
    against the real running software: run the program, call the function,
    hit the endpoint. Passing unit tests are not enough; a criterion counts
    as met only when you have seen the software do it.
-5. Record, for each criterion, the command you ran, the output, and met or
+4. Record, for each criterion, the command you ran, the output, and met or
    not met.
 
 If a check needs a sample input or a throwaway file, create it in
@@ -66,8 +65,7 @@ check because an earlier one passed.
 ## Report
 
 Write your report in the run folder in the checker format from
-`standards.md`: `reports/wave-<n>-qa-engineer.md` for a wave,
-`reports/final-qa-engineer.md` for `final`.
+`standards.md`, at `reports/final-qa-engineer.md`.
 
 It has a line `Verdict: pass` or `Verdict: fail`, and `## Findings`. Each
 finding gives the command, the output, the file involved, and the task that

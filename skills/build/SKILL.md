@@ -14,6 +14,12 @@ fixing, you dispatch the builder who owns it. This keeps every change
 test-first and independently reviewed, and keeps your context for
 coordination.
 
+**Your own commands.** Give the shell one plain command per call: no shell
+variable such as `R=/some/path`, no `;` or `&&` chain. Chained commands
+are held for approval, and in an unattended run nobody is there to give
+it. The commands in this playbook are written in that form; run them as
+written.
+
 **Where things are.** This skill's base directory is shown when the skill
 loads. The plugin root is two directories above it; `<plugin>` below means
 that path. `<run>` means the run folder,
@@ -325,6 +331,7 @@ Then, for each wave in order:
    Run folder: <absolute run path>
    Work in: <work>
    Project notes: <absolute path of .swd/project.md>
+   Run tests with: python3 <plugin>/scripts/swd-test.py <run> T2
    Task: T2
    You own: src/api.py, tests/test_api.py
    Read first: reports/T1-generalist-engineer.md
@@ -365,11 +372,18 @@ What happens next depends on the mode.
    ```
 
    On either `Verdict: fail`, see Fix loop.
-5. When every task in the wave is `done`, dispatch `swd:qa-engineer` with
-   the run folder path and the wave number, so the full suite runs before
-   the next wave builds on it. A failing wave goes to the Fix loop. A
-   passing wave gets a `wave-done` line. Skip this for the last wave: final
-   QA runs the same suite straight afterwards.
+5. When every task in the wave is `done`, run the whole test suite before
+   the next wave builds on it. This is a script, not an agent:
+
+   ```bash
+   python3 <plugin>/scripts/swd-test.py <run> wave-<n>
+   ```
+
+   It prints the end of the output and records all of it under
+   `<run>/evidence/`. If it fails, find the task that owns the failing code
+   and send it through the Fix loop with `Fix: evidence/wave-<n>-<k>.txt`,
+   then run the script again. A passing wave gets a `wave-done` line. Skip
+   this for the last wave: the final run of the suite covers it.
 
 **Quick mode:**
 
@@ -448,6 +462,16 @@ is lost; the user reads `decisions.md` in the final report.
 
 ## Final verification
 
+0. Run the whole test suite once more, in every mode, before anyone spends
+   time on a final check:
+
+   ```bash
+   python3 <plugin>/scripts/swd-test.py <run> final
+   ```
+
+   A failure goes to the Fix loop with `Fix: evidence/final-<k>.txt`; run
+   the script again after the fix. `check_run.py` requires its last
+   recorded result to be a pass.
 1. Dispatch `swd:qa-engineer` with `final`, and `swd:code-reviewer` with
    `final` and the base commit, in one message. This happens in both modes;
    in prototype mode it is the only review, and the reviewer writes
@@ -485,7 +509,8 @@ is lost; the user reads `decisions.md` in the final report.
 Deliver the run the way the last `Finish:` line in `decisions.md` says, and
 only after `check_run.py <run>` prints nothing. First move back to the
 user's project folder, as a command of its own (`cd <project folder>`): a
-worktree cannot be removed from inside it. Run the steps below from there.
+worktree cannot be removed from inside it. Run the steps below from there;
+the run's worktree is still at `<work>` until the clean-up step removes it.
 
 **`Finish: merge-push`**
 
@@ -521,8 +546,23 @@ worktree cannot be removed from inside it. Run the steps below from there.
 
    If `gh` is not installed or not signed in, give the user the branch name
    and the link the push printed, so they can open it themselves.
-4. Clean up: `git worktree remove .swd/worktrees/<short-name>`. Keep the
-   branch; the pull request needs it.
+4. Watch the pull request's checks before you leave the run, while its
+   worktree still exists:
+
+   ```bash
+   python3 <plugin>/scripts/swd-pr.py --wait 600 <run>
+   ```
+
+   Exit code 0 means green, or no checks. Exit code 10 means a check
+   failed: the details are in `reports/pr-feedback-<n>.md`. Send the owner
+   through the Fix loop with that report, commit, push the branch again
+   with a plain `git push`, and run the script again; do at most three
+   rounds. Exit code 20 means checks are still running after ten minutes:
+   say so in the report. Exit code 1 means it could not tell: say why.
+5. Clean up: `cd` to the project folder, then
+   `git worktree remove .swd/worktrees/<short-name>`. Keep the branch; the
+   pull request needs it. Tell the user that `/swd:follow` picks the pull
+   request up again later, for checks that fail and for review comments.
 
 **`Finish: branch`**
 

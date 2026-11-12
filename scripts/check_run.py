@@ -387,6 +387,35 @@ def check_run(run_dir, repo_dir):
     for name in sorted(required | present):
         problems += check_verdict(run_dir, name)
 
+    # What swd-test.py recorded. The script writes these, so a failing run before a passing one is
+    # proof the test came first, and a passing last run is proof the work passes now.
+    def exits(label):
+        codes = []
+        for path in sorted((run_dir / "evidence").glob(f"{label}-[0-9]*.txt")):
+            match = re.search(r"^Exit: (-?\d+)\s*$", read(path) or "", re.M)
+            codes.append(int(match.group(1)) if match else None)
+        return codes
+
+    for task in tasks:
+        if task["role"] not in BUILDERS:
+            continue
+        codes = exits(task["id"])
+        if 0 not in codes or not any(code not in (0, None) for code in codes[:codes.index(0)]):
+            problems.append(f"evidence: {task['id']} has no failing run recorded before a passing one; "
+                            "builders run their check with swd-test.py")
+        elif codes[-1] != 0:
+            problems.append(f"evidence: {task['id']}'s last recorded run did not pass")
+    suites = ["final"]
+    if mode == "production":
+        waves = sorted({t["wave"] for t in tasks if t["wave"] is not None})
+        suites = [f"wave-{wave}" for wave in waves[:-1]] + suites   # the last wave is covered by final
+    for label in suites:
+        codes = exits(label)
+        if not codes:
+            problems.append(f"evidence: no {label} run of the test suite recorded; run swd-test.py <run> {label}")
+        elif codes[-1] != 0:
+            problems.append(f"evidence: the last {label} run of the test suite did not pass")
+
     # Defects the run saw and left must be in the project's backlog, where the next run can find them.
     backlog = read(run_dir.parent.parent / "findings.md") or ""
     for finding in re.findall(r"^Finding: (.+?)\s*$", read(run_dir / "decisions.md") or "", re.M):

@@ -224,6 +224,23 @@ complete with a failing test; destructive actions need the user's yes.
   merges or pushes other than as the chosen finish says. A merge conflict or
   a rejected push stops the run and goes to the user.
 
+## Recorded evidence, follow-up and the queue
+
+- `scripts/swd-test.py <run> <T<n>|wave-<n>|final>` runs the task's check or
+  the plan's test command in the worktree and writes the output and exit
+  code to `evidence/<label>-<n>.txt`. Builders use it for their failing and
+  passing runs; the principal uses it between waves and before final
+  checks. `check_run.py` requires, per task, a failing record before a
+  passing one, and a passing last record for each suite run.
+- `scripts/swd-pr.py <run>` reads a run's pull request through `gh`:
+  failing checks and comments not yet dealt with are written to
+  `reports/pr-feedback-<n>.md`. `/swd:follow` routes them through the Fix
+  loop, pushes, replies with a comment starting `[swd]`, and marks them
+  handled. The team never merges or approves a pull request.
+- `scripts/swd-queue.py <project>` runs each open item of `.swd/queue.md`
+  as its own headless `/swd:build`, pre-approved, loading only this plugin
+  and the project's settings. Two failures in a row stop it.
+
 ## swd mode
 
 A `UserPromptSubmit` hook (`hooks/swd-mode.py`) keeps a session in swd mode

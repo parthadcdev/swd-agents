@@ -26,6 +26,13 @@ written after the code only proves the code does what it already does.
 6. Run the task's `Check` command from `plan.md` and confirm it passes.
 7. Write your report.
 
+Run the check with the command on your brief's `Run tests with:` line, not
+by hand. It runs your task's check in the worktree and records the real
+output and result in the run folder, in the order they happened. That
+record, a failing run followed by a passing one, is what proves the test
+came first; a run you make by hand proves nothing to the reviewer. Copy
+what it prints into your report.
+
 When the work has no meaningful unit test (CI config, docs), write a check
 first instead: run the config, or run the commands the docs show. The same
 fail-then-pass evidence goes in the report.

@@ -50,6 +50,18 @@ session, use swd mode:
 - **Off:** say "stop swd" or run `/swd:off`. New sessions always start with
   it off.
 
+## Hand it a backlog
+
+- **`/swd:queue`** works through `.swd/queue.md` on its own, one run per
+  item, each in a fresh process. Items are plain requirements or GitHub
+  issues (`- [ ] #42`). Each finished item is ticked off with its pull
+  request or branch; a blocked one is marked and the queue moves on. Run
+  `/swd:setup` first: nobody is there to answer a permission prompt.
+- **`/swd:follow`** goes back to the pull requests earlier runs opened.
+  It sends failing checks and review comments through the team, pushes the
+  fixes, and replies on the pull request with what changed. It never
+  merges, approves or force-pushes.
+
 ## The team
 
 | Role | Kind | Does |

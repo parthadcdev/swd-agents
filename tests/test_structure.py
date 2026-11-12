@@ -20,6 +20,11 @@ REQUIRED_FILES = [
     "scripts/swd-clean.py",
     "scripts/swd-findings.py",
     "scripts/swd-setup.py",
+    "scripts/swd-test.py",
+    "scripts/swd-pr.py",
+    "scripts/swd-queue.py",
+    "skills/follow/SKILL.md",
+    "skills/queue/SKILL.md",
     "standards/quick.md",
     "skills/setup/SKILL.md",
     "hooks/hooks.json",
@@ -118,7 +123,7 @@ class StructureTest(unittest.TestCase):
                     self.assertIn(section, text)
 
     def test_no_dangling_agent_references(self):
-        known = {p.stem for p in agent_files()} | {"build", "on", "off", "setup"}
+        known = {p.stem for p in agent_files()} | {"build", "on", "off", "setup", "follow", "queue"}
         for folder in ("skills", "standards"):
             for path in (ROOT / folder).rglob("*.md"):
                 for name in re.findall(r"swd:([a-z-]+)", path.read_text()):
@@ -301,6 +306,26 @@ class StructureTest(unittest.TestCase):
         self.assertIn("not in the worktree", text)
         self.assertIn("not in the worktree", (ROOT / "agents" / "architect.md").read_text())
         self.assertIn("quick", (ROOT / "agents" / "code-reviewer.md").read_text())
+
+    def test_evidence_follow_and_queue_are_pinned(self):
+        text = PRINCIPAL.read_text()
+        for needle in (
+            "Run tests with: ",                 # every builder brief names the recording test runner
+            "swd-test.py <run> wave-",          # the suite between waves is a script, not an agent
+            "swd-test.py <run> final",
+            "swd-pr.py --wait",                 # a pull request's checks are watched before the run ends
+            "/swd:follow",
+            "one plain command per call",       # the principal's own commands, too
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
+        for mode in ("production", "prototype", "quick"):
+            with self.subTest(standard=mode):
+                self.assertIn("Run tests with:", (ROOT / "standards" / f"{mode}.md").read_text())
+        self.assertIn("evidence/", (ROOT / "standards" / "run-folder.md").read_text())
+        for name in ("follow", "queue"):
+            with self.subTest(skill=name):
+                self.assertEqual(frontmatter(ROOT / "skills" / name / "SKILL.md").get("name"), name)
 
 
 if __name__ == "__main__":

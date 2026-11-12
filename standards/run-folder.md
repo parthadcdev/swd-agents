@@ -21,6 +21,7 @@ report in `reports/` must say `Verdict: pass`.
 | `decisions.md` | Principal | Every ruling and assumption made after the gate |
 | `dashboard.html` | `swd-dashboard.py`, started by the principal | The live view of the run; never edited by hand |
 | `reports/*.md` | The agent that did the work | One report per piece of work |
+| `evidence/*.txt` | `swd-test.py` only | What each recorded test run printed and how it exited. Never written by hand |
 
 An agent writes only its owned files and its own report.
 
@@ -223,7 +224,6 @@ a line.
 | Security review of one task | `reports/T<n>-security-reviewer.md` |
 | Code review of the whole change | `reports/final-code-reviewer.md` |
 | Security review of the whole change | `reports/final-security-reviewer.md` |
-| QA of a finished wave | `reports/wave-<n>-qa-engineer.md` |
 | Final QA | `reports/final-qa-engineer.md` |
 
 ## Commits

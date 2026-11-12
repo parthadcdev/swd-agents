@@ -29,6 +29,13 @@ Every builder task follows this order.
 6. Run the task's `Check` command from `plan.md` and confirm it passes.
 7. Write your report. Keep it short.
 
+Run the check with the command on your brief's `Run tests with:` line, not
+by hand. It runs your task's check in the worktree and records the real
+output and result in the run folder, in the order they happened. That
+record, a failing run followed by a passing one, is what proves the test
+came first; a run you make by hand proves nothing to the reviewer. Copy
+what it prints into your report.
+
 Change only the files your task owns. If you need a change in a file you do
 not own, or the plan is missing something or is wrong, stop and say exactly
 what you need under `## Concerns`.
