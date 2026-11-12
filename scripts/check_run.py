@@ -11,6 +11,7 @@ Prints one problem per line. Exit 0 when there are none, 1 otherwise.
 The formats checked here are documented in standards/run-folder.md.
 """
 import argparse
+import posixpath
 import re
 import subprocess
 import sys
@@ -25,6 +26,8 @@ EVENTS = {"dispatch", "return", "verdict", "commit", "fix", "replan", "ruling", 
 TASK_FIELDS = ("Role", "Wave", "Files", "Depends", "Check")
 BUILDER_SECTIONS = ("Summary", "Files changed", "Test first (failing)", "Test after (passing)", "Complexity", "Concerns")
 CHECKER_SUFFIXES = ("code-reviewer", "security-reviewer", "qa-engineer")
+PLACEHOLDERS = {"todo", "tbd", "n/a", "na", "none", "...", "-"}  # not evidence
+VERDICT_RE = re.compile(r"^Verdict: (pass|fail)\s*$", re.M)
 EVIDENCE_SECTIONS = ("Test first (failing)", "Test after (passing)")
 
 TASK_RE = re.compile(r"^### (T\d+): (.+)$")
@@ -63,7 +66,7 @@ def parse_plan(text):
                 problems.append(f"plan.md: {task['id']} is missing '- {name}:'")
         task["role"] = fields.get("Role", "")
         task["check"] = fields.get("Check", "")
-        task["files"] = [f.strip().strip("`") for f in fields.get("Files", "").split(",") if f.strip()]
+        task["files"] = [posixpath.normpath(f.strip().strip("`")) for f in fields.get("Files", "").split(",") if f.strip()]
         depends = fields.get("Depends", "")
         task["depends"] = [] if depends.lower() in ("", "none") else [d.strip() for d in depends.split(",")]
         wave = fields.get("Wave", "")
@@ -174,7 +177,10 @@ def check_verdict(run_dir, name):
     text = read(run_dir / "reports" / name)
     if text is None:
         return [f"missing reports/{name}"]
-    if not re.search(r"^Verdict: pass\s*$", text, re.M):
+    verdicts = VERDICT_RE.findall(text)
+    if len(verdicts) != 1:
+        return [f"reports/{name}: needs exactly one Verdict line, found {len(verdicts)}"]
+    if verdicts[0] != "pass":
         return [f"reports/{name}: Verdict is not pass"]
     return []
 
@@ -234,6 +240,9 @@ def check_run(run_dir, repo_dir):
         if read(run_dir / name) is None:
             problems.append(f"missing {name}")
 
+    if not (run_dir / "dashboard.html").is_file():
+        problems.append("missing dashboard.html: start it with swd-dashboard.py --watch --open <run>")
+
     tasks, _ = load_plan(run_dir)
     mode = run_mode(run_dir)
 
@@ -258,17 +267,20 @@ def check_run(run_dir, repo_dir):
             for heading in BUILDER_SECTIONS:
                 if heading not in found:
                     problems.append(f"reports/{name}: missing section '{heading}'")
-                elif heading in EVIDENCE_SECTIONS and not found[heading].strip():
-                    problems.append(f"reports/{name}: section '{heading}' is empty")
+                elif heading in EVIDENCE_SECTIONS and found[heading].strip().lower() in PLACEHOLDERS | {""}:
+                    problems.append(f"reports/{name}: section '{heading}' has no command output")
 
     # Reports the mode requires, then every checker report that exists: none may be a fail.
     # A prototype may still hold per-task reviews, for a risky task held to the production bar.
-    required = {"final-qa-engineer.md", "final-code-reviewer.md"}
+    required = {"final-qa-engineer.md"}
     if mode == "production":
-        required.add("final-security-reviewer.md")
         for task in tasks:
             if task["role"] in BUILDERS:
                 required |= {f"{task['id']}-code-reviewer.md", f"{task['id']}-security-reviewer.md"}
+        if len(tasks) > 1:  # with one task, its own reviews already covered the whole change
+            required |= {"final-code-reviewer.md", "final-security-reviewer.md"}
+    else:
+        required.add("final-code-reviewer.md")  # a prototype's only review
     present = set()
     for suffix in CHECKER_SUFFIXES:
         present |= {p.name for p in (run_dir / "reports").glob(f"*-{suffix}.md")}

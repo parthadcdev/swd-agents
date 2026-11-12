@@ -165,6 +165,24 @@ class StructureTest(unittest.TestCase):
     def test_principal_dispatches_security_review(self):
         self.assertIn("swd:security-reviewer", PRINCIPAL.read_text())
 
+    def test_deferred_review_findings_are_pinned(self):
+        # Each needle closes a minor finding from the whole-branch review.
+        text = PRINCIPAL.read_text()
+        for needle in (
+            "`Attempts` reaches 4",            # when a re-plan triggers is no longer ambiguous
+            "the last wave",                   # no wave QA straight before final QA
+            "only one task",                   # no final reviews repeating a one-task run's reviews
+            "files that changed",              # staging must not name a planned file that was never created
+            "already has files",               # git init must not strand existing files outside the base
+            "already exists",                  # an existing swd/<short-name> branch
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
+        self.assertIn("architect", (ROOT / "standards" / "production.md").read_text().split("## Performance")[1].split("## Docs")[0])
+        for name in ("devops-engineer", "docs-writer"):
+            with self.subTest(agent=name):
+                self.assertNotIn("test first", (ROOT / "agents" / f"{name}.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

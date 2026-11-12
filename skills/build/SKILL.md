@@ -48,10 +48,15 @@ Work through the sections below in order.
 2. If the project is a git repository with uncommitted changes (ignore
    anything under `.swd/`), stop and ask the user to commit or stash them.
    Their changes must not end up on the run's branch.
-3. If the folder is not a git repository, run `git init`, then
+3. If the folder is not a git repository and is empty, run `git init`, then
    `git commit --allow-empty -m "Initial commit"` so the run has a base.
+   If it is not a git repository and already has files, stop and ask the
+   user: the run needs those files committed as its base, and committing
+   someone's files is their decision. With their yes, run `git init`, then
+   add and commit the existing files as "Initial commit".
 4. Note the current commit as the base. Create and switch to the branch
-   `swd/<short-name>`.
+   `swd/<short-name>`. If that branch already exists, choose a different
+   short name.
 5. Create `<run>` and `<run>/reports/`. Write `<run>/decisions.md` with the
    first line `Base commit: <sha>`. Every later decision is appended below
    it; `check_run.py` uses that line to tell this run's commits from
@@ -150,7 +155,9 @@ in exactly this form (`check_run.py` reads it):
 
 Also create an empty `<run>/activity.md`.
 
-Then start the live dashboard. Run this as a background command, so it does
+Then start the live dashboard. This is required in every run, in both
+modes and whether or not the user is waiting; `check_run.py` fails a run
+that has no `dashboard.html`. Run this as a background command, so it does
 not block you, and tell the user the page is at `<run>/dashboard.html`:
 
 ```bash
@@ -213,14 +220,15 @@ What happens next depends on the mode.
 4. When both verdicts are `pass`, commit the task's files and set it `done`:
 
    ```bash
-   git add -- <the task's files> && git commit -m "T2: <title>"
+   git add -- <the task's files that changed> && git commit -m "T2: <title>"
    ```
 
    On either `Verdict: fail`, see Fix loop.
 5. When every task in the wave is `done`, dispatch `swd:qa-engineer` with
    the run folder path and the wave number, so the full suite runs before
    the next wave builds on it. A failing wave goes to the Fix loop. A
-   passing wave gets a `wave-done` line.
+   passing wave gets a `wave-done` line. Skip this for the last wave: final
+   QA runs the same suite straight afterwards.
 
 **Prototype mode:**
 
@@ -231,7 +239,7 @@ What happens next depends on the mode.
    commit with the subject `W<n>: <summary>`, and log `wave-done`:
 
    ```bash
-   git add -- <every file the wave's tasks own> && git commit -m "W1: <summary>"
+   git add -- <the wave's files that changed> && git commit -m "W1: <summary>"
    ```
 
 ## Fix loop
@@ -249,15 +257,18 @@ finished while a test fails or a finding is open.
   Increment the task's `Attempts`, set it `in-progress`, log a `fix` line,
   and re-check the result exactly as in Build. Fixes for unrelated failures
   go out in one message so they run in parallel.
-- **Three attempts, then re-plan.** If the same failure is still there after
-  three fix attempts, stop patching. Dispatch `swd:architect` with the
-  failing reports and ask for a root-cause re-plan. Check the amended plan
-  with `check_run.py --plan`, add any new tasks to the ledger, and build
-  them.
-- **If the re-planned work also fails**, set the task `blocked`, stop, and
-  report to the user with the evidence.
-- **A missing or unusable report:** re-dispatch the same task once. If it
-  happens again, count it as a fix attempt.
+- **Counting.** `Attempts` counts every dispatch of a task's builder: the
+  first build is 1 and each fix adds 1, whatever the failure was.
+- **Three fixes, then re-plan.** When a task still fails and its
+  `Attempts` reaches 4 (the build and three fixes), stop patching. Dispatch
+  `swd:architect` with the failing reports and ask for a root-cause
+  re-plan. Check the amended plan with `check_run.py --plan`, add any new
+  tasks to the ledger, and build them.
+- **If the re-planned work also fails**, give it one fix. If it still
+  fails, set the task `blocked`, stop, and report to the user with the
+  evidence.
+- **A missing or unusable report:** re-dispatch the same task. It counts
+  as an attempt like any other dispatch.
 - **A builder changed files it does not own:** reject the task and send it
   back to undo those changes.
 - **A builder's `## Concerns` says the plan is missing something or wrong:**
@@ -280,6 +291,10 @@ costs if wrong.
    the base commit when the mode is production, or when a prototype's change
    touches a trust boundary: authentication, secrets, user input that
    reaches a query or a shell, or payments.
+
+   In production mode, when the plan has only one task, dispatch final QA
+   alone. That task's own code and security reviews already covered the
+   whole change, so final reviews would repeat them.
 2. Send any failure through the Fix loop, then repeat step 1.
 3. Append the `done` line to `activity.md`, then check the run:
 
@@ -325,6 +340,8 @@ The branch is theirs to merge.
   such as a `.gitignore`: if the project needs it, it belongs to a task.
 - Never use `git add -A` or `git add .`. Stage only the files the task or
   wave owns, so build output and other stray files stay out of the commit.
+  Of those, name only the files that changed (`git status --short` lists
+  them): a planned file that was never created makes `git add` fail.
 - Never edit `plan.md` or an agent's report.
 - Never push, merge, or change the user's main branch.
 - Never run a destructive action (deleting data, dropping tables,

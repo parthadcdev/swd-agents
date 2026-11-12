@@ -58,6 +58,8 @@ build queries or shell commands by joining strings with user input.
 
 ## Performance
 
+- The architect's plan states the expected data sizes and sets a complexity
+  target for every part that handles data at scale.
 - Meet the complexity target the plan sets for your task.
 - State the time and space complexity of any non-trivial logic under
   `## Complexity` in your report. Write "trivial" when there is none.

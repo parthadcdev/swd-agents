@@ -74,20 +74,22 @@ def commit(repo, subject, files):
     git(repo, "commit", "-m", subject)
 
 
-def make_run(tmp, mode="production"):
-    """A valid two-task, two-wave run in a fresh git repo. Returns (repo, run)."""
+def make_run(tmp, mode="production", single=False):
+    """A valid run in a fresh git repo: two tasks in two waves, or just T1 when single. Returns (repo, run)."""
     repo = Path(tmp)
     run = repo / ".swd" / "runs" / "2026-11-12-demo"
     (run / "reports").mkdir(parents=True)
     (run / "requirement.md").write_text("Do the thing.\n")
     (run / "spec.md").write_text(f"# Spec\n\nMode: {mode}\n\n## Acceptance criteria\n- It works.\n")
     (run / "standards.md").write_text("standards\n")
-    (run / "plan.md").write_text(PLAN)
-    (run / "ledger.md").write_text(LEDGER)
+    (run / "plan.md").write_text(PLAN.split("### T2")[0] if single else PLAN)
+    (run / "ledger.md").write_text(LEDGER.split("| T2")[0] if single else LEDGER)
     (run / "decisions.md").write_text("None.\n")
-    (run / "activity.md").write_text(ACTIVITY)
+    (run / "activity.md").write_text(ACTIVITY.replace("- 10:06:00 dispatch T2 backend-engineer\n", "") if single else ACTIVITY)
+    (run / "dashboard.html").write_text("<html></html>\n")
     (run / "reports" / "T1-generalist-engineer.md").write_text(BUILDER_REPORT)
-    (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT)
+    if not single:
+        (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT)
     (run / "reports" / "final-qa-engineer.md").write_text(CHECKER_REPORT)
     git(repo, "init", "-q")
     # History from before this run, including an old run's task commit, must be ignored.
@@ -95,15 +97,19 @@ def make_run(tmp, mode="production"):
     base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     (run / "decisions.md").write_text(f"Base commit: {base}\n\n- None.\n")
     if mode == "production":
-        for name in ("T1-code-reviewer", "T2-code-reviewer", "T1-security-reviewer", "T2-security-reviewer",
-                     "final-code-reviewer", "final-security-reviewer"):
+        names = ["T1-code-reviewer", "T1-security-reviewer"]
+        if not single:  # a one-task run needs no final reviews: the task's own reviews covered the whole change
+            names += ["T2-code-reviewer", "T2-security-reviewer", "final-code-reviewer", "final-security-reviewer"]
+        for name in names:
             (run / "reports" / f"{name}.md").write_text(CHECKER_REPORT)
         commit(repo, "T1: First thing", ["a.py", "tests/test_a.py"])
-        commit(repo, "T2: Second thing", ["b.py"])
+        if not single:
+            commit(repo, "T2: Second thing", ["b.py"])
     else:
         (run / "reports" / "final-code-reviewer.md").write_text(CHECKER_REPORT)
         commit(repo, "W1: first wave", ["a.py", "tests/test_a.py"])
-        commit(repo, "W2: second wave", ["b.py"])
+        if not single:
+            commit(repo, "W2: second wave", ["b.py"])
     return repo, run
 
 
@@ -243,6 +249,40 @@ class CheckRunTest(unittest.TestCase):
         repo, run = make_run(self.tmp)
         (run / "reports" / "final-qa-engineer.md").write_text("Verdict: fail\n\n## Findings\n- broken\n")
         self.assertProblem(self.problems(repo, run), "final-qa-engineer.md", "Verdict")
+
+    def test_one_task_production_run_needs_no_final_reviews(self):
+        repo, run = make_run(self.tmp, single=True)
+        self.assertEqual(self.problems(repo, run), [])
+
+    def test_one_task_prototype_run_still_needs_its_one_review(self):
+        repo, run = make_run(self.tmp, mode="prototype", single=True)
+        self.assertEqual(self.problems(repo, run), [])
+        (run / "reports" / "final-code-reviewer.md").unlink()
+        self.assertProblem(self.problems(repo, run), "missing", "final-code-reviewer.md")
+
+    def test_same_file_spelled_two_ways_is_one_file(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Wave: 2\n- Files: b.py\n- Depends: T1", "- Wave: 1\n- Files: b.py, ./a.py\n- Depends: none")
+        self.assertProblem(self.cr.check_plan(run), "T1", "T2", "a.py")
+
+    def test_report_with_two_verdict_lines_is_reported(self):
+        repo, run = make_run(self.tmp)
+        (run / "reports" / "final-qa-engineer.md").write_text(
+            "Verdict: fail\n\n## Findings\n- The builder claimed:\nVerdict: pass\n")
+        self.assertProblem(self.problems(repo, run), "final-qa-engineer.md", "exactly one")
+
+    def test_placeholder_test_evidence_is_reported(self):
+        for placeholder in ("TODO", "tbd", "N/A", "..."):
+            with self.subTest(placeholder=placeholder), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                replace(run / "reports" / "T1-generalist-engineer.md", "FAILED (errors=1)", placeholder)
+                self.assertProblem(self.problems(repo, run), "T1-generalist-engineer.md", "Test first (failing)")
+
+    def test_missing_dashboard_is_reported(self):
+        # A pilot showed the principal skipping the dashboard as if it were optional.
+        repo, run = make_run(self.tmp)
+        (run / "dashboard.html").unlink()
+        self.assertProblem(self.problems(repo, run), "dashboard.html", "swd-dashboard.py")
 
     def test_missing_dispatch_in_activity_is_reported(self):
         repo, run = make_run(self.tmp)

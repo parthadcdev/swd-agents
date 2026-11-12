@@ -19,6 +19,7 @@ report in `reports/` must say `Verdict: pass`.
 | `ledger.md` | Principal only | One row per task: status, role, attempt count |
 | `activity.md` | Principal only | A timeline of the run, one line per event |
 | `decisions.md` | Principal | Every ruling and assumption made after the gate |
+| `dashboard.html` | `swd-dashboard.py`, started by the principal | The live view of the run; never edited by hand |
 | `reports/*.md` | The agent that did the work | One report per piece of work |
 
 An agent writes only its owned files and its own report.
@@ -168,7 +169,9 @@ Verdict: fail
 - shop/cart.py:14 — apply_discount subtracts the percent as an amount. Multiply by (1 - percent / 100).
 ```
 
-The verdict line is exactly `Verdict: pass` or `Verdict: fail`.
+The verdict line is exactly `Verdict: pass` or `Verdict: fail`, and a report
+has exactly one. Do not quote another report's verdict line at the start of
+a line.
 
 | Report | File |
 |---|---|
