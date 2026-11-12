@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 REQUIRED_FILES = [
     ".claude-plugin/plugin.json",
+    ".claude-plugin/marketplace.json",
     "README.md",
     "standards/run-folder.md",
     "scripts/check_run.py",
@@ -65,6 +66,32 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(manifest["name"], "swd")
         self.assertTrue(manifest.get("description"))
         self.assertTrue(manifest.get("version"))
+        self.assertTrue(manifest["author"].get("name"))
+        self.assertNotIn("email", manifest["author"])
+
+    def test_marketplace(self):
+        marketplace = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+        plugin = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
+        self.assertTrue(re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", marketplace["name"]))
+        self.assertTrue(marketplace["owner"]["name"])
+        self.assertNotIn("email", marketplace["owner"])
+        self.assertEqual(len(marketplace["plugins"]), 1)
+        self.assertEqual(marketplace["plugins"][0]["name"], plugin["name"])
+        source = marketplace["plugins"][0]["source"]
+        self.assertIsInstance(source, str)
+        self.assertEqual((ROOT / source).resolve(), ROOT)
+        self.assertNotIn("version", marketplace["plugins"][0])
+
+    def test_readme_install_lines(self):
+        marketplace = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+        plugin = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
+        readme = (ROOT / "README.md").read_text()
+        self.assertRegex(readme, r"(?m)^/plugin marketplace add parthadcdev/swd-agents$")
+        expected_line = "/plugin install %s@%s" % (plugin["name"], marketplace["name"])
+        self.assertRegex(readme, r"(?m)^" + re.escape(expected_line) + r"$")
+        install_lines = [line.strip() for line in readme.splitlines() if line.strip().startswith("/plugin install ")]
+        self.assertEqual(install_lines, [expected_line])
+        self.assertIn("claude --plugin-dir", readme)
 
     def test_required_agents_exist(self):
         missing = [a for a in REQUIRED_AGENTS if not (ROOT / "agents" / f"{a}.md").is_file()]

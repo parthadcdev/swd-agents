@@ -10,15 +10,18 @@ specialist agents until the work is built, tested and committed on a branch.
 - Python 3 (standard library only), for the run checker
 - git
 
-## Use
+## Install
 
-Load the plugin for a session:
+In Claude Code, add this repository as a marketplace and install the plugin:
 
-```bash
-claude --plugin-dir /path/to/swd-agents
+```
+/plugin marketplace add parthadcdev/swd-agents
+/plugin install swd@swd-agents
 ```
 
-Then, in the project you want work done in:
+## Use
+
+In the project you want work done in:
 
 ```
 /swd:build <your requirement>
@@ -69,6 +72,14 @@ the spec, the plan, a task ledger and a live activity timeline.
   showing the ledger and the timeline.
 
 ## Develop
+
+To run a local checkout without installing it:
+
+```bash
+claude --plugin-dir /path/to/swd-agents
+```
+
+To validate and test:
 
 ```bash
 python3 -m unittest discover -s tests -v

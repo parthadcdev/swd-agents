@@ -1,0 +1,16 @@
+{
+  "name": "swd-agents",
+  "owner": {
+    "name": "parthadcdev"
+  },
+  "metadata": {
+    "description": "The swd plugin: a principal engineer agent running a team of specialist software engineering agents."
+  },
+  "plugins": [
+    {
+      "name": "swd",
+      "source": "./",
+      "description": "A principal engineer agent running a team of specialist software engineering agents, from requirement to tested code."
+    }
+  ]
+}
