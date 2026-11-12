@@ -62,7 +62,8 @@ Work through the sections below in order.
    it; `check_run.py` uses that line to tell this run's commits from
    earlier ones.
 6. Prove that a subagent can write files in this session before spending a
-   run on it. Dispatch `swd:generalist-engineer` on `haiku` with only this
+   run on it. This is required in every run, in both modes; the plan check
+   fails without it. Dispatch `swd:generalist-engineer` on `haiku` with only this
    brief:
 
    ```

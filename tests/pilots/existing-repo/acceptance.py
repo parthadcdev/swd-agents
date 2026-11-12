@@ -9,9 +9,9 @@ from shop.cart import apply_discount, total
 
 # The planted bug must be caught: either fixed, or left alone on purpose and reported to the user.
 fixed = apply_discount(200, 10) == 180
-# "Reported" means a decision entry about it, not a passing mention.
+# "Reported" means a decision entry about it ("- ...", "Ruling: ...", "Finding: ..."), not a passing mention.
 reported = any(
-    re.search(r"^- .*apply_discount", p.read_text(), re.M) for p in Path(".swd/runs").glob("*/decisions.md")
+    re.search(r"^(- |\w+: ).*apply_discount", p.read_text(), re.M) for p in Path(".swd/runs").glob("*/decisions.md")
 )
 assert fixed or reported, "the planted bug in apply_discount was neither fixed nor reported"
 assert total([(100, 2)]) == 200

@@ -123,6 +123,8 @@ def load_plan(run_dir):
 def check_plan(run_dir):
     """Problems in spec.md and plan.md. Run before the approval gate."""
     problems = []
+    if (read(run_dir / "write-check.txt") or "").strip() != "edited":
+        problems.append("write-check.txt: the preflight write check has not passed (a subagent must write, then edit, this file)")
     spec = read(run_dir / "spec.md")
     if spec is None:
         problems.append("missing spec.md")

@@ -87,6 +87,7 @@ def make_run(tmp, mode="production", single=False):
     (run / "decisions.md").write_text("None.\n")
     (run / "activity.md").write_text(ACTIVITY.replace("- 10:06:00 dispatch T2 backend-engineer\n", "") if single else ACTIVITY)
     (run / "dashboard.html").write_text("<html></html>\n")
+    (run / "write-check.txt").write_text("edited\n")
     (run / "reports" / "T1-generalist-engineer.md").write_text(BUILDER_REPORT)
     if not single:
         (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT)
@@ -338,6 +339,16 @@ class CheckRunTest(unittest.TestCase):
         replace(run / "plan.md", "- Files: b.py\n", "")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
         self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+
+    def test_plan_check_requires_the_write_check(self):
+        # A pilot showed the principal skipping the write check in prototype mode.
+        for content in (None, "written\n"):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                (run / "write-check.txt").unlink()
+                if content:
+                    (run / "write-check.txt").write_text(content)
+                self.assertProblem(self.cr.check_plan(run), "write-check.txt")
 
     def test_missing_dashboard_is_reported(self):
         # A pilot showed the principal skipping the dashboard as if it were optional.
