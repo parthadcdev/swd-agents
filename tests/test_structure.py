@@ -119,7 +119,7 @@ class StructureTest(unittest.TestCase):
 
     def test_principal_watch_and_activity(self):
         text = PRINCIPAL.read_text()
-        for needle in ("activity.md", "swd-watch.sh", "HERDR_PANE_ID"):
+        for needle in ("activity.md", "swd-watch.sh", "swd-log.sh", "HERDR_PANE_ID"):
             self.assertIn(needle, text)
 
 

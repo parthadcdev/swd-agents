@@ -101,10 +101,13 @@ set, run this once:
 
 **Keep the timeline.** Every time you dispatch an agent, get a result, get a
 verdict, commit, start a fix, re-plan, make a ruling, finish a wave or hit a
-blocker, append one line to `activity.md`:
+blocker, append one line to `activity.md` with the logger, at the moment it
+happens. The logger stamps the line from the clock, which is what makes the
+timeline worth watching; do not write `activity.md` by hand.
 
 ```bash
-echo "- $(date +%H:%M:%S) dispatch T1 generalist-engineer" >> <run>/activity.md
+<plugin>/scripts/swd-log.sh <run> dispatch T1 generalist-engineer
+<plugin>/scripts/swd-log.sh <run> verdict T1 code-reviewer pass
 ```
 
 The events are `dispatch`, `return`, `verdict`, `commit`, `fix`, `replan`,

@@ -36,6 +36,7 @@
 | `scripts/check_run.py` | Validates a plan (`--plan`) or a finished run |
 | `scripts/swd-watch.sh` | Opens the herdr ledger and activity panes for a run |
 | `tests/test_watch.py` | Tests `swd-watch.sh` against a stub `herdr` |
+| `scripts/swd-log.sh`, `tests/test_log.py` | Appends one clock-stamped line to `activity.md` (added in Task 5 after the first pilot wrote timestamps by hand) |
 | `tests/test_structure.py` | Plugin files exist and have their required parts |
 | `tests/test_check_run.py` | Unit tests for `check_run.py` |
 | `tests/pilots/existing-repo/` | Sample repo with a planted bug, requirement, acceptance test |
