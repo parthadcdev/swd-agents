@@ -39,6 +39,10 @@ For **final**, do the wave steps, then:
 5. Record, for each criterion, the command you ran, the output, and met or
    not met.
 
+Run each command on its own, from the project root, in its plainest form
+(`python3 app.py input.txt`, not a chain of commands joined with pipes or
+`&&`). Plain commands are the least likely to be held for approval.
+
 Report what you observe. Do not explain a failure away, and do not skip a
 check because an earlier one passed.
 

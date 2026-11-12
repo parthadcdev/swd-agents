@@ -17,7 +17,11 @@ REQUIRED_FILES = [
     "scripts/swd-log.sh",
     "standards/prototype.md",
 ]
-REQUIRED_AGENTS = ["architect", "generalist-engineer", "code-reviewer", "qa-engineer"]
+REQUIRED_AGENTS = [
+    "architect", "generalist-engineer", "backend-engineer", "frontend-engineer",
+    "database-engineer", "devops-engineer", "docs-writer",
+    "code-reviewer", "security-reviewer", "qa-engineer",
+]
 CHECKERS = ["code-reviewer", "security-reviewer", "qa-engineer"]
 AGENT_SECTIONS = ["## Responsibility", "## Inputs", "## Process", "## Report", "## Never"]
 PRINCIPAL = ROOT / "skills" / "build" / "SKILL.md"
@@ -122,6 +126,7 @@ class StructureTest(unittest.TestCase):
     def test_pilot_lessons_are_pinned(self):
         # Each of these was a real failure in a pilot run.
         self.assertIn("git add -A", PRINCIPAL.read_text())
+        self.assertIn("| Task | Role | Status | Attempts |", PRINCIPAL.read_text())
         self.assertIn(".gitignore", (ROOT / "agents" / "architect.md").read_text())
         self.assertIn("cannot run", (ROOT / "agents" / "code-reviewer.md").read_text())
 
@@ -134,6 +139,16 @@ class StructureTest(unittest.TestCase):
         text = PRINCIPAL.read_text()
         for needle in ("Mode: prototype", "Mode: production", "W<n>:", "model"):
             self.assertIn(needle, text)
+
+    def test_roster_matches_checker(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import check_run
+        builders = {p.stem for p in agent_files()} - {"architect", *CHECKERS}
+        self.assertEqual(builders, check_run.BUILDERS)
+
+    def test_principal_dispatches_security_review(self):
+        self.assertIn("swd:security-reviewer", PRINCIPAL.read_text())
 
 
 if __name__ == "__main__":

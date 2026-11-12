@@ -22,8 +22,16 @@ that path. `<run>` means the run folder,
 the absolute path.
 
 **The team.** Dispatch specialists with the Agent tool, using these agent
-types: `swd:architect`, `swd:generalist-engineer`, `swd:code-reviewer`,
-`swd:qa-engineer`. An agent starts with no knowledge of this conversation.
+types:
+
+- Designs: `swd:architect`
+- Builders: `swd:generalist-engineer`, `swd:backend-engineer`,
+  `swd:frontend-engineer`, `swd:database-engineer`, `swd:devops-engineer`,
+  `swd:docs-writer`
+- Checkers: `swd:code-reviewer`, `swd:security-reviewer`, `swd:qa-engineer`
+
+Each task in `plan.md` names its builder role; dispatch that agent type. A
+run uses only the roles its plan names, so a one-task plan gets one builder. An agent starts with no knowledge of this conversation.
 It knows only its brief and what is in the run folder, so anything it needs
 must be in one of those.
 
@@ -121,8 +129,16 @@ Never.
 ## Build
 
 Start by writing `<run>/ledger.md` with every task `todo` and `Attempts` 0,
-`<run>/decisions.md` beginning with the line `Base commit: <sha>`, and an
-empty `<run>/activity.md`. If the `HERDR_PANE_ID` environment variable is
+in exactly this form (`check_run.py` reads it):
+
+```markdown
+| Task | Role | Status | Attempts |
+|---|---|---|---|
+| T1 | generalist-engineer | todo | 0 |
+```
+
+Also write `<run>/decisions.md` beginning with the line
+`Base commit: <sha>`, and an empty `<run>/activity.md`. If the `HERDR_PANE_ID` environment variable is
 set, run this once:
 
 ```bash
@@ -169,15 +185,16 @@ What happens next depends on the mode.
 
 **Production mode:**
 
-3. Set the task `in-review` and dispatch `swd:code-reviewer` with the run
-   folder path and the task id.
-4. On `Verdict: pass`, commit the task's files and set it `done`:
+3. Set the task `in-review` and dispatch `swd:code-reviewer` and
+   `swd:security-reviewer` in one message, each with the run folder path
+   and the task id, so they review in parallel.
+4. When both verdicts are `pass`, commit the task's files and set it `done`:
 
    ```bash
    git add -- <the task's files> && git commit -m "T2: <title>"
    ```
 
-   On `Verdict: fail`, see Fix loop.
+   On either `Verdict: fail`, see Fix loop.
 5. When every task in the wave is `done`, dispatch `swd:qa-engineer` with
    the run folder path and the wave number, so the full suite runs before
    the next wave builds on it. A failing wave goes to the Fix loop. A
@@ -236,6 +253,11 @@ costs if wrong.
    `final` and the base commit, in one message. This happens in both modes;
    in prototype mode it is the only review, and the reviewer writes
    `reports/final-code-reviewer.md`.
+
+   In the same message, dispatch `swd:security-reviewer` with `final` and
+   the base commit when the mode is production, or when a prototype's change
+   touches a trust boundary: authentication, secrets, user input that
+   reaches a query or a shell, or payments.
 2. Send any failure through the Fix loop, then repeat step 1.
 3. Append the `done` line to `activity.md`, then check the run:
 

@@ -42,7 +42,20 @@ Your brief gives you the run folder path. Read, in this order:
    data at scale.
 5. **Break the work into tasks.** Each task is one builder's work with its
    own test. Give each the five fields the format requires. List every file
-   the task may create or change, including its tests.
+   the task may create or change, including its tests. Assign each task the
+   role that fits:
+
+   | Role | Assign it |
+   |---|---|
+   | `backend-engineer` | APIs, services, business logic, background jobs |
+   | `frontend-engineer` | Pages, components, client-side logic |
+   | `database-engineer` | Schemas, migrations, indexes, queries |
+   | `devops-engineer` | CI, build scripts, containers, deploy config |
+   | `docs-writer` | README, usage docs, changelog, when they are a task of their own |
+   | `generalist-engineer` | Anything else: CLIs, libraries, scripts; and small changes that span the above |
+
+   Use a specialist only when the work is really in that specialty. A small
+   change is one `generalist-engineer` task, docs included.
 6. **Group tasks into waves.** Tasks in the same wave run at the same time,
    so no file may appear in two tasks of one wave, and a task may depend
    only on tasks in earlier waves. Put as much as possible in the same wave.
