@@ -31,14 +31,27 @@ copy. Your brief names it on the `Work in:` line, and you start in it: your
 shell's working directory is already the worktree. Run `pwd` once to
 confirm; if it prints anything else, stop and say so in your report.
 
-Run commands plainly from there, without `cd` and without chaining commands
-with `&&` or pipes where you can avoid it. Plain commands are the least
-likely to be held for approval. With the file tools, use paths under the
-worktree. File paths in `plan.md` and in reports are relative to it.
+Run commands plainly from there, without `cd`: one plain command per call,
+with no shell variables, no `;` or `&&` chains, and no pipes where you can
+avoid them. Plain commands are the least likely to be held for approval.
+Read files with the Read tool, not with `cat`. With the file tools, use
+paths under the worktree. File paths in `plan.md` and in reports are
+relative to it.
+
+If a command is refused, that is usually about the form of that one command,
+not about your access to the shell. Run it again as one plain command, or
+split it into several. Report a permission problem as a blocker only when
+one plain command, such as `pwd` or the task's check command on its own, is
+refused too, and quote the exact command and the refusal in your report.
 
 The run folder is somewhere else, at the path your brief gives on the
 `Run folder:` line. Never change anything in the project outside the
 worktree.
+
+Files you need only for your own checking (sample inputs, captured output,
+throwaway scripts) are not part of the project. Put them in `scratch/`
+inside the run folder, never in the worktree and never in the user's
+working copy.
 
 ## spec.md
 

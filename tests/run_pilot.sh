@@ -45,8 +45,21 @@ ALLOWED=(
 claude -p --plugin-dir "$ROOT" --model sonnet --permission-mode acceptEdits \
   --setting-sources project,local --add-dir "$ROOT" \
   --allowedTools "${ALLOWED[@]}" \
+  --output-format json \
   -- "Use the swd:build skill for this requirement: $(cat "$PILOT/requirement.txt")" \
-  | tee "$TMP.output.txt"
+  > "$TMP.output.json" || true
+# Print the principal's final message, then every command the permission system refused:
+# a refused command is the usual reason a pilot stalls, and the allowlist above is the fix.
+python3 - "$TMP.output.json" <<'PY'
+import json, sys
+try:
+    out = json.load(open(sys.argv[1]))
+except (OSError, ValueError) as error:
+    sys.exit(f"no usable output from claude: {error}")
+print(out.get("result", ""))
+for denial in out.get("permission_denials", []):
+    print("REFUSED:", denial.get("tool_name"), json.dumps(denial.get("tool_input"))[:300])
+PY
 
 pkill -f "swd-dashboard.py --watch.*$TMP" 2>/dev/null || true  # in case the run stopped before 'done'
 

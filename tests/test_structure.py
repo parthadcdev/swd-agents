@@ -251,6 +251,14 @@ class StructureTest(unittest.TestCase):
                 self.assertIn("`Work in:`", agent)
                 self.assertIn("without `cd`", agent)
         self.assertIn("without `cd`", (ROOT / "standards" / "run-folder.md").read_text())
+        # A pilot's builder had one chained command refused and gave up as if it had no shell.
+        shared = (ROOT / "standards" / "run-folder.md").read_text()
+        self.assertIn("one plain command", shared)
+        self.assertIn("Read tool", shared)
+        self.assertIn("one plain command", text)
+        # A pilot's QA wrote sample input files into the project. Scratch files belong to the run folder.
+        self.assertIn("scratch/", (ROOT / "standards" / "run-folder.md").read_text())
+        self.assertIn("scratch/", (ROOT / "agents" / "qa-engineer.md").read_text())
 
 
 if __name__ == "__main__":

@@ -45,6 +45,11 @@ For **final**, do the wave steps, then:
 5. Record, for each criterion, the command you ran, the output, and met or
    not met.
 
+If a check needs a sample input or a throwaway file, create it in
+`scratch/` inside the run folder and pass its path to the program. Do not
+create files in the worktree or anywhere else in the project: a stray file
+there shows up as an uncommitted change and fails the run.
+
 Run each command on its own, from the project root, in its plainest form
 (`python3 app.py input.txt`, not a chain of commands joined with pipes or
 `&&`). Plain commands are the least likely to be held for approval.

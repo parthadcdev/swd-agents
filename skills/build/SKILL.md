@@ -361,8 +361,11 @@ finished while a test fails or a finding is open.
 - **A missing or unusable report:** re-dispatch the same task. It counts
   as an attempt like any other dispatch.
 - **A dispatch refused by the permission system** did no work, so it is a
-  blocker and not a failed attempt. If an agent reports that its Write,
-  Edit or Bash calls were refused, set the task's `Attempts` back to what
+  blocker and not a failed attempt. One refused command is not that: an
+  agent whose chained or unusual command was refused should have retried
+  it as one plain command, so if its report does not show that a plain
+  command was refused too, send it back to try again. If an agent reports
+  that its Write, Edit or plain Bash calls were refused, set the task's `Attempts` back to what
   it was, set the task `blocked`, log `blocked`, and stop and ask the user
   to change the permission mode. Do not dispatch again into the same
   refusal, and do not do the agent's writing for it.
