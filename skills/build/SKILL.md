@@ -318,6 +318,16 @@ The events are `dispatch`, `return`, `verdict`, `commit`, `fix`, `replan`,
 `ruling`, `wave-done`, `blocked` and `done`. Put the task id right after the
 event.
 
+Each time you log an event, also say one short line to the user in the
+conversation: what just happened and what is next, with the count of tasks
+done out of the total. For example: `T2 passed code and security review and is
+committed (2 of 5 tasks done). Starting wave 2.` One line per moment, not per
+log call: events that happen together, such as a wave's dispatches or two
+verdicts arriving together, share one line. It is plain text in your reply,
+not a tool call, and it never replaces the log line: `activity.md` is still
+written by the logger. This lets the user follow the run in any host, without
+the dashboard or herdr.
+
 **Only you write the ledger.** Update a task's row whenever its status or
 attempt count changes.
 

@@ -140,6 +140,9 @@ the spec, the plan, a task ledger and a live activity timeline.
   [herdr](https://herdr.dev), the principal also opens two extra panes
   showing the ledger and the timeline. In the Herdr desktop app it opens two
   separate terminals instead of panes.
+- **In the conversation:** at each step the principal also says one short line
+  in the chat: what just happened, what is next, and how many tasks are done
+  out of the total. This works in any host, with or without the dashboard.
 
 ## Develop
 

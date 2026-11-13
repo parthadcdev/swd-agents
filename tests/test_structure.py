@@ -191,6 +191,16 @@ class StructureTest(unittest.TestCase):
         for needle in ("activity.md", "swd-watch.sh", "swd-log.sh", "swd-dashboard.py --watch --open", "HERDR_PANE_ID", "HC_TERMINAL_SOCKET"):
             self.assertIn(needle, text)
 
+    def test_principal_reports_progress_in_conversation(self):
+        text = " ".join(PRINCIPAL.read_text().split())
+        for needle in (
+            "also say one short line to the user in the conversation",
+            "out of the total",
+            "One line per moment, not per log call",
+            "never replaces the log line",
+        ):
+            self.assertIn(needle, text)
+
     def test_principal_covers_both_modes(self):
         text = PRINCIPAL.read_text()
         for needle in ("Mode: prototype", "Mode: production", "W<n>:", "model"):

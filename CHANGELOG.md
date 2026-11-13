@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+- Progress in the conversation: each time the principal logs an event, it
+  also says one short line in the chat, with the tasks done out of the total,
+  so a run can be followed in any host without the dashboard or herdr.
+
 ## 0.7.0
 
 - Herdr desktop app: when `HC_TERMINAL_SOCKET` is set, `scripts/swd-watch.sh`
