@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_run import decision  # noqa: E402
 
 POLL_SECONDS = 20
+APPEAR_SECONDS = 30  # how long a check may take to show up on a pull request after a push
 FAILED = {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"}
 PENDING = {"IN_PROGRESS", "QUEUED", "PENDING", "WAITING", "REQUESTED", "EXPECTED"}
 
@@ -81,13 +82,16 @@ def main(argv=None):
     memory = run_dir / "pr-feedback.json"
     handled = set(json.loads(memory.read_text())) if memory.exists() else set()
 
-    deadline = time.monotonic() + args.wait
+    start = time.monotonic()
+    deadline = start + args.wait
     try:
         while True:
             pr, failing, pending, feedback = look(project, branch)
-            if not pending or pr.get("state") != "OPEN" or time.monotonic() >= deadline:
+            # No checks at all may mean none have appeared yet: this is usually called right after a push.
+            unseen = not pr.get("statusCheckRollup") and time.monotonic() < start + APPEAR_SECONDS
+            if not (pending or unseen) or pr.get("state") != "OPEN" or time.monotonic() >= deadline:
                 break
-            time.sleep(POLL_SECONDS)
+            time.sleep(POLL_SECONDS if pending else 5)
     except (RuntimeError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
         print(f"could not read the pull request for {branch}: {error}", file=sys.stderr)
         return 1

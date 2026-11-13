@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "swd-pr.py"
 
 # gh pr view ... -> view.json ; gh api .../comments -> inline.json. Missing file: gh fails.
+# view-once.json, when present, answers one `gh pr view` and is then gone.
 GH_STUB = """#!/bin/sh
+if [ "$1 $2" = "pr view" ] && [ -f "$GH_STUB_DIR/view-once.json" ]; then
+  cat "$GH_STUB_DIR/view-once.json"; rm "$GH_STUB_DIR/view-once.json"; exit 0
+fi
 case "$1 $2" in
   "pr view") f="$GH_STUB_DIR/view.json" ;;
   "api "*)   f="$GH_STUB_DIR/inline.json" ;;
@@ -54,6 +58,13 @@ class PrTest(unittest.TestCase):
                                 capture_output=True, text=True, env=self.env)
         self.assertNotIn("Traceback", result.stderr)
         return result
+
+    def test_waiting_gives_a_check_time_to_appear_after_a_push(self):
+        # Just after a push the pull request has no checks yet; the failing one shows up seconds later.
+        self.pr(checks=[BAD_CHECK])
+        view = json.loads((self.stub / "view.json").read_text())
+        (self.stub / "view-once.json").write_text(json.dumps({**view, "statusCheckRollup": []}))
+        self.assertEqual(self.check("--wait", "60").returncode, 10)
 
     def test_green_with_no_feedback_needs_nothing(self):
         result = self.check()
