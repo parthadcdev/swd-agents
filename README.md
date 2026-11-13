@@ -138,7 +138,8 @@ the spec, the plan, a task ledger and a live activity timeline.
   `python3 scripts/swd-dashboard.py <run folder>`.
 - **In the terminal:** if you run Claude Code inside
   [herdr](https://herdr.dev), the principal also opens two extra panes
-  showing the ledger and the timeline.
+  showing the ledger and the timeline. In the Herdr desktop app it opens two
+  separate terminals instead of panes.
 
 ## Develop
 

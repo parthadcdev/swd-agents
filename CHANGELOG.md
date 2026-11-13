@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0
+
+- Herdr desktop app: when `HC_TERMINAL_SOCKET` is set, `scripts/swd-watch.sh`
+  starts the ledger and activity watchers as two terminals with `hc run`
+  (labelled `swd=ledger` and `swd=activity`). The herdr pane path is unchanged.
+
 ## 0.6.0
 
 - Recorded test evidence: builders run their check through

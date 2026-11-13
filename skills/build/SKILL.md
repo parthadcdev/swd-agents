@@ -296,7 +296,7 @@ python3 <plugin>/scripts/swd-dashboard.py --watch --open <run>
 It opens a page in the user's browser showing the tasks by wave and the
 timeline, rebuilds it every two seconds from the ledger and `activity.md`,
 and stops by itself once you log `done`. It needs nothing more from you,
-which is one more reason to keep the ledger and timeline current. If the `HERDR_PANE_ID` environment variable is
+which is one more reason to keep the ledger and timeline current. If the `HERDR_PANE_ID` or the `HC_TERMINAL_SOCKET` environment variable is
 set, run this once:
 
 ```bash

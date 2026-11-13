@@ -188,7 +188,7 @@ class StructureTest(unittest.TestCase):
 
     def test_principal_watch_and_activity(self):
         text = PRINCIPAL.read_text()
-        for needle in ("activity.md", "swd-watch.sh", "swd-log.sh", "swd-dashboard.py --watch --open", "HERDR_PANE_ID"):
+        for needle in ("activity.md", "swd-watch.sh", "swd-log.sh", "swd-dashboard.py --watch --open", "HERDR_PANE_ID", "HC_TERMINAL_SOCKET"):
             self.assertIn(needle, text)
 
     def test_principal_covers_both_modes(self):
