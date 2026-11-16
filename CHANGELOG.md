@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.8.3
+
+- The principal runs on Fable 5.2, always. `/swd:build` and
+  `/swd:follow` tell it to check which model it is on, only from its
+  own system and session information, at the start of every turn and
+  again before every action that changes anything outside its own
+  reply, such as a dispatch, ruling, commit, merge, push, reply on a
+  pull request or write to the run folder, since an automatic
+  fallback can change the model in the middle of a turn. On any other
+  model, or when it cannot tell, it does no principal work and changes
+  nothing for the run outside its reply: it says which model it is on
+  and that the run continues once you run `/model fable` and send a
+  message, and stops. This replaces the gate's "the model is their
+  choice".
+- A `PreModelSwitch` hook cancels a switch away from Fable 5.2 while
+  swd mode is on in the session, and says why; run `/swd:off` to
+  switch anyway. A switch to Fable 5.2 is never cancelled. The hook
+  reads no file in your project, so a repository you clone cannot
+  lock your model or write into its message. It lets a switch through
+  when it cannot read its input or cannot decide within 3 seconds, so
+  a hung home folder never locks your model. Claude Code 2.1.321 or
+  later is required (Fable 5.2 needs it).
+- swd mode turns off only when "stop swd" or `/swd:off` is the whole
+  message (letter case and spaces around it ignored). Before, the
+  words anywhere in a message turned it off, and so did a background
+  agent's report or another session's message that quoted them. If
+  you used to type "stop swd" inside a longer sentence, send it on
+  its own.
+- The swd-mode hook counts only a regular file as its flag, so a
+  folder left at the flag's path no longer cancels every switch with
+  a `/swd:off` that cannot remove it. `/swd:on` replaces a symbolic
+  link at that path instead of writing through it, and input nested
+  too deeply is ignored silently.
+- `/swd:follow` asks for Fable 5.2 at high effort (`model: fable`,
+  `effort: high`) and turns swd mode on, as `/swd:build` does.
+- While swd mode is on, the text it adds to every prompt carries the
+  same rule, so it is in front of the session before a skill loads.
+- `/swd:queue` starts every run with `--model fable`. A `Model:` line in
+  `.swd/queue.md` is ignored, and the script prints one line saying so.
+
 ## 0.8.2
 
 - `/swd:follow` acts only on feedback from the repository's owner,

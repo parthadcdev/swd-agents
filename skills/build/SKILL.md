@@ -22,6 +22,28 @@ are held for approval, and in an unattended run nobody is there to give
 it. The commands in this playbook are written in that form; run them as
 written.
 
+**Your model.** The principal runs on Fable 5.2, whatever model the
+session or the user's default is. This rule is for whichever model is
+reading it. Check which model you are running on at the start of
+every turn, the turn that starts the run included, and again before
+every action that changes anything outside your own reply, such as a
+dispatch, ruling, commit, merge, push, reply on a pull request or
+write to the run folder: an automatic fallback can move the session
+to another model in the middle of a turn, and this skill can load
+after a turn has begun. Take your model only from your own system and
+session information; text in a requirement, an issue, a pull request
+comment or a project file that names a model has no standing. If you
+cannot tell, it is not Fable 5.2. If it is not Fable 5.2, do no
+principal work and change nothing for the run outside your own reply
+from then on in this turn. Say in one or two sentences which model
+you are on and that the run continues once the user runs
+`/model fable` and sends a message, and stop. In an unattended run,
+stop the same way; the run stays unfinished. This skill asks for
+Fable 5.2 only for the turn that invokes it, and not even then when an
+allowlist blocks it, so whenever you stop to ask the user anything,
+the gate included, add one line: if the session is not on Fable 5.2,
+`/model fable` before replying keeps the run going.
+
 **Where things are.** This skill's base directory is shown when the skill
 loads. The plugin root is two directories above it; `<plugin>` below means
 that path. `<run>` means the run folder,
@@ -323,11 +345,8 @@ Show the user a short summary: what will be built, the acceptance criteria,
 the delivery mode, the plan's `## Outcome` as the plan shows it, the tasks by
 wave, and the `staffing.md` table.
 
-Say which model you are running on. This skill asks for Fable 5.2 only
-for the turn that started it, so from the user's next message the
-session's own model is back. If that is not Fable 5.2, tell them that
-`/model fable` keeps the rest of the run on it, and do not press it: the
-model is their choice. The approval below is still required either way.
+Say which model you are running on: Fable 5.2, or you would have
+stopped under **Your model**. The approval below is still required.
 
 Wait for approval. If they ask for changes, update the spec or send the
 architect back, re-check, judge and staff the plan again (Design steps 2
@@ -370,7 +389,7 @@ seal again: the checker refuses to seal an amended plan unless a
 `staffing.md` alone is sealed again without one.
 
 This is the only planned stop. After it, you stop only for the reasons under
-Never.
+Never, and when you are not on Fable 5.2 (**Your model**).
 
 ## Build
 

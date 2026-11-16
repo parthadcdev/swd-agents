@@ -7,7 +7,7 @@ chose: merged and pushed, in a pull request, or left on a branch.
 
 ## Requirements
 
-- Claude Code
+- Claude Code 2.1.321 or later (Fable 5.2 needs it)
 - Python 3 (standard library only), for the run checker
 - git
 
@@ -42,13 +42,16 @@ agree.
 `/swd:build` handles one requirement. To keep the team on for the rest of a
 session, use swd mode:
 
-- **On:** running `/swd:build` or `/swd:on` turns it on for that session.
+- **On:** running `/swd:build`, `/swd:follow` or `/swd:on` turns it on
+  for that session.
 - **While on:** every request that changes the project's code, tests,
   configuration or docs goes through the team, as if you had typed
   `/swd:build` for it. Questions, reviews and status requests are answered
   directly.
-- **Off:** say "stop swd" or run `/swd:off`. New sessions always start with
-  it off.
+- **Off:** send "stop swd" or `/swd:off` as a message on its own.
+  Inside a longer message the words do nothing, so a message or an
+  agent's report that quotes them cannot turn swd mode off. New
+  sessions always start with it off.
 
 ## Hand it a backlog
 
@@ -85,11 +88,24 @@ needs.
 
 ## Models
 
-- `/swd:build` asks for Fable 5.2 at high effort. The pin lasts for the
-  turn that runs it, so an interactive run returns to your session's model
-  at your next message (your answer to a question, or your approval at the
-  gate). Start the session on Fable 5.2 (`/model fable`) to keep the whole
-  run on it.
+- The principal runs on Fable 5.2. `/swd:build` and `/swd:follow` ask
+  for it at high effort, but only for the turn that runs them, and not
+  when an allowlist blocks it, so start the session on it
+  (`/model fable`). On any other model the principal does no work: it
+  checks its model at the start of every turn and before every action
+  that changes anything outside its reply (a commit, a merge or a
+  push, for example), says which model it is on, and waits for you to
+  run `/model fable` and send a message. The hook below does not see
+  an automatic fallback (Claude Code moving a flagged request to
+  another model); the principal stops then too.
+- While swd mode is on in the session, a hook cancels a `/model`
+  switch away from Fable 5.2 and says why; run `/swd:off` to switch
+  anyway. The hook reads no file in your project, so a repository you
+  clone cannot lock your model. It never locks your model: if it
+  cannot read its input, or cannot decide within 3 seconds (a hung
+  home folder, for example), it lets the switch through.
+- `/swd:queue` starts every run on Fable 5.2 and ignores a `Model:`
+  line.
 - The model and effort for each task, review and check follow
   `standards/models.md`, the team's standing rule. It is replaced when
   Anthropic publishes newer guidance.

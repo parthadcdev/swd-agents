@@ -29,13 +29,9 @@ Finish: pr
 - `- [ ] #42` means GitHub issue 42: its title and body become the
   requirement, and the pull request says `Closes #42`.
 - `Finish:` is `pr` (the default), `merge-push` or `branch`, for every item.
-- `Model:` is optional, for example `Model: sonnet`. It sets the model each
-  run's session starts on. `/swd:build` asks for Fable 5.2 for the turn
-  that runs it, and an unattended run is one turn, so the principal
-  conducts on Fable 5.2 whatever this line says, and names the model and
-  effort of every agent it dispatches. The line no longer lowers a run's
-  cost; it takes effect only where Fable 5.2 is not available to the
-  session.
+- A `Model:` line, which earlier versions read, is ignored: every run
+  starts with `--model fable`, because the principal does no work off
+  Fable 5.2. The script prints one line when it ignores one.
 - When an item's run finishes it becomes `- [x] <item> — <link or branch>`.
   When it does not, `- [!] <item> — blocked: <run folder>`.
 
