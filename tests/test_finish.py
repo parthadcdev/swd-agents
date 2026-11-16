@@ -15,7 +15,7 @@ def git(cwd, *args):
     return subprocess.run(
         ["git", "-C", str(cwd), "-c", "user.name=t", "-c", "user.email=t@example.com",
          "-c", "commit.gpgsign=false", *args],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, encoding="utf-8",
     ).stdout.strip()
 
 
@@ -25,7 +25,7 @@ def make_project(tmp, finish, remote=True):
     project = tmp / "project"
     project.mkdir()
     git(project, "init", "-q", "-b", "main")
-    (project / "README.md").write_text("demo\n")
+    (project / "README.md").write_text("demo\n", encoding="utf-8")
     git(project, "add", "README.md")
     git(project, "commit", "-q", "-m", "Initial commit")
     base = git(project, "rev-parse", "HEAD")
@@ -35,7 +35,7 @@ def make_project(tmp, finish, remote=True):
         git(project, "push", "-q", "-u", "origin", "main")
     work = project / ".swd" / "worktrees" / "demo"
     git(project, "worktree", "add", "-q", str(work), "-b", "swd/demo")
-    (work / "a.py").write_text("x = 1\n")
+    (work / "a.py").write_text("x = 1\n", encoding="utf-8")
     git(work, "add", "a.py")
     git(work, "commit", "-q", "-m", "T1: Add a")
     run = project / ".swd" / "runs" / "2026-11-12-demo"
@@ -43,7 +43,7 @@ def make_project(tmp, finish, remote=True):
     lines = [f"Base commit: {base}", "Base branch: main", "Branch: swd/demo", f"Worktree: {work}"]
     if finish:
         lines.append(f"Finish: {finish}")
-    (run / "decisions.md").write_text("\n".join(lines) + "\n")
+    (run / "decisions.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return project, work, run
 
 
@@ -110,7 +110,7 @@ class FinishTest(unittest.TestCase):
     def test_last_finish_line_wins(self):
         # "pr" falls back to "branch" when the project has no remote; the principal records that.
         project, work, run = make_project(self.tmp, "pr", remote=False)
-        with open(run / "decisions.md", "a") as f:
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
             f.write("Finish: branch\n")
         git(project, "worktree", "remove", str(work))
         self.assertEqual(self.cr.check_finish(run, project), [])
@@ -121,7 +121,7 @@ class FinishTest(unittest.TestCase):
 
     def test_cli(self):
         project, work, run = make_project(self.tmp, "branch")
-        cli = lambda: subprocess.run([sys.executable, str(SCRIPT), "--finish", str(run)], capture_output=True, text=True)
+        cli = lambda: subprocess.run([sys.executable, str(SCRIPT), "--finish", str(run)], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(cli().returncode, 1)
         git(project, "worktree", "remove", str(work))
         done = cli()

@@ -31,6 +31,10 @@ GH_STUB = r"""#!/bin/sh
 exit 1
 """
 
+# A dry run starts nothing, so those tests run everywhere; a real run needs the stub claude.
+NO_STUBS = "the stub is a shell script, and Windows starts only .exe programs by name"
+stubbed = unittest.skipIf(os.name == "nt", NO_STUBS)
+
 QUEUE = """# Queue
 
 Finish: branch
@@ -54,24 +58,28 @@ class QueueTest(unittest.TestCase):
         run("init", "-q", "-b", "main")
         run("commit", "-q", "--allow-empty", "-m", "Initial commit")
         self.queue = self.project / ".swd" / "queue.md"
-        self.queue.write_text(QUEUE)
+        self.queue.write_text(QUEUE, encoding="utf-8")
         self.stub = tmp / "stub"
         self.stub.mkdir()
         (tmp / "bin").mkdir()
         for name, body in (("claude", CLAUDE_STUB), ("gh", GH_STUB)):
-            (tmp / "bin" / name).write_text(body)
+            (tmp / "bin" / name).write_text(body, encoding="utf-8")
             (tmp / "bin" / name).chmod(0o755)
-        self.env = {**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "STUB_DIR": str(self.stub),
+        self.env = {**os.environ, "PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}", "STUB_DIR": str(self.stub),
                     "STUB_FAIL_ON": ""}
+
+    def real_runs_need_the_stubs(self):
+        if os.name == "nt":
+            self.skipTest(NO_STUBS)
 
     def work(self, *args, **env):
         result = subprocess.run([sys.executable, str(SCRIPT), *args, str(self.project)], capture_output=True, text=True,
-                                env={**self.env, **env})
+                                env={**self.env, **env}, encoding="utf-8")
         self.assertNotIn("Traceback", result.stderr)
         return result
 
     def prompts(self):
-        return [p.read_text() for p in sorted(self.stub.glob("prompt-*.txt"))]
+        return [p.read_text(encoding="utf-8") for p in sorted(self.stub.glob("prompt-*.txt"))]
 
     def test_dry_run_lists_open_items_and_starts_nothing(self):
         result = self.work("--dry-run")
@@ -83,6 +91,7 @@ class QueueTest(unittest.TestCase):
         self.assertNotIn("ignoring", result.stdout)
         self.assertEqual(self.prompts(), [])
 
+    @stubbed
     def test_each_open_item_becomes_one_pre_approved_run_and_is_ticked_off(self):
         self.assertEqual(self.work().returncode, 0)
         prompts = self.prompts()
@@ -91,12 +100,13 @@ class QueueTest(unittest.TestCase):
             self.assertTrue(prompt.startswith("/swd:build "))
             self.assertIn("I pre-approve the spec and plan", prompt)
             self.assertIn("leave the branch", prompt)             # the queue's Finish: branch
-        text = self.queue.read_text()
+        text = self.queue.read_text(encoding="utf-8")
         self.assertIn("- [x] Add item_count to the cart — swd/item-1", text)
         self.assertIn("- [x] Add a changelog — swd/item-3", text)
         self.assertNotIn("- [ ]", text)
-        self.assertIn("3 done", (self.project / ".swd" / "queue-report.md").read_text())
+        self.assertIn("3 done", (self.project / ".swd" / "queue-report.md").read_text(encoding="utf-8"))
 
+    @stubbed
     def test_an_issue_item_carries_the_issue_text_and_asks_for_a_closing_reference(self):
         self.work()
         issue = self.prompts()[1]
@@ -104,44 +114,48 @@ class QueueTest(unittest.TestCase):
         self.assertIn("Steps: add two, see one.", issue)
         self.assertIn("Closes #12", issue)
 
+    @stubbed
     def test_a_run_that_does_not_finish_is_marked_blocked_and_the_queue_moves_on(self):
         self.work(STUB_FAIL_ON="item_count")
-        text = self.queue.read_text()
+        text = self.queue.read_text(encoding="utf-8")
         self.assertRegex(text, r"- \[!\] Add item_count to the cart — blocked")
         self.assertIn("- [x] Add a changelog", text)
 
+    @stubbed
     def test_two_failures_in_a_row_stop_the_queue(self):
         # Something systemic is wrong, such as permissions; do not burn through the rest.
-        self.queue.write_text("- [ ] bad one\n- [ ] bad two\n- [ ] never started\n")
+        self.queue.write_text("- [ ] bad one\n- [ ] bad two\n- [ ] never started\n", encoding="utf-8")
         result = self.work(STUB_FAIL_ON="bad")
         self.assertEqual(result.returncode, 1)
         self.assertEqual(len(self.prompts()), 2)
-        self.assertIn("- [ ] never started", self.queue.read_text())
+        self.assertIn("- [ ] never started", self.queue.read_text(encoding="utf-8"))
 
     IGNORED = "ignoring 'Model: sonnet' in .swd/queue.md: every run starts with --model fable"
 
+    @stubbed
     def test_every_run_starts_on_fable_without_a_model_line(self):
         result = self.work()
         self.assertNotIn("ignoring", result.stdout)
-        args = [p.read_text() for p in sorted(self.stub.glob("args-*.txt"))]
+        args = [p.read_text(encoding="utf-8") for p in sorted(self.stub.glob("args-*.txt"))]
         self.assertEqual(len(args), 3)
         for line in args:
             self.assertIn("--model fable", line)
 
+    @stubbed
     def test_a_model_line_is_ignored_and_said_once_before_anything_else(self):
         # The principal does no work off Fable 5.2, so the queue never starts a run elsewhere.
-        self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n")
+        self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n", encoding="utf-8")
         result = self.work()
         self.assertEqual(result.stdout.count(self.IGNORED), 1)
         self.assertTrue(result.stdout.startswith(self.IGNORED + "\n"))
-        args = [p.read_text() for p in sorted(self.stub.glob("args-*.txt"))]
+        args = [p.read_text(encoding="utf-8") for p in sorted(self.stub.glob("args-*.txt"))]
         self.assertEqual(len(args), 2)
         for line in args:
             self.assertIn("--model fable", line)
             self.assertNotIn("sonnet", line)
 
     def test_dry_run_says_a_model_line_is_ignored_and_names_fable(self):
-        self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n")
+        self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n", encoding="utf-8")
         result = self.work("--dry-run")
         self.assertEqual(result.stdout.splitlines()[:2],
                          [self.IGNORED, "2 open items, finish: pr, model: fable"])
@@ -149,11 +163,13 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(self.prompts(), [])
 
     def runs_args(self):
-        return [p.read_text() for p in sorted(self.stub.glob("args-*.txt"))]
+        return [p.read_text(encoding="utf-8") for p in sorted(self.stub.glob("args-*.txt"))]
 
     def test_two_model_lines_give_one_notice_naming_the_first(self):
-        self.queue.write_text("Model: sonnet\nModel: haiku\n\n- [ ] one\n- [ ] two\n")
+        self.queue.write_text("Model: sonnet\nModel: haiku\n\n- [ ] one\n- [ ] two\n", encoding="utf-8")
         for args in (("--dry-run",), ()):
+            if not args:
+                self.real_runs_need_the_stubs()   # the dry run above has been checked by now
             with self.subTest(args=args):
                 stdout = self.work(*args).stdout
                 self.assertEqual([line for line in stdout.splitlines() if line.startswith("ignoring")],
@@ -165,9 +181,11 @@ class QueueTest(unittest.TestCase):
             self.assertIn("--model fable", line)
 
     def test_an_empty_model_line_gives_no_notice(self):
-        for queue in ("Model: \n\n- [ ] one\n", "Model:\n\n- [ ] one\n"):
-            self.queue.write_text(queue)
-            for args in (("--dry-run",), ()):
+        for args in (("--dry-run",), ()):
+            if not args:
+                self.real_runs_need_the_stubs()   # the dry runs above have been checked by now
+            for queue in ("Model: \n\n- [ ] one\n", "Model:\n\n- [ ] one\n"):
+                self.queue.write_text(queue, encoding="utf-8")
                 with self.subTest(queue=queue, args=args):
                     self.assertNotIn("ignoring", self.work(*args).stdout)
         args = self.runs_args()
@@ -177,8 +195,10 @@ class QueueTest(unittest.TestCase):
 
     def test_the_ignored_value_is_printed_with_control_characters_escaped(self):
         # A crafted line must not clear the screen, set the window title or recolour the output.
-        self.queue.write_text("Model: a\x1b]0;x\x07\x1b[2J\x9bb\n\n- [ ] one\n")
+        self.queue.write_text("Model: a\x1b]0;x\x07\x1b[2J\x9bb\n\n- [ ] one\n", encoding="utf-8")
         for args in (("--dry-run",), ()):
+            if not args:
+                self.real_runs_need_the_stubs()   # the dry run above has been checked by now
             with self.subTest(args=args):
                 stdout = self.work(*args).stdout
                 self.assertTrue(stdout.startswith(
@@ -186,10 +206,11 @@ class QueueTest(unittest.TestCase):
                     "\n"))
                 self.assertFalse([c for c in stdout if not c.isprintable() and c != "\n"])
 
+    @stubbed
     def test_max_limits_how_many_items_run(self):
         self.work("--max", "1")
         self.assertEqual(len(self.prompts()), 1)
-        self.assertIn("- [ ] Add a changelog", self.queue.read_text())
+        self.assertIn("- [ ] Add a changelog", self.queue.read_text(encoding="utf-8"))
 
     def test_no_queue_file_is_an_error(self):
         self.queue.unlink()

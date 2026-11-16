@@ -89,7 +89,7 @@ def commit(repo, subject, files):
     for name in files:
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(path.read_text() + "x\n" if path.exists() else "x\n")
+        path.write_text(path.read_text(encoding="utf-8") + "x\n" if path.exists() else "x\n", encoding="utf-8")
     git(repo, "add", "-A", "--", *files)
     git(repo, "commit", "-m", subject)
 
@@ -99,15 +99,15 @@ def make_run(tmp, mode="production", single=False):
     repo = Path(tmp)
     run = repo / ".swd" / "runs" / "2026-11-12-demo"
     (run / "reports").mkdir(parents=True)
-    (run / "requirement.md").write_text("Do the thing.\n")
-    (run / "spec.md").write_text(f"# Spec\n\nMode: {mode}\n\n## Acceptance criteria\n- It works.\n")
-    (run / "standards.md").write_text("standards\n")
-    (run / "plan.md").write_text(PLAN.split("### T2")[0] if single else PLAN)
-    (run / "ledger.md").write_text(LEDGER.split("| T2")[0] if single else LEDGER)
-    (run / "decisions.md").write_text("None.\n")
-    (run / "activity.md").write_text(ACTIVITY.replace("- 10:06:00 dispatch T2 backend-engineer\n", "") if single else ACTIVITY)
-    (run / "dashboard.html").write_text("<html></html>\n")
-    (run / "write-check.txt").write_text("edited\n")
+    (run / "requirement.md").write_text("Do the thing.\n", encoding="utf-8")
+    (run / "spec.md").write_text(f"# Spec\n\nMode: {mode}\n\n## Acceptance criteria\n- It works.\n", encoding="utf-8")
+    (run / "standards.md").write_text("standards\n", encoding="utf-8")
+    (run / "plan.md").write_text(PLAN.split("### T2")[0] if single else PLAN, encoding="utf-8")
+    (run / "ledger.md").write_text(LEDGER.split("| T2")[0] if single else LEDGER, encoding="utf-8")
+    (run / "decisions.md").write_text("None.\n", encoding="utf-8")
+    (run / "activity.md").write_text(ACTIVITY.replace("- 10:06:00 dispatch T2 backend-engineer\n", "") if single else ACTIVITY, encoding="utf-8")
+    (run / "dashboard.html").write_text("<html></html>\n", encoding="utf-8")
+    (run / "write-check.txt").write_text("edited\n", encoding="utf-8")
     # What swd-test.py recorded: each task's check failing and then passing, the suite after
     # wave 1 (production only checks between waves), and the whole suite at the end.
     evidence = {"T1-001": 1, "T1-002": 0, "final-001": 0}
@@ -117,30 +117,30 @@ def make_run(tmp, mode="production", single=False):
             evidence["wave-1-001"] = 0
     (run / "evidence").mkdir()
     for name, code in evidence.items():
-        (run / "evidence" / f"{name}.txt").write_text(f"Command: python3 -m unittest\nExit: {code}\nWhen: now\n---\noutput\n")
-    (repo / ".swd" / "project.md").write_text("# Project notes\n\n## Commands\nTest command: `python3 -m unittest`\n")
-    (run / "reports" / "T1-generalist-engineer.md").write_text(BUILDER_REPORT)
+        (run / "evidence" / f"{name}.txt").write_text(f"Command: python3 -m unittest\nExit: {code}\nWhen: now\n---\noutput\n", encoding="utf-8")
+    (repo / ".swd" / "project.md").write_text("# Project notes\n\n## Commands\nTest command: `python3 -m unittest`\n", encoding="utf-8")
+    (run / "reports" / "T1-generalist-engineer.md").write_text(BUILDER_REPORT, encoding="utf-8")
     if not single:
-        (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT)
-    (run / "reports" / "final-qa-engineer.md").write_text(CHECKER_REPORT)
+        (run / "reports" / "T2-backend-engineer.md").write_text(BUILDER_REPORT, encoding="utf-8")
+    (run / "reports" / "final-qa-engineer.md").write_text(CHECKER_REPORT, encoding="utf-8")
     git(repo, "init", "-q")
     # History from before this run, including an old run's task commit, must be ignored.
     commit(repo, "T9: task from an earlier run", ["old/x.py"])
-    base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, encoding="utf-8").stdout.strip()
     (run / "decisions.md").write_text(
-        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nHousekeeping: removed 0, kept 0\nFinish: branch\nPlan judged: the outcome meets the criteria.\n\n- None.\n")
-    (run / "staffing.md").write_text(STAFFING)
+        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nHousekeeping: removed 0, kept 0\nFinish: branch\nPlan judged: the outcome meets the criteria.\n\n- None.\n", encoding="utf-8")
+    (run / "staffing.md").write_text(STAFFING, encoding="utf-8")
     if mode == "production":
         names = ["T1-code-reviewer", "T1-security-reviewer"]
         if not single:  # a one-task run needs no final reviews: the task's own reviews covered the whole change
             names += ["T2-code-reviewer", "T2-security-reviewer", "final-code-reviewer", "final-security-reviewer"]
         for name in names:
-            (run / "reports" / f"{name}.md").write_text(CHECKER_REPORT)
+            (run / "reports" / f"{name}.md").write_text(CHECKER_REPORT, encoding="utf-8")
         commit(repo, "T1: First thing", ["a.py", "tests/test_a.py"])
         if not single:
             commit(repo, "T2: Second thing", ["b.py"])
     else:
-        (run / "reports" / "final-code-reviewer.md").write_text(CHECKER_REPORT)
+        (run / "reports" / "final-code-reviewer.md").write_text(CHECKER_REPORT, encoding="utf-8")
         commit(repo, "W1: first wave", ["a.py", "tests/test_a.py"])
         if not single:
             commit(repo, "W2: second wave", ["b.py"])
@@ -148,9 +148,9 @@ def make_run(tmp, mode="production", single=False):
 
 
 def replace(path, old, new):
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     assert old in text, f"{old!r} not in {path}"
-    path.write_text(text.replace(old, new))
+    path.write_text(text.replace(old, new), encoding="utf-8")
 
 
 class CheckRunTest(unittest.TestCase):
@@ -180,7 +180,7 @@ class CheckRunTest(unittest.TestCase):
 
     def test_single_task_plan_is_valid(self):
         repo, run = make_run(self.tmp)
-        (run / "plan.md").write_text(PLAN.split("### T2")[0])
+        (run / "plan.md").write_text(PLAN.split("### T2")[0], encoding="utf-8")
         self.assertEqual(self.cr.check_plan(run), [])
 
     def test_same_wave_shared_file_is_reported(self):
@@ -233,7 +233,7 @@ class CheckRunTest(unittest.TestCase):
     def test_per_task_review_in_prototype_is_allowed(self):
         # The principal raises the bar for a risky task inside a prototype.
         repo, run = make_run(self.tmp, mode="prototype")
-        (run / "reports" / "T1-code-reviewer.md").write_text(CHECKER_REPORT)
+        (run / "reports" / "T1-code-reviewer.md").write_text(CHECKER_REPORT, encoding="utf-8")
         self.assertEqual(self.problems(repo, run), [])
 
     def test_malformed_task_heading_is_reported(self):
@@ -253,8 +253,8 @@ class CheckRunTest(unittest.TestCase):
 
     def test_uncommitted_work_is_reported(self):
         repo, run = make_run(self.tmp)
-        (repo / "a.py").write_text("changed\n")
-        (repo / "stray.txt").write_text("x\n")
+        (repo / "a.py").write_text("changed\n", encoding="utf-8")
+        (repo / "stray.txt").write_text("x\n", encoding="utf-8")
         problems = self.problems(repo, run)
         self.assertProblem(problems, "uncommitted", "a.py")
         self.assertProblem(problems, "uncommitted", "stray.txt")
@@ -263,7 +263,7 @@ class CheckRunTest(unittest.TestCase):
         for name in ("T1-security-reviewer.md", "final-code-reviewer.md", "wave-1-qa-engineer.md"):
             with self.subTest(report=name), tempfile.TemporaryDirectory() as tmp:
                 repo, run = make_run(tmp)
-                (run / "reports" / name).write_text("Verdict: fail\n\n## Findings\n- broken\n")
+                (run / "reports" / name).write_text("Verdict: fail\n\n## Findings\n- broken\n", encoding="utf-8")
                 self.assertProblem(self.problems(repo, run), name, "Verdict")
 
     def test_missing_security_and_final_reviews_in_production_are_reported(self):
@@ -281,7 +281,7 @@ class CheckRunTest(unittest.TestCase):
 
     def test_failing_qa_verdict_is_reported(self):
         repo, run = make_run(self.tmp)
-        (run / "reports" / "final-qa-engineer.md").write_text("Verdict: fail\n\n## Findings\n- broken\n")
+        (run / "reports" / "final-qa-engineer.md").write_text("Verdict: fail\n\n## Findings\n- broken\n", encoding="utf-8")
         self.assertProblem(self.problems(repo, run), "final-qa-engineer.md", "Verdict")
 
     def test_one_task_production_run_needs_no_final_reviews(self):
@@ -299,10 +299,30 @@ class CheckRunTest(unittest.TestCase):
         replace(run / "plan.md", "- Wave: 2\n- Files: b.py\n- Depends: T1", "- Wave: 1\n- Files: b.py, ./a.py\n- Depends: none")
         self.assertProblem(self.cr.check_plan(run), "T1", "T2", "a.py")
 
+    def test_a_files_entry_written_with_backslashes_owns_the_git_path(self):
+        # A plan or report written on Windows may spell a path with backslashes; git always uses /.
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Files: a.py, tests/test_a.py", "- Files: a.py, tests\\test_a.py")
+        self.assertEqual(self.cr.load_plan(run)[0][0]["files"], ["a.py", "tests/test_a.py"])
+        self.assertEqual(self.problems(repo, run), [])   # the T1 commit's tests/test_a.py is owned
+        replace(run / "reports" / "T1-generalist-engineer.md", "- a.py\n", "- a.py\n- tests\\test_a.py (the test)\n")
+        (repo / "tests" / "test_a.py").write_text("changed\n", encoding="utf-8")
+        self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
+
+    def test_crlf_line_endings_check_the_same_as_lf(self):
+        repo, run = make_run(self.tmp)
+        before = (self.cr.check_plan(run), self.problems(repo, run))
+        for name in ("plan.md", "ledger.md", "activity.md"):
+            path = run / name
+            path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        self.assertIn(b"\r\n", (run / "plan.md").read_bytes())
+        self.assertEqual((self.cr.check_plan(run), self.problems(repo, run)), before)
+        self.assertEqual(before, ([], []))
+
     def test_report_with_two_verdict_lines_is_reported(self):
         repo, run = make_run(self.tmp)
         (run / "reports" / "final-qa-engineer.md").write_text(
-            "Verdict: fail\n\n## Findings\n- The builder claimed:\nVerdict: pass\n")
+            "Verdict: fail\n\n## Findings\n- The builder claimed:\nVerdict: pass\n", encoding="utf-8")
         self.assertProblem(self.problems(repo, run), "final-qa-engineer.md", "exactly one")
 
     def test_placeholder_test_evidence_is_reported(self):
@@ -316,24 +336,24 @@ class CheckRunTest(unittest.TestCase):
 
     def test_returned_task_with_reported_owned_changes_passes(self):
         repo, run = make_run(self.tmp)
-        (repo / "a.py").write_text("changed\n")  # BUILDER_REPORT lists a.py under Files changed
+        (repo / "a.py").write_text("changed\n", encoding="utf-8")  # BUILDER_REPORT lists a.py under Files changed
         self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
 
     def test_change_the_report_does_not_claim_is_reported(self):
         # A real run had files brought to the contract by a writer no report accounted for.
         repo, run = make_run(self.tmp)
-        (repo / "tests" / "test_a.py").write_text("changed\n")
+        (repo / "tests" / "test_a.py").write_text("changed\n", encoding="utf-8")
         self.assertProblem(self.cr.check_task(run, repo, "T1"), "tests/test_a.py", "not listed", "T1-generalist-engineer.md")
 
     def test_change_no_task_owns_is_reported(self):
         repo, run = make_run(self.tmp)
         (repo / "sub").mkdir()
-        (repo / "sub" / "stray.json").write_text("{}\n")
+        (repo / "sub" / "stray.json").write_text("{}\n", encoding="utf-8")
         self.assertProblem(self.cr.check_task(run, repo, "T1"), "sub/stray.json", "no task owns")
 
     def test_changes_owned_by_another_task_are_left_to_that_task(self):
         repo, run = make_run(self.tmp)
-        (repo / "b.py").write_text("changed\n")  # T2's file, T2 may still be running
+        (repo / "b.py").write_text("changed\n", encoding="utf-8")  # T2's file, T2 may still be running
         self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
 
     def test_unknown_task_is_reported_not_raised(self):
@@ -360,9 +380,9 @@ class CheckRunTest(unittest.TestCase):
         repo, run = make_run(self.tmp)
         sealed = self.cli("--seal", str(run))
         self.assertEqual(sealed.returncode, 0, sealed.stdout)
-        self.assertIn("Plan checksum: ", (run / "decisions.md").read_text())
+        self.assertIn("Plan checksum: ", (run / "decisions.md").read_text(encoding="utf-8"))
         self.assertEqual(self.cli("--task", "T1", str(run)).returncode, 0)
-        (repo / "stray.txt").write_text("x\n")
+        (repo / "stray.txt").write_text("x\n", encoding="utf-8")
         bad = self.cli("--task", "T1", str(run))
         self.assertEqual(bad.returncode, 1)
         self.assertIn("stray.txt", bad.stdout)
@@ -371,14 +391,14 @@ class CheckRunTest(unittest.TestCase):
         repo, run = make_run(self.tmp)
         replace(run / "plan.md", "- Files: b.py\n", "")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
-        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text(encoding="utf-8"))
 
     def test_plan_check_requires_the_worktree_lines(self):
         for line in ("Worktree: ", "Branch: ", "Base branch: ", "Housekeeping: "):
             with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp:
                 repo, run = make_run(tmp)
-                text = (run / "decisions.md").read_text()
-                (run / "decisions.md").write_text("".join(l for l in text.splitlines(True) if not l.startswith(line)))
+                text = (run / "decisions.md").read_text(encoding="utf-8")
+                (run / "decisions.md").write_text("".join(l for l in text.splitlines(True) if not l.startswith(line)), encoding="utf-8")
                 self.assertProblem(self.cr.check_plan(run), "decisions.md", line.strip())
 
     def test_seal_requires_a_finish_choice(self):
@@ -387,8 +407,8 @@ class CheckRunTest(unittest.TestCase):
         refused = self.cli("--seal", str(run))
         self.assertEqual(refused.returncode, 1)
         self.assertIn("Finish:", refused.stdout)
-        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
-        with open(run / "decisions.md", "a") as f:
+        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text(encoding="utf-8"))
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
             f.write("Finish: sometime\n")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
 
@@ -398,9 +418,9 @@ class CheckRunTest(unittest.TestCase):
             work = Path(elsewhere) / "work"
             subprocess.run(["git", "clone", "-q", str(repo), str(work)], check=True, capture_output=True)
             replace(run / "decisions.md", f"Worktree: {repo}", f"Worktree: {work}")
-            (repo / "notes.txt").write_text("the user's own uncommitted work\n")
+            (repo / "notes.txt").write_text("the user's own uncommitted work\n", encoding="utf-8")
             self.assertEqual(self.cli(str(run)).stdout, "")
-            (work / "stray.txt").write_text("x\n")
+            (work / "stray.txt").write_text("x\n", encoding="utf-8")
             self.assertIn("stray.txt", self.cli(str(run)).stdout)
 
     # --- recorded evidence -------------------------------------------------------------------
@@ -412,14 +432,14 @@ class CheckRunTest(unittest.TestCase):
 
     def test_a_tasks_last_recorded_run_must_pass(self):
         repo, run = make_run(self.tmp)
-        (run / "evidence" / "T2-003.txt").write_text("Command: x\nExit: 1\nWhen: now\n---\nboom\n")
+        (run / "evidence" / "T2-003.txt").write_text("Command: x\nExit: 1\nWhen: now\n---\nboom\n", encoding="utf-8")
         self.assertProblem(self.problems(repo, run), "T2", "last recorded run")
 
     def test_the_whole_suite_must_be_recorded_passing_at_the_end(self):
         repo, run = make_run(self.tmp)
         (run / "evidence" / "final-001.txt").unlink()
         self.assertProblem(self.problems(repo, run), "final", "swd-test.py")
-        (run / "evidence" / "final-001.txt").write_text("Command: x\nExit: 1\nWhen: now\n---\nboom\n")
+        (run / "evidence" / "final-001.txt").write_text("Command: x\nExit: 1\nWhen: now\n---\nboom\n", encoding="utf-8")
         self.assertProblem(self.problems(repo, run), "final", "did not pass")
 
     def test_production_records_the_suite_between_waves(self):
@@ -457,11 +477,11 @@ class CheckRunTest(unittest.TestCase):
 
     def test_findings_must_reach_the_project_backlog(self):
         repo, run = make_run(self.tmp)
-        with open(run / "decisions.md", "a") as f:
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
             f.write("Finding: shop/cart.py apply_discount subtracts the percent as an amount. Left: out of scope.\n")
         self.assertProblem(self.problems(repo, run), "findings.md", "swd-findings.py")
         done = subprocess.run([sys.executable, str(ROOT / "scripts" / "swd-findings.py"), str(run)],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.problems(repo, run), [])
 
@@ -472,7 +492,7 @@ class CheckRunTest(unittest.TestCase):
                 repo, run = make_run(tmp)
                 (run / "write-check.txt").unlink()
                 if content:
-                    (run / "write-check.txt").write_text(content)
+                    (run / "write-check.txt").write_text(content, encoding="utf-8")
                 self.assertProblem(self.cr.check_plan(run), "write-check.txt")
 
     def test_missing_dashboard_is_reported(self):
@@ -527,25 +547,25 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual(refused.stdout.splitlines(), [
             "decisions.md: the 'Plan judged:' line is older than the last 'Plan checksum:'; "
             "judge the amended plan and add a new 'Plan judged: ...' line"])
-        self.assertEqual((run / "decisions.md").read_text().count("Plan checksum: "), 1)
-        with open(run / "decisions.md", "a") as f:
+        self.assertEqual((run / "decisions.md").read_text(encoding="utf-8").count("Plan checksum: "), 1)
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
             f.write("Plan judged: the amended plan still meets the criteria.\n")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
-        self.assertEqual((run / "decisions.md").read_text().count("Plan checksum: "), 2)
+        self.assertEqual((run / "decisions.md").read_text(encoding="utf-8").count("Plan checksum: "), 2)
 
     def test_seal_is_readable_when_decisions_has_no_trailing_newline(self):
         repo, run = make_run(self.tmp)
         decisions = run / "decisions.md"
-        decisions.write_text(decisions.read_text().rstrip("\n"))
+        decisions.write_text(decisions.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
-        self.assertEqual(len(self.cr.SEAL_RE.findall(decisions.read_text())), 1)
+        self.assertEqual(len(self.cr.SEAL_RE.findall(decisions.read_text(encoding="utf-8"))), 1)
         self.assertEqual(self.cr.check_seal(run), [])
         # The re-seal: a new judgement appended without a newline.
         replace(run / "plan.md", "First thing", "First thing, amended")
-        with open(decisions, "a") as f:
+        with open(decisions, "a", encoding="utf-8") as f:
             f.write("Plan judged: the amended plan still meets the criteria.")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
-        self.assertEqual(len(self.cr.SEAL_RE.findall(decisions.read_text())), 2)
+        self.assertEqual(len(self.cr.SEAL_RE.findall(decisions.read_text(encoding="utf-8"))), 2)
         self.assertEqual(self.cr.check_seal(run), [])
 
     def test_task_needs_an_outcome_line(self):
@@ -555,7 +575,7 @@ class CheckRunTest(unittest.TestCase):
 
     def test_cli_plan_reports_both_outcome_problems_and_passes_when_present(self):
         repo, run = make_run(self.tmp)
-        good = (run / "plan.md").read_text()
+        good = (run / "plan.md").read_text(encoding="utf-8")
         replace(run / "plan.md", "## Outcome\n$ python3 -m unittest\nOK\n\n", "")
         replace(run / "plan.md", "- Outcome: b.py exists\n", "")
         bad = self.cli("--plan", str(run))
@@ -563,7 +583,7 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual(bad.stdout.splitlines(), [
             "plan.md: needs a '## Outcome' section showing the finished result as it will really appear",
             "plan.md: T2 is missing '- Outcome:'"])
-        (run / "plan.md").write_text(good)
+        (run / "plan.md").write_text(good, encoding="utf-8")
         ok = self.cli("--plan", str(run))
         self.assertEqual((ok.returncode, ok.stdout), (0, ""))
 
@@ -576,7 +596,7 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual(refused.stdout.splitlines(), [
             "decisions.md: needs a line 'Plan judged: ...'; the principal judges the plan against the spec before the gate",
             "missing staffing.md: the agent, model and effort for each task"])
-        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text(encoding="utf-8"))
 
     def test_staffing_rows_are_checked(self):
         cases = [
@@ -592,9 +612,9 @@ class CheckRunTest(unittest.TestCase):
         for old, new, expected in cases:
             with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
                 repo, run = make_run(tmp)
-                text = (run / "staffing.md").read_text()
+                text = (run / "staffing.md").read_text(encoding="utf-8")
                 assert old in text, old
-                (run / "staffing.md").write_text(text.replace(old, new, 1))
+                (run / "staffing.md").write_text(text.replace(old, new, 1), encoding="utf-8")
                 self.assertEqual(self.cr.check_staffing(run), expected)
 
     # --- required checker rows, the floor, and the staffing seal ------------------------------
@@ -607,7 +627,7 @@ class CheckRunTest(unittest.TestCase):
         if final:
             rows.append(f"| final | qa-engineer | {final} | medium | Runs commands |")
         (run / "staffing.md").write_text(
-            "# Staffing\n\n| For | Agent | Model | Effort | Why |\n|---|---|---|---|---|\n" + "\n".join(rows) + "\n" + extra)
+            "# Staffing\n\n| For | Agent | Model | Effort | Why |\n|---|---|---|---|---|\n" + "\n".join(rows) + "\n" + extra, encoding="utf-8")
 
     def test_seal_requires_the_checkers_rows(self):
         cases = [("production", False, ["staffing.md: no row for review", "staffing.md: no row for final"]),
@@ -623,7 +643,7 @@ class CheckRunTest(unittest.TestCase):
                     replace(run / "staffing.md", "| T2 | backend-engineer | haiku | low | Mechanical |\n", "")
                 refused = self.cli("--seal", str(run))
                 self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, expected))
-                self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+                self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text(encoding="utf-8"))
 
     def test_a_checker_may_not_rank_below_a_builder(self):
         repo, run = make_run(self.tmp)
@@ -659,7 +679,7 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual(sealed.returncode, 0, sealed.stdout)
         lines = sealed.stdout.splitlines()
         self.assertEqual([l.split(":")[0] for l in lines], ["sealed plan.md", "sealed staffing.md"])
-        tail = (run / "decisions.md").read_text().splitlines()[-2:]
+        tail = (run / "decisions.md").read_text(encoding="utf-8").splitlines()[-2:]
         self.assertEqual([l.split(":")[0] for l in tail], ["Plan checksum", "Staffing checksum"])
         message = "staffing.md: changed since it was sealed; only the principal changes it, and seals the run again"
         replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
@@ -689,7 +709,7 @@ class CheckRunTest(unittest.TestCase):
 
     def test_a_run_sealed_before_the_staffing_checksum_compares_nothing(self):
         repo, run = make_run(self.tmp)
-        with open(run / "decisions.md", "a") as f:
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
             f.write(f"Plan checksum: {self.cr.plan_checksum(run)}\n")
         replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
         self.assertEqual(self.problems(repo, run), [])
@@ -740,7 +760,7 @@ class CheckRunTest(unittest.TestCase):
                 self.staffing(run, extra=row + "\n")
                 self.assertEqual(self.cr.check_staffing(run), want)
                 self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
-                self.assertNotIn("checksum", (run / "decisions.md").read_text())
+                self.assertNotIn("checksum", (run / "decisions.md").read_text(encoding="utf-8"))
 
     def test_real_headers_separators_and_prose_are_still_skipped(self):
         header, sep = "| For | Agent | Model | Effort | Why |", "|---|---|---|---|---|"
@@ -755,11 +775,11 @@ class CheckRunTest(unittest.TestCase):
         repo, run = make_run(self.tmp)
         for h, s in tables:
             with self.subTest(header=h, separator=s):
-                (run / "staffing.md").write_text(f"# Staffing\n\n{h}\n{s}\n{rows}")
+                (run / "staffing.md").write_text(f"# Staffing\n\n{h}\n{s}\n{rows}", encoding="utf-8")
                 self.assertEqual(self.cr.check_staffing(run), [])
         # a title, blank lines, a sentence without a pipe, and a second header and separator further down
         (run / "staffing.md").write_text(
-            f"# Staffing\n\nWho runs what, and on which model.\n\n{header}\n{sep}\n{rows}\n\n{header}\n{sep}\n\nRaise effort first.\n")
+            f"# Staffing\n\nWho runs what, and on which model.\n\n{header}\n{sep}\n{rows}\n\n{header}\n{sep}\n\nRaise effort first.\n", encoding="utf-8")
         self.assertEqual(self.cr.check_staffing(run), [])
         self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
 
@@ -767,9 +787,9 @@ class CheckRunTest(unittest.TestCase):
         for path in ("standards/run-folder.md", "skills/build/SKILL.md"):
             with self.subTest(path=path), tempfile.TemporaryDirectory() as tmp:
                 repo, run = make_run(tmp)
-                block = re.search(r"```markdown\n(\s*# Staffing\n.*?)```", (ROOT / path).read_text(), re.S).group(1)
+                block = re.search(r"```markdown\n(\s*# Staffing\n.*?)```", (ROOT / path).read_text(encoding="utf-8"), re.S).group(1)
                 replace(run / "plan.md", "- Role: backend-engineer", "- Role: docs-writer")
-                (run / "staffing.md").write_text(block)
+                (run / "staffing.md").write_text(block, encoding="utf-8")
                 self.assertEqual(self.cr.check_staffing(run), [])
 
     def test_a_tie_for_the_top_builder_names_the_first_in_file_order(self):
@@ -783,15 +803,15 @@ class CheckRunTest(unittest.TestCase):
     def test_the_staffing_checksum_follows_on_its_own_line_without_a_trailing_newline(self):
         repo, run = make_run(self.tmp)
         decisions = run / "decisions.md"
-        decisions.write_text(decisions.read_text().rstrip("\n"))
+        decisions.write_text(decisions.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")
         self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
-        tail = decisions.read_text().splitlines()[-2:]
+        tail = decisions.read_text(encoding="utf-8").splitlines()[-2:]
         self.assertEqual([l.split(":")[0] for l in tail], ["Plan checksum", "Staffing checksum"])
         self.assertEqual(self.cr.check_seal(run), [])
 
     def test_a_run_sealed_before_the_staffing_checksum_compares_nothing_for_task(self):
         repo, run = make_run(self.tmp)
-        with open(run / "decisions.md", "a") as f:
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
             f.write(f"Plan checksum: {self.cr.plan_checksum(run)}\n")
         replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
         self.assertEqual(self.cli("--task", "T1", str(run)).stdout, "")
@@ -800,11 +820,11 @@ class CheckRunTest(unittest.TestCase):
         repo, run = make_run(self.tmp)
         (run / "staffing.md").unlink()
         self.cr.seal_plan(run)
-        self.assertNotIn("Staffing checksum", (run / "decisions.md").read_text())
+        self.assertNotIn("Staffing checksum", (run / "decisions.md").read_text(encoding="utf-8"))
         (run / "plan.md").unlink()
         self.assertProblem(self.cr.check_seal(run), "missing plan.md")
         self.staffing(run)
-        (run / "plan.md").write_text(PLAN)
+        (run / "plan.md").write_text(PLAN, encoding="utf-8")
         self.cr.seal_plan(run)
         (run / "plan.md").unlink()
         self.staffing(run, final="fable")
@@ -827,10 +847,10 @@ class CheckRunTest(unittest.TestCase):
     def old_run(self):
         """A run shaped like one that finished under 0.7.1: no outcome, no judgement, no staffing.md."""
         repo, run = make_run(self.tmp)
-        plan = (run / "plan.md").read_text()
+        plan = (run / "plan.md").read_text(encoding="utf-8")
         plan = plan.replace("## Outcome\n$ python3 -m unittest\nOK\n\n", "")
         plan = plan.replace("- Outcome: a.py exists\n", "").replace("- Outcome: b.py exists\n", "")
-        (run / "plan.md").write_text(plan)
+        (run / "plan.md").write_text(plan, encoding="utf-8")
         replace(run / "decisions.md", "Plan judged: the outcome meets the criteria.\n", "")
         (run / "staffing.md").unlink()
         self.cr.seal_plan(run)
@@ -838,7 +858,7 @@ class CheckRunTest(unittest.TestCase):
 
     def test_run_from_before_outcome_still_checks_clean(self):
         repo, run = self.old_run()
-        self.assertNotIn("Outcome", (run / "plan.md").read_text())
+        self.assertNotIn("Outcome", (run / "plan.md").read_text(encoding="utf-8"))
         self.assertEqual(self.problems(repo, run), [])
         done = self.cli(str(run))
         self.assertEqual((done.returncode, done.stdout), (0, ""))
@@ -860,10 +880,10 @@ class CheckRunTest(unittest.TestCase):
             "plan.md: needs a '## Outcome' section showing the finished result as it will really appear",
             "plan.md: T1 is missing '- Outcome:'",
             "plan.md: T2 is missing '- Outcome:'"])
-        before = (run / "decisions.md").read_text()
+        before = (run / "decisions.md").read_text(encoding="utf-8")
         seal = self.cli("--seal", str(run))
         self.assertEqual(seal.returncode, 1)
-        self.assertEqual((run / "decisions.md").read_text(), before)
+        self.assertEqual((run / "decisions.md").read_text(encoding="utf-8"), before)
 
     def test_other_plan_rules_still_reach_a_finished_run_without_outcome(self):
         repo, run = self.old_run()
@@ -872,7 +892,7 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual(self.problems(repo, run), ["plan.md: T2 is missing '- Check:'"])
 
     def cli(self, *args):
-        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
+        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, encoding="utf-8")
 
     def test_cli_exit_codes(self):
         repo, run = make_run(self.tmp)

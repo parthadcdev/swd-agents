@@ -43,7 +43,7 @@ def requirement(project, item):
     number = issue.group(1)
     try:
         reply = subprocess.run(["gh", "issue", "view", number, "--json", "title,body"],
-                               cwd=project, capture_output=True, text=True, timeout=60)
+                               cwd=project, capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace")
         data = json.loads(reply.stdout)
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return None
@@ -66,7 +66,7 @@ def run_item(project, text, finish):
     try:
         subprocess.run(["claude", "-p", "--plugin-dir", plugin, "--setting-sources", "project,local",
                         "--model", "fable", "--output-format", "json", "--", prompt], cwd=project,
-                       capture_output=True, text=True, env={**os.environ, "SWD_NO_BROWSER": "1"})
+                       capture_output=True, text=True, env={**os.environ, "SWD_NO_BROWSER": "1"}, encoding="utf-8", errors="replace")
     except OSError as error:
         return False, f"could not start claude: {error}"
     new = sorted(set(runs.iterdir()) - before) if runs.is_dir() else []
@@ -84,7 +84,7 @@ def run_item(project, text, finish):
     if decision(run, "Finish") == "pr":
         try:
             link = subprocess.run(["gh", "pr", "view", where, "--json", "url", "-q", ".url"], cwd=project,
-                                  capture_output=True, text=True, timeout=60).stdout.strip()
+                                  capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace").stdout.strip()
             where = link or where
         except (OSError, subprocess.TimeoutExpired):
             pass
@@ -103,17 +103,17 @@ def main(argv=None):
     if not queue.is_file():
         print(f"no queue: write the requirements as '- [ ] ...' lines in {queue}", file=sys.stderr)
         return 1
-    finish = (re.search(r"^Finish: (\S+)", queue.read_text(), re.M) or [None, "pr"])[1]
+    finish = (re.search(r"^Finish: (\S+)", queue.read_text(encoding="utf-8"), re.M) or [None, "pr"])[1]
     if finish not in FINISH_WORDS:
         print(f"{queue}: Finish must be one of {', '.join(FINISH_WORDS)}", file=sys.stderr)
         return 1
 
-    model = re.search(r"^Model: (\S+)", queue.read_text(), re.M)
+    model = re.search(r"^Model: (\S+)", queue.read_text(encoding="utf-8"), re.M)
     if model:
         # Escape what the terminal would act on, so a crafted line cannot clear the screen or set the title.
         shown = "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in model[1])
         print(f"ignoring 'Model: {shown}' in .swd/queue.md: every run starts with --model fable", flush=True)
-    open_items = [m.group(1) for m in map(OPEN_RE.match, queue.read_text().splitlines()) if m]
+    open_items = [m.group(1) for m in map(OPEN_RE.match, queue.read_text(encoding="utf-8").splitlines()) if m]
     if args.dry_run:
         print(f"{len(open_items)} open items, finish: {finish}, model: fable")
         for item in open_items:
@@ -126,12 +126,12 @@ def main(argv=None):
         finished, where = run_item(project, text, finish) if text else (False, "could not read the issue with gh")
         mark = f"- [x] {item} — {where}" if finished else f"- [!] {item} — blocked: {where}"
         # Re-read the file each time: the user may be editing the queue while it runs.
-        lines = queue.read_text().splitlines()
+        lines = queue.read_text(encoding="utf-8").splitlines()
         for index, line in enumerate(lines):
             if line.rstrip() == f"- [ ] {item}":
                 lines[index] = mark
                 break
-        queue.write_text("\n".join(lines) + "\n")
+        queue.write_text("\n".join(lines) + "\n", encoding="utf-8")
         results.append(mark)
         print(mark, flush=True)
         failures_in_a_row = 0 if finished else failures_in_a_row + 1
@@ -143,9 +143,11 @@ def main(argv=None):
     when = datetime.datetime.now().isoformat(timespec="minutes")
     report = project / ".swd" / "queue-report.md"
     report.write_text(f"# Queue report, {when}\n\n{done} done, {len(results) - done} blocked, "
-                      f"{len(open_items) - len(results)} not started.\n\n" + "\n".join(results) + "\n")
+                      f"{len(open_items) - len(results)} not started.\n\n" + "\n".join(results) + "\n", encoding="utf-8")
     return 1 if failures_in_a_row == 2 else 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

@@ -18,16 +18,16 @@ class FindingsTest(unittest.TestCase):
         (self.run_dir / "decisions.md").write_text(
             "Base commit: 0\nRuling: something else.\n"
             "Finding: apply_discount subtracts the percent as an amount.\n"
-            "Finding: total() raises TypeError for a string percent.\n")
+            "Finding: total() raises TypeError for a string percent.\n", encoding="utf-8")
 
     def sync(self, run_dir=None):
-        result = subprocess.run([sys.executable, str(SCRIPT), str(run_dir or self.run_dir)], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, str(SCRIPT), str(run_dir or self.run_dir)], capture_output=True, text=True, encoding="utf-8")
         self.assertNotIn("Traceback", result.stderr)
         return result
 
     def test_findings_are_added_as_open_items_naming_the_run(self):
         self.assertEqual(self.sync().returncode, 0)
-        lines = [l for l in self.backlog.read_text().splitlines() if l.startswith("- [")]
+        lines = [l for l in self.backlog.read_text(encoding="utf-8").splitlines() if l.startswith("- [")]
         self.assertEqual(lines, [
             "- [ ] apply_discount subtracts the percent as an amount. (2026-11-12-cart-total)",
             "- [ ] total() raises TypeError for a string percent. (2026-11-12-cart-total)",
@@ -35,20 +35,20 @@ class FindingsTest(unittest.TestCase):
 
     def test_running_it_twice_adds_nothing(self):
         self.sync()
-        before = self.backlog.read_text()
+        before = self.backlog.read_text(encoding="utf-8")
         self.sync()
-        self.assertEqual(self.backlog.read_text(), before)
+        self.assertEqual(self.backlog.read_text(encoding="utf-8"), before)
 
     def test_an_item_the_user_ticked_off_stays_ticked_and_is_not_added_again(self):
         self.sync()
-        self.backlog.write_text(self.backlog.read_text().replace("- [ ] apply_discount", "- [x] apply_discount"))
+        self.backlog.write_text(self.backlog.read_text(encoding="utf-8").replace("- [ ] apply_discount", "- [x] apply_discount"), encoding="utf-8")
         self.sync()
-        text = self.backlog.read_text()
+        text = self.backlog.read_text(encoding="utf-8")
         self.assertEqual(text.count("apply_discount subtracts"), 1)
         self.assertIn("- [x] apply_discount", text)
 
     def test_a_run_with_no_findings_leaves_no_file(self):
-        (self.run_dir / "decisions.md").write_text("Base commit: 0\n")
+        (self.run_dir / "decisions.md").write_text("Base commit: 0\n", encoding="utf-8")
         self.assertEqual(self.sync().returncode, 0)
         self.assertFalse(self.backlog.exists())
 

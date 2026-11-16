@@ -25,25 +25,41 @@ READ_ONLY = ["pwd", "ls *", "date *", "wc *", "diff *", "head *", "tail *", "gre
 
 def plugin_prefix(root):
     """The path prefix that matches this plugin's files. An installed plugin lives in a folder
-    named for its version, so the prefix stops one level up and survives updates."""
-    root = Path(root)
+    named for its version, so the prefix stops one level up and survives updates.
+    `root` is a path object (a PureWindowsPath works anywhere); the prefix has forward slashes,
+    as Claude Code writes the plugin's path in Git Bash on Windows."""
     if root.parent.parent.parent.name == "cache" and re.fullmatch(r"\d+\.\d+\.\d+.*", root.name):
         root = root.parent
-    return str(root) + "/"
+    return root.as_posix().rstrip("/") + "/"
+
+
+def permission_path(prefix):
+    """The prefix as a Read rule's absolute path: //Users/... here, //c/Users/... for C:/Users/... on Windows."""
+    if re.match(r"[A-Za-z]:/", prefix):
+        return "//" + prefix[0].lower() + prefix[2:]
+    return "/" + prefix
 
 
 def test_command(project):
     notes = project / ".swd" / "project.md"
-    match = re.search(r"^Test command: `(.+?)`", notes.read_text(), re.M) if notes.is_file() else None
+    match = re.search(r"^Test command: `(.+?)`", notes.read_text(encoding="utf-8"), re.M) if notes.is_file() else None
     return match.group(1).strip() if match else None
 
 
 def rules(project, plugin_root, commands=()):
     prefix = plugin_prefix(plugin_root)
+    folder = plugin_root.as_posix().rstrip("/")
     out = [
-        f"Bash(python3 {prefix}*)",   # check_run.py, swd-clean.py, swd-dashboard.py, ...
-        f"Bash({prefix}*)",           # swd-log.sh, swd-watch.sh
-        f"Read(/{prefix}**)",         # standards and scripts; a leading // marks an absolute path
+        # check_run.py, swd-log.py, swd-dashboard.py, ... under each name swd-python.sh check may print
+        f"Bash(python3 {prefix}*)",
+        f"Bash(python {prefix}*)",
+        f"Bash(py -3 {prefix}*)",
+        # The only .sh files the skills run, always through sh, named by the full plugin folder (an installed
+        # plugin's version folder included): a * in the path would match any text, so a crafted command could
+        # reach swd-python.sh run or install. After a plugin update these name the old version: run setup again.
+        f"Bash(sh {folder}/scripts/swd-python.sh check)",
+        f"Bash(sh {folder}/scripts/swd-watch.sh *)",
+        f"Read({permission_path(prefix)}**)",   # standards and scripts; a leading // marks an absolute path
         "Bash(git *)",
         "Bash(gh pr *)",
         "Edit(/.swd/**)",             # the run folder and the worktree; paths are relative to the project
@@ -77,7 +93,7 @@ def main(argv=None):
     data = {}
     if settings.exists():
         try:
-            data = json.loads(settings.read_text())
+            data = json.loads(settings.read_text(encoding="utf-8"))
         except ValueError:
             data = None
         if not isinstance(data, dict):
@@ -88,10 +104,12 @@ def main(argv=None):
     added = [rule for rule in wanted if rule not in allow]
     allow.extend(added)
     settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text(json.dumps(data, indent=2) + "\n")
+    settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     print(f"setup: {len(added)} rules added to {settings}" if added else "setup: nothing to add")
     return 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

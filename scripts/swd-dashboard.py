@@ -155,7 +155,7 @@ def write_page(run_dir):
     page = render(run_dir)
     target = run_dir / "dashboard.html"
     temp = run_dir / "dashboard.html.tmp"
-    temp.write_text(page)
+    temp.write_text(page, encoding="utf-8")
     os.replace(temp, target)
     return target, 'http-equiv="refresh"' not in page
 
@@ -182,9 +182,14 @@ def main(argv=None):
         time.sleep(REFRESH_SECONDS)
         if not run_dir.is_dir():
             break
-        _, finished = write_page(run_dir)
+        try:
+            _, finished = write_page(run_dir)
+        except OSError:
+            continue  # Windows will not replace a page the browser has open; the next refresh tries again
     return 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

@@ -1,5 +1,6 @@
 """Tests for scripts/swd-watch.sh, using stub `herdr` and `hc` commands on PATH."""
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -21,6 +22,7 @@ exit 0
 """
 
 
+@unittest.skipIf(os.name == "nt", "the herdr watch terminals are macOS and Linux only")
 class WatchTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -32,11 +34,11 @@ class WatchTest(unittest.TestCase):
         bin_dir = tmp / "bin"
         bin_dir.mkdir()
         stub = bin_dir / "herdr"
-        stub.write_text(STUB)
+        stub.write_text(STUB, encoding="utf-8")
         stub.chmod(0o755)
         self.hc_log = tmp / "hc.log"
         self.hc_stub = bin_dir / "hc"
-        self.hc_stub.write_text(HC_STUB)
+        self.hc_stub.write_text(HC_STUB, encoding="utf-8")
         self.hc_stub.chmod(0o755)
         self.bin_dir = bin_dir
         # Never inherit the host's Herdr variables: the real `hc` must not be reachable.
@@ -44,18 +46,19 @@ class WatchTest(unittest.TestCase):
             k: v for k, v in os.environ.items()
             if not k.startswith("HERDR_") and k != "HC_TERMINAL_SOCKET"
         }
-        self.env["PATH"] = f"{bin_dir}:{self.env['PATH']}"
+        self.bash = shutil.which("bash")   # found before PATH changes, never run by bare name
+        self.env["PATH"] = f"{bin_dir}{os.pathsep}{self.env['PATH']}"
         self.env["HERDR_STUB_LOG"] = str(self.log)
         self.env["HC_STUB_LOG"] = str(self.hc_log)
 
     def watch(self, **extra):
         return subprocess.run(
-            ["bash", str(SCRIPT), str(self.run_dir)],
-            env={**self.env, **extra}, capture_output=True, text=True,
+            [self.bash, str(SCRIPT), str(self.run_dir)],
+            env={**self.env, **extra}, capture_output=True, text=True, encoding="utf-8",
         )
 
     def calls(self):
-        return self.log.read_text().splitlines() if self.log.exists() else []
+        return self.log.read_text(encoding="utf-8").splitlines() if self.log.exists() else []
 
     def test_outside_herdr_prints_fallback(self):
         result = self.watch()
@@ -83,7 +86,7 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
 
     def hc_calls(self):
-        return self.hc_log.read_text().splitlines() if self.hc_log.exists() else []
+        return self.hc_log.read_text(encoding="utf-8").splitlines() if self.hc_log.exists() else []
 
     def test_app_starts_two_terminals(self):
         result = self.watch(HC_TERMINAL_SOCKET="/s")
@@ -112,7 +115,7 @@ class WatchTest(unittest.TestCase):
 
     def test_hc_missing(self):
         self.hc_stub.unlink()
-        result = self.watch(HC_TERMINAL_SOCKET="/s", PATH=f"{self.bin_dir}:/usr/bin:/bin")
+        result = self.watch(HC_TERMINAL_SOCKET="/s", PATH=os.pathsep.join([str(self.bin_dir), "/usr/bin", "/bin"]))
         self.assertEqual(result.returncode, 0)
         self.assertIn("hc not found", result.stdout)
         self.assertEqual(self.hc_calls(), [])

@@ -48,7 +48,7 @@ class Project:
         try:
             reply = subprocess.run(
                 ["gh", "pr", "list", "--head", branch, "--state", "merged", "--json", "headRefOid"],
-                cwd=self.path, capture_output=True, text=True, timeout=30,
+                cwd=self.path, capture_output=True, text=True, timeout=30, encoding="utf-8", errors="replace",
             )
             return {pr["headRefOid"] for pr in json.loads(reply.stdout or "[]")}
         except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
@@ -151,10 +151,12 @@ def main(argv):
         print("kept " + line)
     if not removed and not kept:
         print("housekeeping: nothing to clean up")
-    with open(run_dir / "decisions.md", "a") as f:
+    with open(run_dir / "decisions.md", "a", encoding="utf-8") as f:
         f.write(f"Housekeeping: removed {len(removed)}, kept {len(kept)}\n")
     return 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main(sys.argv))

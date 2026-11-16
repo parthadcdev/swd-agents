@@ -25,16 +25,18 @@ def main(argv):
     if run_dir is None or run_dir.parent.name != "runs" or not (run_dir / "decisions.md").is_file():
         print("usage: swd-findings.py <run_dir>", file=sys.stderr)
         return 1
-    findings = re.findall(r"^Finding: (.+?)\s*$", (run_dir / "decisions.md").read_text(), re.M)
+    findings = re.findall(r"^Finding: (.+?)\s*$", (run_dir / "decisions.md").read_text(encoding="utf-8"), re.M)
     backlog = run_dir.parent.parent / "findings.md"
-    text = backlog.read_text() if backlog.exists() else ""
+    text = backlog.read_text(encoding="utf-8") if backlog.exists() else ""
     new = [f for f in dict.fromkeys(findings) if f not in text]
     if new:
         text = (text or HEADER).rstrip("\n") + "\n" + "".join(f"- [ ] {f} ({run_dir.name})\n" for f in new)
-        backlog.write_text(text)
+        backlog.write_text(text, encoding="utf-8")
     print(f"findings: {len(new)} added to {backlog}" if new else "findings: nothing new")
     return 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main(sys.argv))

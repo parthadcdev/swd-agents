@@ -47,6 +47,11 @@ ACTIVITY_RE = re.compile(r"^- \d{2}:\d{2}:\d{2} (\S+)( .*)?$")
 COMMIT_RE = re.compile(r"^([TW]\d+):")
 
 
+def git_path(name):
+    """A file path as git writes it: forward slashes (a plan or report written on Windows may use \\), normalised."""
+    return posixpath.normpath(name.replace("\\", "/"))
+
+
 def parse_plan(text):
     """Return (tasks, problems). A task is a dict: id, title, role, wave, files, depends, check."""
     tasks, problems, raw, current = [], [], {}, None
@@ -75,7 +80,7 @@ def parse_plan(text):
                 problems.append(f"plan.md: {task['id']} is missing '- {name}:'")
         task["role"] = fields.get("Role", "")
         task["check"] = fields.get("Check", "")
-        task["files"] = [posixpath.normpath(f.strip().strip("`")) for f in fields.get("Files", "").split(",") if f.strip()]
+        task["files"] = [git_path(f.strip().strip("`")) for f in fields.get("Files", "").split(",") if f.strip()]
         depends = fields.get("Depends", "")
         task["depends"] = [] if depends.lower() in ("", "none") else [d.strip() for d in depends.split(",")]
         wave = fields.get("Wave", "")
@@ -110,7 +115,7 @@ def parse_ledger(text):
 def read(path):
     """File text, or None when the file is missing or unreadable."""
     try:
-        return path.read_text()
+        return path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
 
@@ -296,7 +301,7 @@ def git(repo_dir, *args):
     """Output of a git command in repo_dir. Paths come back unquoted, so non-ASCII names compare equal."""
     return subprocess.run(
         ["git", "-C", str(repo_dir), "-c", "core.quotePath=false", *args],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, encoding="utf-8",
     ).stdout
 
 
@@ -321,7 +326,7 @@ def seal_plan(run_dir):
     text = f"Plan checksum: {checksum}\n"
     if (run_dir / "staffing.md").is_file():
         text += f"Staffing checksum: {file_checksum(run_dir / 'staffing.md')}\n"
-    with open(run_dir / "decisions.md", "a") as f:
+    with open(run_dir / "decisions.md", "a", encoding="utf-8") as f:
         # A last line with no newline would swallow the checksum, and the seal would never be read back.
         f.write(("" if before.endswith("\n") or not before else "\n") + text)
     return checksum
@@ -380,7 +385,7 @@ def check_task(run_dir, repo_dir, task_id):
         for line in sections(report).get("Files changed", "").splitlines():
             entry = line.strip().lstrip("-*").strip().strip("`")
             if entry:  # "path", or "path (what changed)"
-                claimed |= {posixpath.normpath(entry), posixpath.normpath(entry.split()[0].strip("`"))}
+                claimed |= {git_path(entry), git_path(entry.split()[0].strip("`"))}
 
     owned_by_any = {name for t in tasks for name in t["files"]}
     try:
@@ -635,4 +640,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

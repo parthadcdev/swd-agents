@@ -45,7 +45,7 @@ def item(text):
 
 
 def gh(project, *args):
-    reply = subprocess.run(["gh", *args], cwd=project, capture_output=True, text=True, timeout=60)
+    reply = subprocess.run(["gh", *args], cwd=project, capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace")
     if reply.returncode != 0:
         raise RuntimeError(reply.stderr.strip() or "gh failed")
     return json.loads(reply.stdout or "null")
@@ -103,7 +103,7 @@ def main(argv=None):
         return 1
     project = run_dir.parents[2]
     memory = run_dir / "pr-feedback.json"
-    handled = set(json.loads(memory.read_text())) if memory.exists() else set()
+    handled = set(json.loads(memory.read_text(encoding="utf-8"))) if memory.exists() else set()
 
     start = time.monotonic()
     deadline = start + args.wait
@@ -121,7 +121,7 @@ def main(argv=None):
 
     print(f"PR: {pr.get('url')} ({pr.get('state')})")
     if args.mark_handled:
-        memory.write_text(json.dumps(sorted(handled | set(feedback))))
+        memory.write_text(json.dumps(sorted(handled | set(feedback))), encoding="utf-8")
         print(f"marked {len(feedback)} pieces of feedback as handled")
         return 0
     if pr.get("state") != "OPEN":
@@ -141,7 +141,7 @@ def main(argv=None):
         if outside:
             lines += [OUTSIDE_HEADING, "", OUTSIDE_LEAD, ""] + [item(text) for text in outside] + [""]
         report.parent.mkdir(exist_ok=True)
-        report.write_text("\n".join(lines))
+        report.write_text("\n".join(lines), encoding="utf-8")
         print(f"action needed: {len(failing)} failing checks, {len(trusted)} new comments, "
               f"{len(outside)} from outside the repository (reply only); see reports/{report.name}")
         return 10
@@ -153,4 +153,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

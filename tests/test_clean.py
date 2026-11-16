@@ -22,7 +22,7 @@ def git(cwd, *args, check=True):
     return subprocess.run(
         ["git", "-C", str(cwd), "-c", "user.name=t", "-c", "user.email=t@example.com",
          "-c", "commit.gpgsign=false", *args],
-        check=check, capture_output=True, text=True,
+        check=check, capture_output=True, text=True, encoding="utf-8",
     ).stdout.strip()
 
 
@@ -34,7 +34,7 @@ class CleanTest(unittest.TestCase):
         self.project = self.tmp / "project"
         self.project.mkdir()
         git(self.project, "init", "-q", "-b", "main")
-        (self.project / "README.md").write_text("demo\n")
+        (self.project / "README.md").write_text("demo\n", encoding="utf-8")
         git(self.project, "add", "README.md")
         git(self.project, "commit", "-q", "-m", "Initial commit")
         git(self.tmp, "init", "-q", "--bare", "origin.git")
@@ -48,7 +48,7 @@ class CleanTest(unittest.TestCase):
         work = self.project / ".swd" / "worktrees" / name
         git(self.project, "worktree", "add", "-q", str(work), "-b", f"swd/{name}")
         if commit:
-            (work / f"{name}.py").write_text("x = 1\n")
+            (work / f"{name}.py").write_text("x = 1\n", encoding="utf-8")
             git(work, "add", f"{name}.py")
             git(work, "commit", "-q", "-m", f"T1: {name}")
         if pushed:
@@ -58,10 +58,10 @@ class CleanTest(unittest.TestCase):
         lines = ["Base commit: 0", "Base branch: main", f"Branch: swd/{name}", f"Worktree: {work}", "Finish: branch"]
         if abandoned:
             lines.append("Abandoned: 2026-11-12")
-        (run / "decisions.md").write_text("\n".join(lines) + "\n")
+        (run / "decisions.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
         if ledger:
             (run / "ledger.md").write_text(
-                f"| Task | Role | Status | Attempts |\n|---|---|---|---|\n| T1 | generalist-engineer | {ledger} | 1 |\n")
+                f"| Task | Role | Status | Attempts |\n|---|---|---|---|\n| T1 | generalist-engineer | {ledger} | 1 |\n", encoding="utf-8")
         return run
 
     def merge_to_main(self, name, push=True):
@@ -71,7 +71,7 @@ class CleanTest(unittest.TestCase):
 
     def clean(self, **env):
         result = subprocess.run([sys.executable, str(SCRIPT), str(self.run_dir)], capture_output=True, text=True,
-                                env={**os.environ, **env})
+                                env={**os.environ, **env}, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Traceback", result.stderr)
         return result.stdout
@@ -117,27 +117,28 @@ class CleanTest(unittest.TestCase):
 
     def test_worktree_with_uncommitted_changes_is_never_removed(self):
         self.past_run("draft", ledger="todo", abandoned=True)
-        (self.project / ".swd" / "worktrees" / "draft" / "wip.py").write_text("unsaved\n")
+        (self.project / ".swd" / "worktrees" / "draft" / "wip.py").write_text("unsaved\n", encoding="utf-8")
         out = self.clean()
         self.assertIn("draft", self.worktrees())
         self.assertRegex(out, r"kept .*draft.*uncommitted")
 
+    @unittest.skipIf(os.name == "nt", "the stub is a shell script, and Windows starts only .exe programs by name")
     def test_squash_merged_pull_request_is_recognised_through_gh(self):
         self.past_run("report", pushed=True)
         git(self.project, "worktree", "remove", str(self.project / ".swd" / "worktrees" / "report"))
         tip = git(self.project, "rev-parse", "swd/report")
         bin_dir = self.tmp / "bin"
         bin_dir.mkdir()
-        (bin_dir / "gh").write_text(GH_STUB)
+        (bin_dir / "gh").write_text(GH_STUB, encoding="utf-8")
         (bin_dir / "gh").chmod(0o755)
         reply = self.tmp / "reply.json"
-        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "GH_STUB_REPLY": str(reply)}
+        env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "GH_STUB_REPLY": str(reply)}
 
-        reply.write_text('[{"headRefOid": "0000000000000000000000000000000000000000"}]')
+        reply.write_text('[{"headRefOid": "0000000000000000000000000000000000000000"}]', encoding="utf-8")
         self.clean(**env)
         self.assertIn("swd/report", self.branches())       # a different commit was merged: keep ours
 
-        reply.write_text('[{"headRefOid": "%s"}]' % tip)
+        reply.write_text('[{"headRefOid": "%s"}]' % tip, encoding="utf-8")
         self.clean(**env)
         self.assertNotIn("swd/report", self.branches())
         self.assertNotIn("swd/report", self.remote_branches())
@@ -167,7 +168,7 @@ class CleanTest(unittest.TestCase):
         self.clean()
         self.assertIn("current", self.worktrees())
         self.assertIn("swd/current", self.branches())
-        self.assertRegex((self.run_dir / "decisions.md").read_text(), r"(?m)^Housekeeping: removed \d+, kept \d+$")
+        self.assertRegex((self.run_dir / "decisions.md").read_text(encoding="utf-8"), r"(?m)^Housekeeping: removed \d+, kept \d+$")
 
     def test_works_without_a_remote(self):
         git(self.project, "remote", "remove", "origin")
@@ -179,10 +180,10 @@ class CleanTest(unittest.TestCase):
     def test_nothing_to_do_is_quiet_and_still_recorded(self):
         out = self.clean()
         self.assertNotIn("kept", out)
-        self.assertIn("Housekeeping: removed 0, kept 0", (self.run_dir / "decisions.md").read_text())
+        self.assertIn("Housekeeping: removed 0, kept 0", (self.run_dir / "decisions.md").read_text(encoding="utf-8"))
 
     def test_a_folder_that_is_not_a_run_is_an_error_not_a_traceback(self):
-        result = subprocess.run([sys.executable, str(SCRIPT), str(self.tmp)], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, str(SCRIPT), str(self.tmp)], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 1)
         self.assertNotIn("Traceback", result.stderr)
 

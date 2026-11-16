@@ -1,11 +1,13 @@
 """Tests for scripts/swd-dashboard.py, which renders a run folder as one HTML page."""
 import importlib.util
+import io
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "swd-dashboard.py"
@@ -57,10 +59,10 @@ class DashboardTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.run_dir = Path(self._tmp.name) / "2026-11-12-cart-total"
         self.run_dir.mkdir()
-        (self.run_dir / "spec.md").write_text(SPEC)
-        (self.run_dir / "plan.md").write_text(PLAN)
-        (self.run_dir / "ledger.md").write_text(LEDGER)
-        (self.run_dir / "activity.md").write_text(ACTIVITY)
+        (self.run_dir / "spec.md").write_text(SPEC, encoding="utf-8")
+        (self.run_dir / "plan.md").write_text(PLAN, encoding="utf-8")
+        (self.run_dir / "ledger.md").write_text(LEDGER, encoding="utf-8")
+        (self.run_dir / "activity.md").write_text(ACTIVITY, encoding="utf-8")
         self.dash = load()
 
     def test_shows_tasks_by_wave_with_status_and_role(self):
@@ -93,7 +95,7 @@ class DashboardTest(unittest.TestCase):
 
     def test_refreshes_until_the_run_is_done(self):
         self.assertIn('http-equiv="refresh"', self.dash.render(self.run_dir))
-        with open(self.run_dir / "activity.md", "a") as f:
+        with open(self.run_dir / "activity.md", "a", encoding="utf-8") as f:
             f.write("- 10:09:00 done all tasks complete\n")
         self.assertNotIn('http-equiv="refresh"', self.dash.render(self.run_dir))
 
@@ -110,20 +112,40 @@ class DashboardTest(unittest.TestCase):
 
     def cli(self, *args):
         env = {**os.environ, "SWD_NO_BROWSER": "1"}
-        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, env=env, timeout=30)
+        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, env=env, timeout=30, encoding="utf-8")
 
     def test_cli_writes_the_page(self):
         result = self.cli(str(self.run_dir))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("T2", (self.run_dir / "dashboard.html").read_text())
+        self.assertIn("T2", (self.run_dir / "dashboard.html").read_text(encoding="utf-8"))
         self.assertIn("dashboard.html", result.stdout)
 
     def test_watch_stops_when_the_run_is_done(self):
-        with open(self.run_dir / "activity.md", "a") as f:
+        with open(self.run_dir / "activity.md", "a", encoding="utf-8") as f:
             f.write("- 10:09:00 done all tasks complete\n")
         result = self.cli("--watch", "--open", str(self.run_dir))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('http-equiv="refresh"', (self.run_dir / "dashboard.html").read_text())
+        self.assertNotIn('http-equiv="refresh"', (self.run_dir / "dashboard.html").read_text(encoding="utf-8"))
+
+    def test_watch_survives_a_page_it_cannot_replace(self):
+        # Windows refuses to replace a file another program has open, such as the page in the browser.
+        real_replace, calls = os.replace, []
+
+        def replace_failing_once(source, target):
+            calls.append(target)
+            if len(calls) == 2:   # the first refresh in the loop; the run finishes meanwhile
+                with open(self.run_dir / "activity.md", "a", encoding="utf-8") as f:
+                    f.write("- 10:09:00 done all tasks complete\n")
+                raise PermissionError(13, "The process cannot access the file", str(target))
+            real_replace(source, target)
+
+        self.dash.REFRESH_SECONDS = 0
+        self.dash.MAX_WATCH_SECONDS = 5   # a regression fails here instead of hanging the suite
+        with mock.patch.object(self.dash.os, "replace", replace_failing_once), \
+                mock.patch("sys.stdout", io.StringIO()):
+            self.assertEqual(self.dash.main(["--watch", str(self.run_dir)]), 0)
+        self.assertEqual(len(calls), 3)
+        self.assertNotIn('http-equiv="refresh"', (self.run_dir / "dashboard.html").read_text(encoding="utf-8"))
 
     def test_cli_missing_run_folder_is_an_error_not_a_traceback(self):
         result = self.cli(str(self.run_dir / "nope"))

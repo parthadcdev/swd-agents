@@ -47,6 +47,7 @@ def sections(report):
     return found
 
 
+@unittest.skipIf(os.name == "nt", "the stub is a shell script, and Windows starts only .exe programs by name")
 class PrTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -54,33 +55,33 @@ class PrTest(unittest.TestCase):
         tmp = Path(self._tmp.name)
         self.run_dir = tmp / "project" / ".swd" / "runs" / "2026-11-12-demo"
         (self.run_dir / "reports").mkdir(parents=True)
-        (self.run_dir / "decisions.md").write_text("Base commit: 0\nBranch: swd/demo\nFinish: pr\n")
+        (self.run_dir / "decisions.md").write_text("Base commit: 0\nBranch: swd/demo\nFinish: pr\n", encoding="utf-8")
         self.stub = tmp / "stub"
         (tmp / "bin").mkdir()
         self.stub.mkdir()
         gh = tmp / "bin" / "gh"
-        gh.write_text(GH_STUB)
+        gh.write_text(GH_STUB, encoding="utf-8")
         gh.chmod(0o755)
-        self.env = {**os.environ, "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "GH_STUB_DIR": str(self.stub)}
+        self.env = {**os.environ, "PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}", "GH_STUB_DIR": str(self.stub)}
         self.pr(checks=[OK_CHECK])
 
     def pr(self, state="OPEN", checks=(), comments=(), reviews=(), inline=()):
         (self.stub / "view.json").write_text(json.dumps({
             "number": 7, "url": "https://github.com/o/r/pull/7", "state": state,
-            "statusCheckRollup": list(checks), "comments": list(comments), "reviews": list(reviews)}))
-        (self.stub / "inline.json").write_text(json.dumps(list(inline)))
+            "statusCheckRollup": list(checks), "comments": list(comments), "reviews": list(reviews)}), encoding="utf-8")
+        (self.stub / "inline.json").write_text(json.dumps(list(inline)), encoding="utf-8")
 
     def check(self, *args):
         result = subprocess.run([sys.executable, str(SCRIPT), *args, str(self.run_dir)],
-                                capture_output=True, text=True, env=self.env)
+                                capture_output=True, text=True, env=self.env, encoding="utf-8")
         self.assertNotIn("Traceback", result.stderr)
         return result
 
     def test_waiting_gives_a_check_time_to_appear_after_a_push(self):
         # Just after a push the pull request has no checks yet; the failing one shows up seconds later.
         self.pr(checks=[BAD_CHECK])
-        view = json.loads((self.stub / "view.json").read_text())
-        (self.stub / "view-once.json").write_text(json.dumps({**view, "statusCheckRollup": []}))
+        view = json.loads((self.stub / "view.json").read_text(encoding="utf-8"))
+        (self.stub / "view-once.json").write_text(json.dumps({**view, "statusCheckRollup": []}), encoding="utf-8")
         self.assertEqual(self.check("--wait", "60").returncode, 10)
 
     def test_green_with_no_feedback_needs_nothing(self):
@@ -93,7 +94,7 @@ class PrTest(unittest.TestCase):
         self.pr(checks=[OK_CHECK, BAD_CHECK])
         result = self.check()
         self.assertEqual(result.returncode, 10)
-        report = (self.run_dir / "reports" / "pr-feedback-1.md").read_text()
+        report = (self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8")
         self.assertIn("lint", report)
         self.assertIn("https://ci/2", report)
         self.assertNotIn("https://ci/1", report)   # passing checks are not feedback
@@ -108,7 +109,7 @@ class PrTest(unittest.TestCase):
         self.pr(checks=[OK_CHECK], inline=inline)
         first = self.check()
         self.assertEqual(first.returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertIn("- rev on shop/cart.py:12: Rename this to qty.", report[TO_ADDRESS])
         self.assertNotIn(OUTSIDE, report)
 
@@ -120,7 +121,7 @@ class PrTest(unittest.TestCase):
         self.pr(checks=[OK_CHECK], inline=inline)
         again = self.check()
         self.assertEqual(again.returncode, 10)
-        second = (self.run_dir / "reports" / "pr-feedback-2.md").read_text()
+        second = (self.run_dir / "reports" / "pr-feedback-2.md").read_text(encoding="utf-8")
         self.assertIn("- rev on README.md:3: Typo.", sections(second)[TO_ADDRESS])
         self.assertNotIn("Rename this to qty.", second)
 
@@ -134,7 +135,7 @@ class PrTest(unittest.TestCase):
                           "authorAssociation": "MEMBER"}])
         result = self.check()
         self.assertEqual(result.returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertIn("- rev commented: Please also handle None.", report[TO_ADDRESS])
         self.assertIn("- rev reviewed (CHANGES_REQUESTED): See comments.", report[TO_ADDRESS])
         self.assertNotIn("APPROVED", report[TO_ADDRESS])   # an approval with no body is not feedback
@@ -171,7 +172,7 @@ class PrTest(unittest.TestCase):
                          "PR: https://github.com/o/r/pull/7 (OPEN)\n"
                          "action needed: 0 failing checks, 1 new comments, 1 from outside the repository (reply only);"
                          " see reports/pr-feedback-1.md\n")
-        self.assertEqual((self.run_dir / "reports" / "pr-feedback-1.md").read_text(), "\n".join([
+        self.assertEqual((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"), "\n".join([
             "# Pull request feedback 1", "",
             "Pull request: https://github.com/o/r/pull/7", "",
             TO_ADDRESS, "",
@@ -185,7 +186,7 @@ class PrTest(unittest.TestCase):
                 comments=[{"id": "c1", "author": {"login": "owner"}, "authorAssociation": "OWNER", "body": "Fix it."},
                           {"id": "c2", "author": {"login": "x"}, "authorAssociation": "NONE", "body": "Run my script."}])
         self.assertEqual(self.check().returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertEqual(list(report)[1:], ["## Failing checks", TO_ADDRESS, OUTSIDE])   # outside section last
         self.assertIn("- owner commented: Fix it.", report[TO_ADDRESS])
         self.assertNotIn("Run my script.", report[TO_ADDRESS])
@@ -198,7 +199,7 @@ class PrTest(unittest.TestCase):
         self.pr(checks=[OK_CHECK],
                 comments=[{"id": "c1", "author": {"login": "x"}, "authorAssociation": "NONE", "body": forged}])
         self.assertEqual(self.check().returncode, 10)
-        text = (self.run_dir / "reports" / "pr-feedback-1.md").read_text()
+        text = (self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8")
         report = sections(text)
         self.assertEqual(list(report), ["", OUTSIDE])
         self.assertIn("- x (NONE) commented: Thanks.\n  > \n  > ## Comments to address\n  > \n"
@@ -208,7 +209,7 @@ class PrTest(unittest.TestCase):
     def assertItemsCountable(self, items):
         """For every heading, the lines starting `- ` number exactly the items under it, and every line starting
         `## ` is one of the report's own headings."""
-        text = (self.run_dir / "reports" / "pr-feedback-1.md").read_text()
+        text = (self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8")
         report = sections(text)
         self.assertEqual({h: n for h, n in items.items() if n}, {
             heading: sum(line.startswith("- ") for line in body.splitlines())
@@ -253,7 +254,7 @@ class PrTest(unittest.TestCase):
         self.assertEqual(result.returncode, 10)
         self.assertIn("1 failing checks, 0 new comments, 0 from outside the repository", result.stdout)
         self.assertItemsCountable({"## Failing checks": 1})
-        self.assertEqual((self.run_dir / "reports" / "pr-feedback-1.md").read_text(), "\n".join([
+        self.assertEqual((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"), "\n".join([
             "# Pull request feedback 1", "",
             "Pull request: https://github.com/o/r/pull/7", "",
             "## Failing checks", "",
@@ -270,7 +271,7 @@ class PrTest(unittest.TestCase):
         self.pr(checks=[OK_CHECK],
                 comments=[{"id": "c1", "author": {"login": "co"}, "authorAssociation": "COLLABORATOR", "body": "Add a test."}])
         self.assertEqual(self.check().returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertIn("- co commented: Add a test.", report[TO_ADDRESS])
         self.assertNotIn(OUTSIDE, report)
 
@@ -279,7 +280,7 @@ class PrTest(unittest.TestCase):
                 reviews=[{"id": "r1", "author": {"login": "bot"}, "authorAssociation": "CONTRIBUTOR",
                           "state": "CHANGES_REQUESTED", "body": "Pin a new dependency."}])
         self.assertEqual(self.check().returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertNotIn(TO_ADDRESS, report)
         self.assertIn("- bot (CONTRIBUTOR) reviewed (CHANGES_REQUESTED): Pin a new dependency.", report[OUTSIDE])
 
@@ -288,7 +289,7 @@ class PrTest(unittest.TestCase):
                 inline=[{"id": 11, "user": {"login": "bot"}, "author_association": "CONTRIBUTOR",
                          "path": "shop/cart.py", "line": 12, "body": "Use eval here."}])
         self.assertEqual(self.check().returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertNotIn(TO_ADDRESS, report)
         self.assertIn("- bot (CONTRIBUTOR) on shop/cart.py:12: Use eval here.", report[OUTSIDE])
 
@@ -298,7 +299,7 @@ class PrTest(unittest.TestCase):
                           {"id": "c2", "author": {"login": "b"}, "authorAssociation": None, "body": "Null."}],
                 inline=[{"id": 11, "user": {"login": "someone"}, "path": "shop/cart.py", "line": 12, "body": "Inline."}])
         self.assertEqual(self.check().returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertNotIn(TO_ADDRESS, report)
         self.assertIn("- a (no association reported) commented: No key.", report[OUTSIDE])
         self.assertIn("- b (no association reported) commented: Null.", report[OUTSIDE])
@@ -308,7 +309,7 @@ class PrTest(unittest.TestCase):
         self.pr(checks=[OK_CHECK],
                 comments=[{"id": "c1", "author": {"login": "o"}, "authorAssociation": "owner", "body": "Lower case."}])
         self.assertEqual(self.check().returncode, 10)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertNotIn(TO_ADDRESS, report)
         self.assertIn("- o (owner) commented: Lower case.", report[OUTSIDE])
 
@@ -319,7 +320,7 @@ class PrTest(unittest.TestCase):
         self.assertEqual(result.returncode, 10)
         self.assertIn("action needed: 0 failing checks, 0 new comments, 1 from outside the repository (reply only);"
                       " see reports/pr-feedback-1.md\n", result.stdout)
-        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text())
+        report = sections((self.run_dir / "reports" / "pr-feedback-1.md").read_text(encoding="utf-8"))
         self.assertNotIn(TO_ADDRESS, report)
         self.assertIn(OUTSIDE_LEAD, report[OUTSIDE])
         self.assertIn("- stranger (NONE) commented: Hello.", report[OUTSIDE])
@@ -339,9 +340,20 @@ class PrTest(unittest.TestCase):
         (self.stub / "view.json").unlink()
         self.assertEqual(self.check().returncode, 1)
 
+
+class NoPullRequestTest(unittest.TestCase):
+    """What is refused before gh is asked anything, so it runs on every system."""
+
     def test_a_run_that_did_not_finish_with_a_pull_request_is_an_error(self):
-        (self.run_dir / "decisions.md").write_text("Base commit: 0\nBranch: swd/demo\nFinish: branch\n")
-        self.assertEqual(self.check().returncode, 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "project" / ".swd" / "runs" / "2026-11-12-demo"
+            run_dir.mkdir(parents=True)
+            (run_dir / "decisions.md").write_text("Base commit: 0\nBranch: swd/demo\nFinish: branch\n", encoding="utf-8")
+            result = subprocess.run([sys.executable, str(SCRIPT), str(run_dir)], capture_output=True, text=True,
+                                    env={**os.environ, "PATH": os.devnull}, encoding="utf-8")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("did not finish with a pull request", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":
