@@ -58,16 +58,22 @@ The script has written the failing checks and the new comments to
    mode and the commit all work exactly as in the build playbook's Fix
    loop. Set the Agent tool's `model` and `effort` on every dispatch, as
    `<plugin>/standards/models.md` says: the task's row in the run's
-   `staffing.md` where there is one, your own choice by that rule where
-   there is not.
+   `staffing.md` for its builder and the `review` row for its reviewers (the `final` row in a quick run),
+   where there are such rows, your own choice by that rule where there are
+   not.
    If a change is in a file no task owns, send the architect to add a
    task, then check, judge, staff and seal the amended plan as the build
    playbook's Gate describes, and build that task. A run from before 0.8.0
    has no `## Outcome`, no `- Outcome:` lines and no `staffing.md`, and
    the seal needs all three: have the architect add the Outcome section
    and every task's `- Outcome:` in the same amendment, and write
-   `staffing.md` with a row for every task. A finished task's row says
-   what a fix to it is dispatched at.
+   `staffing.md` with a row for every task and the `review` and
+   `final` rows the run's mode has, no checker's model below a builder's.
+   A run sealed under 0.8.0 is held to the same rows and floor when it is
+   sealed again, so raise a `review` or `final` row that sits below a
+   builder's first. A change to `staffing.md` without an amended plan is
+   sealed again without a new `Plan judged:` line. A finished task's row
+   says what a fix to it is dispatched at.
 4. **Keep the records.** Update the ledger and log every dispatch, verdict
    and commit with `swd-log.sh`. When the fixes are in, log `done` again and
    run `python3 <plugin>/scripts/check_run.py <run>` until it prints

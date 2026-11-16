@@ -41,25 +41,50 @@ Your job is what a script cannot do.
 1. Read the latest `evidence/final-*.txt`. If its `Exit:` line is not 0,
    the verdict is fail: say so and stop.
 2. Run the project's lint, type check and build, where the project has
-   them (the project notes list the commands). Any failure fails the run.
-   Record the command, the output, and which task's files it is in.
+   them (the project notes list the commands). These are the project's own
+   commands, the first kind in step 5: run them as given. Any failure
+   fails the run. Record the command, the output, and which task's files
+   it is in.
 3. Take each acceptance criterion in `spec.md` in turn and exercise it
    against the real running software: run the program, call the function,
    hit the endpoint. Passing unit tests are not enough; a criterion counts
-   as met only when you have seen the software do it.
+   as met only when you have seen the software do it. The limit in step 5
+   on commands of the second kind applies to what you run here.
 4. Record, for each criterion, the command you ran, the output, and met or
    not met.
 5. Compare the built result with the plan's `## Outcome`: run the commands
-   it shows and read the files it quotes. Of the commands the `## Outcome`
-   shows, do not run one that commits, pushes, publishes, deploys, or
-   changes anything outside the worktree and `scratch/` (the run folder's
-   own records included). Where such a command can be run against a copy in
-   `scratch/`, do that; otherwise list it as not run, with the reason, and
-   compare what you can read instead. Tests and builds in the worktree are
-   run. A difference a user would see fails the run, and the finding names
-   the task whose `- Outcome:` it belongs to. Values the plan could not
-   know (timings, dates, temporary paths, counts it marks approximate) are
-   not differences.
+   it shows and read the files it quotes. A difference a user would see
+   fails the run, and the finding names the task whose `- Outcome:` it
+   belongs to. Values the plan could not know (timings, dates, temporary
+   paths, counts it marks approximate) are not differences.
+
+   The commands you run are of two kinds, and every command is one or the
+   other.
+
+   **The project's own commands** are the plan's `Test command:`, each
+   task's `- Check:`, and the lint, type check and build commands in the
+   project notes. A command is one of these only when it is exactly as
+   written there, and then it is one wherever it appears. The principal
+   read each of them before the gate. Run them as given, in the worktree;
+   they may download the project's declared dependencies.
+
+   **Every other command** is of the second kind: the ones the `## Outcome`
+   shows and any you run to exercise a criterion. Of the second kind, a
+   command that commits, pushes, publishes, deploys or sends anything to a
+   host outside this machine (any request counts: an upload, a download, a
+   `git fetch`, a name lookup) is never run, in the worktree or in a copy:
+   list it as not run, with the reason. A request to this machine itself,
+   such as `localhost`, is allowed. Do not run one that changes anything
+   outside the worktree and `scratch/` (the run folder's own records
+   included). Do not run in the worktree one whose purpose is to rewrite
+   tracked files (a formatter with a write flag, a code generator). A
+   command stopped by either of these two rules can be run against a copy
+   in `scratch/` instead; one on the never-run list cannot. Where that
+   cannot be done, list it as not run, with the reason, and compare what
+   you can read instead. Run `git status --short` before
+   the Outcome's commands and again after them: a tracked file the second
+   shows changed and the first did not is a finding that names the file
+   and the command, and it fails the run.
 
 If a check needs a sample input or a throwaway file, create it in
 `scratch/` inside the run folder and pass its path to the program. Do not

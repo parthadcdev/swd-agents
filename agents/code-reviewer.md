@@ -60,16 +60,37 @@ Read:
    whole project, then exercise each acceptance criterion in `spec.md`
    against the real software, also compare the result with the plan's
    `## Outcome`, and record the command and output for each
-   under `## Acceptance criteria` in your report. Of the commands the
-   `## Outcome` shows, do not run one that commits, pushes, publishes,
-   deploys, or changes anything outside the worktree and `scratch/` (the
-   run folder's own records included). Where such a command can be run
-   against a copy in `scratch/`, do that; otherwise list it as not run,
-   with the reason, and compare what you can read instead. Tests and builds
-   in the worktree are run. This limit is for the commands the `## Outcome`
-   shows; run the test command and the acceptance criteria as before. Say
-   in `## Findings` if the change touches a trust boundary or is bigger
-   than one small task; that moves the run out of quick mode.
+   under `## Acceptance criteria` in your report. Say in `## Findings` if
+   the change touches a trust boundary or is bigger than one small task;
+   that moves the run out of quick mode.
+
+   The commands you run are of two kinds, and every command is one or the
+   other.
+
+   **The project's own commands** are the plan's `Test command:`, each
+   task's `- Check:`, and the lint, type check and build commands in the
+   project notes. A command is one of these only when it is exactly as
+   written there, and then it is one wherever it appears. The principal
+   read each of them before the gate. Run them as given, in the worktree;
+   they may download the project's declared dependencies.
+
+   **Every other command** is of the second kind: the ones the `## Outcome`
+   shows and any you run to exercise a criterion. Of the second kind, a
+   command that commits, pushes, publishes, deploys or sends anything to a
+   host outside this machine (any request counts: an upload, a download, a
+   `git fetch`, a name lookup) is never run, in the worktree or in a copy:
+   list it as not run, with the reason. A request to this machine itself,
+   such as `localhost`, is allowed. Do not run one that changes anything
+   outside the worktree and `scratch/` (the run folder's own records
+   included). Do not run in the worktree one whose purpose is to rewrite
+   tracked files (a formatter with a write flag, a code generator). A
+   command stopped by either of these two rules can be run against a copy
+   in `scratch/` instead; one on the never-run list cannot. Where that
+   cannot be done, list it as not run, with the reason, and compare what
+   you can read instead. Run `git status --short` before
+   the Outcome's commands and again after them: a tracked file the second
+   shows changed and the first did not is a finding that names the file
+   and the command, and it fails the run.
 6. Decide. Fail for anything that is wrong, unsafe, untested or below the
    standard. Do not fail for style preferences the project does not share.
 

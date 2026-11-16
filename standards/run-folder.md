@@ -189,10 +189,14 @@ Before the seal the principal adds one line, `Plan judged: <one sentence>`,
 saying the plan was judged against the spec.
 Each time the plan is amended and sealed again, the principal adds a
 new `Plan judged:` line below the last `Plan checksum:` line;
-`check_run.py --seal` refuses to seal without it.
+`check_run.py --seal` refuses to seal without it. A change to `staffing.md`
+alone is sealed again without a new `Plan judged:` line.
 
-`check_run.py --seal` adds lines of the form `Plan checksum: <sha256>`. The
-last one must match `plan.md`; nobody writes these by hand.
+`check_run.py --seal` adds lines of the form `Plan checksum: <sha256>` and,
+from 0.8.1, `Staffing checksum: <sha256>`. The last of each must match
+`plan.md` and `staffing.md`; nobody writes these by hand. A run with no
+`Staffing checksum:` line was sealed by an earlier version, and its
+`staffing.md` is not compared.
 
 ## staffing.md
 
@@ -202,7 +206,9 @@ those dispatches. The `review` row is for the code reviewer and the
 security reviewer wherever the mode dispatches them, for one task or for
 the whole change; the `final` row is for final QA. A prototype's `review`
 row is its one review at the end. A quick run has no `plan` or `review`
-row, and its `final` row names `code-reviewer`.
+row, and its `final` row names `code-reviewer`. The seal requires the
+`final` row in every mode and the `review` row in production and prototype
+mode.
 
 ```markdown
 # Staffing
@@ -213,7 +219,7 @@ row, and its `final` row names `code-reviewer`.
 | T1 | generalist-engineer | opus | medium | Multistep change to the checker and its tests |
 | T2 | docs-writer | opus | low | Well-specified wording change |
 | review | code-reviewer, security-reviewer | opus | medium | Review is where Opus 5.5 gains most |
-| final | qa-engineer | sonnet | medium | Runs commands and compares output |
+| final | qa-engineer | opus | low | Runs commands and compares output |
 ```
 
 `For` is a task id, or `plan`, `review` or `final`. `Agent` is the bare role
@@ -221,7 +227,16 @@ name as in the ledger, with no `swd:` prefix; agents sharing a row are
 comma-separated. A task's `Agent` is the `Role` its plan names. `Model` is
 `haiku`, `sonnet`, `opus` or `fable`; `Effort` is `low`, `medium`, `high` or
 `xhigh`. When a task is moved up after a failed fix, its row is changed and
-the ruling goes in `decisions.md`.
+the ruling goes in `decisions.md`, and the run is sealed again.
+
+The model on a `review` or `final` row may not rank below the model on
+any task's row (`haiku` < `sonnet` < `opus` < `fable`); a row naming
+two agents is compared once, by its one `Model` cell. Effort is not
+compared. `check_run.py --seal` refuses a table that breaks this.
+
+The seal covers this file. After it, a changed row is reported by
+`check_run.py --task` and by the check of a finished run until the
+principal seals again.
 
 ## Builder reports
 

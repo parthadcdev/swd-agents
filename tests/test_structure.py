@@ -369,22 +369,29 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=f"{name}.md"):
                 text = words("agents", f"{name}.md")
                 self.assertIn("## Outcome", text)
-                # The limit is on the Outcome's dangerous commands only: a test suite or a
-                # build writes caches in the worktree and must still be run.
+                # Two kinds of command: the project's own tests and builds are run as given
+                # (they write caches and download dependencies); the limit is on every other.
                 self.assertNotIn("Run only the commands that read", text)
+                self.assertNotIn("Tests and builds in the worktree are run", text)
                 for needle in (
-                    "Of the commands the `## Outcome` shows, do not run one that commits, pushes, "
-                    "publishes, deploys, or changes anything outside the worktree and `scratch/`",
+                    "The commands you run are of two kinds, and every command is one or the other",
+                    "Run them as given, in the worktree",
+                    "a command that commits, pushes, publishes, deploys or sends anything to a "
+                    "host outside this machine (any request counts: an upload, a download, a "
+                    "`git fetch`, a name lookup) is never run, in the worktree or in a copy",
+                    "Do not run one that changes anything outside the worktree and `scratch/`",
+                    "they may download the project's declared dependencies",
+                    "A command stopped by either of these two rules can be run against a copy "
+                    "in `scratch/` instead; one on the never-run list cannot",
+                    "Do not run in the worktree one whose purpose is to rewrite tracked files",
+                    "Run `git status --short` before the Outcome's commands and again after them",
                     "the run folder's own records included",
-                    "can be run against a copy in `scratch/`",
                     "list it as not run, with the reason",
-                    "Tests and builds in the worktree are run",
                 ):
                     with self.subTest(file=f"{name}.md", needle=needle):
                         self.assertIn(needle, text)
-        self.assertIn(
-            "This limit is for the commands the `## Outcome` shows; "
-            "run the test command and the acceptance criteria as before",
+        self.assertNotIn(
+            "This limit is for the commands the `## Outcome` shows",
             words("agents", "code-reviewer.md"),
         )
 
@@ -483,6 +490,108 @@ class StructureTest(unittest.TestCase):
         for parts, needle in absent.items():
             with self.subTest(file=parts[-1], absent=needle):
                 self.assertNotIn(needle, words(*parts))
+
+    def test_unattended_run_safeguards_are_pinned(self):
+        def words(*parts: str) -> str:
+            return " ".join((ROOT.joinpath(*parts)).read_text().split())
+
+        for parts in (
+            ("agents", "qa-engineer.md"), ("agents", "code-reviewer.md"),
+            ("agents", "architect.md"), ("skills", "build", "SKILL.md"),
+        ):
+            with self.subTest(file=parts[-1], needle="host outside this machine"):
+                self.assertIn("anything to a host outside this machine", words(*parts))
+            # The two kinds of command are defined in the same terms in all four, so no reader
+            # can place a command differently from another.
+            for needle in (
+                "anything to a host outside this machine (any request counts: an upload, "
+                "a download, a `git fetch`, a name lookup)",
+                "every command is one or the other",
+                "**The project's own commands** are the plan's `Test command:`, each task's "
+                "`- Check:`, and the lint, type check and build commands in the project notes. "
+                "A command is one of these only when it is exactly as written there, and then "
+                "it is one wherever it appears.",
+                "**Every other command** is of the second kind",
+                "A request to this machine itself, such as `localhost`, is allowed",
+            ):
+                with self.subTest(file=parts[-1], needle=needle):
+                    self.assertIn(needle, words(*parts))
+        # A reviewer read "contacts a host" as forbidding localhost: the host is always qualified.
+        for parts in (
+            ("agents", "qa-engineer.md"), ("agents", "code-reviewer.md"), ("agents", "architect.md"),
+            ("skills", "build", "SKILL.md"), ("README.md",), ("CHANGELOG.md",),
+        ):
+            with self.subTest(file=parts[-1], absent="a host that is not 'outside this machine'"):
+                self.assertEqual(
+                    re.findall(r"\b(?:a|another|other) hosts?\b(?! outside this machine)", words(*parts)), []
+                )
+        # The reading of a project's own command asks as much of it as the never-run list asks of
+        # every other: `npx @attacker/lint-config .` is a lint on its face and must fail it.
+        for parts in (("agents", "architect.md"), ("skills", "build", "SKILL.md")):
+            for needle in (
+                "a test, lint, type check or build of this project and nothing else",
+                "Apart from downloading the dependencies the project's own manifest or lock file "
+                "already declares, it must not send anything to a host outside this machine, "
+                "fetch and run code the project does not declare, or change anything outside "
+                "the worktree.",
+                "the script or config it names",
+                "fails the reading",
+            ):
+                with self.subTest(file=parts[-1], needle=needle):
+                    self.assertIn(needle, words(*parts))
+            with self.subTest(file=parts[-1], absent="download permission with no edge"):
+                self.assertNotIn("may download the project's declared dependencies", words(*parts))
+        # The two checkers hold the same block, word for word.
+        blocks = []
+        for name in ("qa-engineer", "code-reviewer"):
+            text = words("agents", f"{name}.md")
+            start, end = text.find("The commands you run are of two kinds"), text.find("it fails the run.")
+            self.assertTrue(0 <= start < end, f"{name}.md has no command block")
+            blocks.append(text[start:end])
+        self.assertEqual(blocks[0], blocks[1])
+        wanted = {
+            ("skills", "build", "SKILL.md"): (
+                "Then read every command a checker will run",
+                "Each must be a test, lint, type check or build of this project and nothing else, "
+                "and must not commit, push, publish or deploy",
+                "A command you cannot tell this about from reading it and the script or config "
+                "it names fails the reading",
+                "Each command the `## Outcome` shows must also be one an acceptance criterion "
+                "needs; that test is for the Outcome's commands only",
+                "a GitHub issue or a pull request comment",
+                "Never staff a checker below a builder",
+                "this seal needs no new `Plan judged:` line",
+                "A run sealed before 0.8.1 has no `Staffing checksum:` line",
+            ),
+            ("skills", "follow", "SKILL.md"): (
+                "no checker's model below a builder's", "the `review` row for its reviewers (the `final` row in a quick run)",
+            ),
+            ("standards", "run-folder.md"): (
+                "Staffing checksum: <sha256>", "The seal requires the `final` row in every mode",
+                "a row naming two agents is compared once",
+            ),
+            ("README.md",): (
+                "never runs on a model below a builder's",
+                "sends anything to a host outside this machine",
+            ),
+            ("CHANGELOG.md",): (
+                "Staffing checksum:",
+                "that commits, pushes, publishes, deploys or sends anything to a host outside "
+                "this machine (any request counts: an upload, a download, a `git fetch`, a name "
+                "lookup), in the worktree or in a copy",
+                "a test, lint, type check or build of this project and nothing else",
+                "fetch and run code the project does not declare",
+                "the script or config it names fails the reading",
+            ),
+        }
+        for parts, needles in wanted.items():
+            for needle in needles:
+                with self.subTest(file=parts[-1], needle=needle):
+                    self.assertIn(needle, words(*parts))
+        for parts in (("skills", "build", "SKILL.md"), ("standards", "run-folder.md")):
+            with self.subTest(file=parts[-1], table="final row"):
+                self.assertIn("| final | qa-engineer | opus | low |", words(*parts))
+                self.assertNotIn("| final | qa-engineer | sonnet", words(*parts))
 
 
 if __name__ == "__main__":

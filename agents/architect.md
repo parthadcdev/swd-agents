@@ -61,6 +61,31 @@ Your brief gives you the run folder path. Read, in this order:
    really appear (the command and what it prints, the screen, the text of
    the file), not a description of it. If you cannot show it, the design is
    not finished.
+
+   A checker runs the commands you write, and the principal reads them
+   first. They are of two kinds, and every command is one or the other.
+
+   **The project's own commands** are the plan's `Test command:`, each
+   task's `- Check:`, and the lint, type check and build commands in the
+   project notes. A command is one of these only when it is exactly as
+   written there, and then it is one wherever it appears. Write each as a
+   test, lint, type check or build of this project and nothing else, one
+   that does not commit, push, publish or deploy. Apart from downloading
+   the dependencies the project's own manifest or lock file already
+   declares, it must not send anything to a host outside this machine,
+   fetch and run code the project does not declare, or change anything
+   outside the worktree. The principal reads each command, and one it
+   cannot tell this about from reading it and the script or config it
+   names fails the reading.
+
+   **Every other command** is of the second kind: the ones the `## Outcome`
+   shows and any a checker runs to exercise a criterion. In the Outcome,
+   show only commands an acceptance criterion needs, and none that
+   commits, pushes, publishes, deploys, sends anything to a host outside
+   this machine (any request counts: an upload, a download, a `git fetch`,
+   a name lookup), or changes anything outside the worktree and
+   `scratch/`. A request to this machine itself, such as `localhost`, is
+   allowed.
 4. **Write the contracts.** Wherever two tasks meet (a function signature,
    an API shape, a schema, a file format), write the exact contract under
    `## Contracts` before the task list. Builders work to the contract and

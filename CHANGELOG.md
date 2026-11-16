@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.8.1
+
+- A checker's commands are of two kinds. The project's own (the plan's
+  `Test command:`, each task's `- Check:`, and the lint, type check and
+  build commands in the project notes) are run as given and may download
+  the project's declared dependencies. A checker never runs any other
+  command (one the `## Outcome` shows, or one it runs to exercise a
+  criterion) that commits, pushes, publishes, deploys or sends anything to
+  a host outside this machine (any request counts: an upload, a download,
+  a `git fetch`, a name lookup), in the worktree or in a copy. It does not
+  run in the worktree one whose purpose is to rewrite tracked files. It
+  runs `git status --short` before and after the Outcome's commands, and a
+  tracked file the commands changed is a finding that fails the run.
+- The principal reads every command a checker will run when it judges the
+  plan. Each of the project's own must be a test, lint, type check or
+  build of this project and nothing else, one that does not commit, push,
+  publish or deploy. Apart from downloading the dependencies the project's
+  manifest or lock file already declares, it may not send anything to a
+  host outside this machine, fetch and run code the project does not
+  declare, or change anything outside the worktree; a command the
+  principal cannot tell this about from reading it and the script or
+  config it names fails the reading. No other command may be one the
+  never-run list above covers, and each Outcome command must be one an
+  acceptance criterion needs. The architect writes
+  its commands to the same two kinds.
+- The seal requires the `final` row in every mode and the `review` row in
+  production and prototype mode.
+- A `review` or `final` row may not be on a model below any task's row. The
+  seal refuses it.
+- `check_run.py --seal` also records `Staffing checksum:`, and a `staffing.md`
+  changed after the seal is reported until the run is sealed again. A change
+  to `staffing.md` alone is sealed again without a new `Plan judged:` line.
+- Runs sealed by 0.7.1 and 0.8.0 keep checking clean: with no
+  `Staffing checksum:` line nothing is compared. A 0.8.0 run that is sealed
+  again is held to the new rows and the floor.
+
 ## 0.8.0
 
 - Outcome-shaped plans: `plan.md` needs an `## Outcome` section showing the
