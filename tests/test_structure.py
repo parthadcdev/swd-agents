@@ -409,6 +409,47 @@ class StructureTest(unittest.TestCase):
             words("standards", "models.md"),
         )
 
+    def test_principal_conducts_on_fable_and_staffs_the_plan(self):
+        def words(*parts: str) -> str:
+            return " ".join((ROOT.joinpath(*parts)).read_text().split())
+
+        fm = frontmatter(PRINCIPAL)
+        self.assertEqual(fm.get("model"), "fable")
+        self.assertEqual(fm.get("effort"), "high")
+        text = words("skills", "build", "SKILL.md")
+        for needle in (
+            "cat <plugin>/standards/<mode>.md <plugin>/standards/models.md "
+            "<plugin>/standards/run-folder.md > <run>/standards.md",
+            "Judge the plan", "Plan judged:", "Staff the plan", "staffing.md",
+            "standards/models.md", "Goal: ", "raise the effort first", "## Outcome",
+            "- Outcome:", "/model fable", "at `low` effort",
+            "judge the amended plan, append a new `Plan judged:` line, add or change "
+            "the `staffing.md` rows for the tasks the amendment added or changed, then seal again",
+            "judge, staff and seal it as the Gate describes",
+            "re-check, judge and staff the plan again (Design steps 2 to 5)",
+            "in quick mode, correct the plan yourself",
+            "only for the dispatches the mode has",
+            "do not press it: the model is their choice. The approval below is still "
+            "required either way.",
+        ):
+            with self.subTest(file="build", needle=needle):
+                self.assertIn(needle, text)
+        for needle in (
+            "Model per dispatch", "| Mode | Architect, reviewers | Builders, QA |",
+            "leave unset", "per completed task",
+        ):
+            with self.subTest(file="build", absent=needle):
+                self.assertNotIn(needle, text)
+        self.assertIn("Fable 5.2", words("skills", "queue", "SKILL.md"))
+        self.assertNotIn("concerned about cost", words("skills", "queue", "SKILL.md"))
+        readme = words("README.md")
+        for needle in ("standards/models.md", "staffing.md", "/model fable"):
+            with self.subTest(file="README.md", needle=needle):
+                self.assertIn(needle, readme)
+        manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
+        first = next(line for line in (ROOT / "CHANGELOG.md").read_text().splitlines() if line.startswith("## "))
+        self.assertEqual(first, "## " + manifest["version"])
+
 
 if __name__ == "__main__":
     unittest.main()

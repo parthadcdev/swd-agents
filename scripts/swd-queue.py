@@ -7,8 +7,11 @@
 
 The queue is a markdown list. `- [ ] <requirement>` is an open item; `- [ ] #12` means GitHub
 issue 12. An optional line `Finish: pr`, `Finish: merge-push` or `Finish: branch` says how
-every run is delivered (default: pr). An optional line `Model: sonnet` sets the model the
-principal of each run uses; without it, runs use Claude Code's default. Each item is run as its own `claude -p "/swd:build ..."`,
+every run is delivered (default: pr). An optional line `Model: sonnet` sets the model each
+run's session starts on. /swd:build asks for Fable 5.2 for the turn that runs it, and an
+unattended run is one turn, so the principal conducts on Fable 5.2 whatever this line says, and
+names the model and effort of every agent it dispatches. The line no longer lowers a run's cost;
+it takes effect only where Fable 5.2 is not available to the session. Each item is run as its own `claude -p "/swd:build ..."`,
 pre-approved, so each starts with a fresh context. When a run finishes the item becomes
 `- [x] <item> — <where the work is>`; when it does not, `- [!] <item> — blocked: <run folder>`.
 Two failures in a row stop the queue: that usually means something systemic, such as missing

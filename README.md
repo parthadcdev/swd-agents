@@ -66,7 +66,7 @@ session, use swd mode:
 
 | Role | Kind | Does |
 |---|---|---|
-| Principal engineer (`/swd:build`) | Coordinates | Clarifies, plans, staffs, dispatches, routes fixes, decides |
+| Principal engineer (`/swd:build`) | Coordinates | Clarifies, plans, judges the plan against the spec, chooses each agent's model and effort, dispatches, routes fixes, decides |
 | Architect | Designs | Design, contracts and the task list |
 | Backend engineer | Builds | APIs, services, business logic |
 | Frontend engineer | Builds | Pages, components, client-side logic |
@@ -76,11 +76,25 @@ session, use swd mode:
 | Docs writer | Builds | README, usage docs, changelog |
 | Code reviewer | Checks | Correctness, quality, performance |
 | Security reviewer | Checks | Security of the change |
-| QA engineer | Checks | Full test suite and the acceptance criteria |
+| QA engineer | Checks | Full test suite, the acceptance criteria and the plan's outcome |
 
 Builders work test first and own the files the plan gives them. Checkers
 report findings and never edit code. A run uses only the roles its plan
 needs.
+
+## Models
+
+- `/swd:build` asks for Fable 5.2 at high effort. The pin lasts for the
+  turn that runs it, so an interactive run returns to your session's model
+  at your next message (your answer to a question, or your approval at the
+  gate). Start the session on Fable 5.2 (`/model fable`) to keep the whole
+  run on it.
+- The model and effort for each task, review and check follow
+  `standards/models.md`, the team's standing rule. It is replaced when
+  Anthropic publishes newer guidance.
+- The choices are written to `staffing.md` in the run folder and shown at
+  the approval gate, together with the plan's `## Outcome`: the finished
+  result as the plan says it will appear.
 
 ## Modes
 

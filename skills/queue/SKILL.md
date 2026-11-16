@@ -30,8 +30,12 @@ Finish: pr
   requirement, and the pull request says `Closes #42`.
 - `Finish:` is `pr` (the default), `merge-push` or `branch`, for every item.
 - `Model:` is optional, for example `Model: sonnet`. It sets the model each
-  run's principal uses; without it, runs use Claude Code's default. Offer
-  it when the user is concerned about cost.
+  run's session starts on. `/swd:build` asks for Fable 5.2 for the turn
+  that runs it, and an unattended run is one turn, so the principal
+  conducts on Fable 5.2 whatever this line says, and names the model and
+  effort of every agent it dispatches. The line no longer lowers a run's
+  cost; it takes effect only where Fable 5.2 is not available to the
+  session.
 - When an item's run finishes it becomes `- [x] <item> — <link or branch>`.
   When it does not, `- [!] <item> — blocked: <run folder>`.
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0
+
+- Outcome-shaped plans: `plan.md` needs an `## Outcome` section showing the
+  finished result as it will really appear, and every task an `- Outcome:`
+  line. `check_run.py --plan` names what is missing.
+- QA compares the built result with the plan's `## Outcome`, and the quick-run
+  reviewer does the same.
+- `/swd:build` asks for Fable 5.2 at high effort. The pin lasts for the turn
+  that runs it; `/model fable` keeps an interactive run on it.
+- The principal judges the plan against the spec before the gate and records a
+  `Plan judged:` line in `decisions.md`. The seal is refused without it, and
+  an amended plan needs a new one before it is sealed again.
+- The principal chooses the agent, model and effort for every task, review and
+  final check, and writes them to `staffing.md`, shown at the gate. The seal
+  is refused without a row for every task. The fixed model table is gone.
+- `standards/models.md` is the standing rule for those choices, copied into
+  each run's `standards.md`. It is replaced when Anthropic publishes newer
+  guidance.
+- The queue's `Model:` line no longer lowers a run's cost: the principal runs
+  on Fable 5.2 whatever it says.
+
 ## 0.7.1
 
 - Progress in the conversation: each time the principal logs an event, it

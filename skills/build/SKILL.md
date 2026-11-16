@@ -1,6 +1,8 @@
 ---
 name: build
 description: Act as the principal software engineer and run the swd specialist team to deliver a requirement, from clarification through design, one approval gate, test-first build, review and QA, to tested code committed on a branch. Use when the user runs /swd:build with a requirement.
+model: fable
+effort: high
 ---
 
 # Principal engineer
@@ -59,7 +61,9 @@ run uses only the roles its plan names, so a one-task plan gets one builder. An 
 It knows only its brief and what is in the run folder, so anything it needs
 must be in one of those. Every brief, to every agent, starts with three
 lines: `Run folder: <run>`, `Work in: <work>` and
-`Project notes: <absolute path of .swd/project.md>`.
+`Project notes: <absolute path of .swd/project.md>`. Every brief to a
+builder or checker also has a line
+`Goal: <what this dispatch must achieve, and why the run needs it>`.
 
 Work through the sections below in order.
 
@@ -126,7 +130,7 @@ Work through the sections below in order.
    it.
 7. Prove that a subagent can write files in this session before spending a
    run on it. This is required in every run, in both modes; the plan check
-   fails without it. Dispatch `swd:generalist-engineer` on `haiku` with only this
+   fails without it. Dispatch `swd:generalist-engineer` on `haiku` at `low` effort with only this
    brief:
 
    ```
@@ -181,7 +185,7 @@ change it at the gate.
 Then write the run's standards file from the standard for that mode:
 
 ```bash
-cat <plugin>/standards/<mode>.md <plugin>/standards/run-folder.md > <run>/standards.md
+cat <plugin>/standards/<mode>.md <plugin>/standards/models.md <plugin>/standards/run-folder.md > <run>/standards.md
 ```
 
 The mode is a starting point, not a fixed setting. If a quick run turns
@@ -196,17 +200,16 @@ committed, and say so in its brief. Record the call in `decisions.md`.
 **Staffing.** Dispatch only the roles the plan names. In prototype mode, tell
 the architect to use the fewest tasks and roles that can deliver.
 
-**Model per dispatch.** Set the Agent tool's `model` parameter on every
-dispatch:
-
-| Mode | Architect, reviewers | Builders, QA |
-|---|---|---|
-| quick | `sonnet` (the one reviewer; there is no architect) | `sonnet` |
-| prototype | `sonnet` | `haiku` |
-| production | leave unset, so it uses your own model | `sonnet` |
-
-After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
-`sonnet` to unset) for the next attempt.
+**Model and effort per dispatch.** You choose them; there is no table.
+`<plugin>/standards/models.md` is the team's standing rule for the
+choice (it is also in `<run>/standards.md`): read it and apply it as
+judgement to what each dispatch needs. Set the Agent tool's `model`
+parameter (`haiku`, `sonnet`, `opus` or `fable`) and its `effort`
+parameter (`low`, `medium`, `high` or `xhigh`) on every dispatch, the
+architect and the checkers included. After a failed fix attempt, move
+that task up for the next attempt: raise the effort first, and the
+model only when more effort is not what the failure needs. Change the
+task's row in `staffing.md` and record the ruling.
 
 ## Design
 
@@ -217,9 +220,11 @@ After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
    the `Project notes:` line of the brief must be that absolute path.
 
    **In quick mode there is no architect.** Write `plan.md` yourself: the
-   `Test command:` line copied from `.swd/project.md`, and one task, `T1`,
-   in wave 1, with the builder role that fits, the files it may change, and
-   its check command. Nothing else belongs in a quick plan.
+   `Test command:` line copied from `.swd/project.md`, an `## Outcome`
+   section showing the finished result as it will really appear (the
+   command and what it prints, or the changed text), and one task, `T1`, in
+   wave 1, with the builder role that fits, the files it may change, its
+   check command and its `- Outcome:`. Nothing else belongs in a quick plan.
 2. Check the plan:
 
    ```bash
@@ -229,17 +234,58 @@ After a failed fix attempt, move that task up one tier (`haiku` to `sonnet`,
 3. If it prints problems, send them to the architect and repeat until it
    prints nothing. Do not edit `plan.md` yourself, except the one-task plan
    you wrote in quick mode.
+4. **Judge the plan** yourself, against `spec.md`, once the check
+   prints nothing. Does the `## Outcome` section, taken as the finished
+   result, satisfy every acceptance criterion? Do the tasks'
+   `- Outcome:` lines add up to it, with nothing in it that no task
+   produces? Does it show the result, or only describe it? If any
+   answer is no, send the architect back with the criterion or the gap
+   named (in quick mode, correct the plan yourself), then check and judge again. When the plan holds, append
+   `Plan judged: <one sentence>` to `decisions.md`.
+5. **Staff the plan.** Decide the model and effort for every task, for
+   the reviews and for the final checks, and write `<run>/staffing.md`
+   in this form; the seal is refused without a row for every task:
+
+   ```markdown
+   # Staffing
+
+   | For | Agent | Model | Effort | Why |
+   |---|---|---|---|---|
+   | plan | architect | opus | medium | Design in an existing codebase |
+   | T1 | generalist-engineer | opus | medium | Multistep change to the checker and its tests |
+   | T2 | docs-writer | opus | low | Well-specified wording change |
+   | review | code-reviewer, security-reviewer | opus | medium | Review is where Opus 5.5 gains most |
+   | final | qa-engineer | sonnet | medium | Runs commands and compares output |
+   ```
+
+   Write the `plan`, `review` and `final` rows only for the dispatches the
+   mode has: in quick mode there is no `plan` or `review` row and `final`
+   names `code-reviewer`; in prototype mode there is no `review` row.
+
+   The `Agent` of a task is the role its plan names. If you think a
+   role is wrong, send the architect back to amend the plan; do not
+   dispatch a different agent.
 
 ## Gate
 
 Show the user a short summary: what will be built, the acceptance criteria,
-the delivery mode, and the tasks by wave. Wait for approval. If they ask for
-changes, update the spec or send the architect back, re-check the plan, and
-show it again.
+the delivery mode, the plan's `## Outcome` as the plan shows it, the tasks by
+wave, and the `staffing.md` table.
+
+Say which model you are running on. This skill asks for Fable 5.2 only
+for the turn that started it, so from the user's next message the
+session's own model is back. If that is not Fable 5.2, tell them that
+`/model fable` keeps the rest of the run on it, and do not press it: the
+model is their choice. The approval below is still required either way.
+
+Wait for approval. If they ask for changes, update the spec or send the
+architect back, re-check, judge and staff the plan again (Design steps 2
+to 5), and show it again.
 
 If the mode changes, rewrite the `Mode:` line in `spec.md`, write
 `standards.md` again from the new mode's standard, and send the architect
-back to revise the plan for it.
+back to revise the plan for it; then re-check, judge and staff the plan
+again (Design steps 2 to 5).
 
 With the summary, ask how the result should be delivered when the run
 passes, and append the answer to `decisions.md` as one of these lines:
@@ -256,7 +302,7 @@ message asked for; if it named none, record `Finish: branch`, because
 nothing leaves the user's machine without their say.
 
 Once the plan is approved, seal it. The seal is refused until a `Finish:`
-line is recorded:
+line, the `Plan judged:` line and `staffing.md` are there:
 
 ```bash
 python3 <plugin>/scripts/check_run.py --seal <run>
@@ -265,8 +311,11 @@ python3 <plugin>/scripts/check_run.py --seal <run>
 This records the plan's checksum in `decisions.md`. From here on the checker
 reports any change to `plan.md` that was not sealed, so a plan that is
 rewritten behind the run's back is caught before anyone builds against it.
-Seal again each time the architect amends the plan and you accept the
-amendment.
+Each time the architect amends the plan and you accept the amendment,
+judge the amended plan, append a new `Plan judged:` line, add or change
+the `staffing.md` rows for the tasks the amendment added or changed, then
+seal again: the checker refuses a second seal unless a `Plan judged:` line sits
+below the last `Plan checksum:` line.
 
 This is the only planned stop. After it, you stop only for the reasons under
 Never.
@@ -343,6 +392,7 @@ Then, for each wave in order:
    Project notes: <absolute path of .swd/project.md>
    Run tests with: python3 <plugin>/scripts/swd-test.py <run> T2
    Task: T2
+   Goal: Expose the cart total over the API, so the checkout page in T3 has something to call.
    You own: src/api.py, tests/test_api.py
    Read first: reports/T1-generalist-engineer.md
    ```
@@ -437,7 +487,7 @@ finished while a test fails or a finding is open.
 - **Three fixes, then re-plan.** When a task still fails and its
   `Attempts` reaches 4 (the build and three fixes), stop patching. Dispatch
   `swd:architect` with the failing reports and ask for a root-cause
-  re-plan. Check the amended plan with `check_run.py --plan`, add any new
+  re-plan. Check the amended plan with `check_run.py --plan`, then judge, staff and seal it as the Gate describes, add any new
   tasks to the ledger, and build them.
 - **If the re-planned work also fails**, give it one fix. If it still
   fails, set the task `blocked`, stop, and report to the user with the
@@ -603,7 +653,7 @@ merging and pushing a branch that was left for them.
 
 ## Resume
 
-1. Read `ledger.md`, `plan.md` and `decisions.md` in the unfinished run.
+1. Read `ledger.md`, `plan.md`, `staffing.md` and `decisions.md` in the unfinished run.
    Its `Worktree:` line is `<work>`. If that folder is missing, recreate it
    from the run's branch: `git worktree add <work> swd/<short-name>`. Then
    move into it (`cd <work>`) and confirm with `pwd`.

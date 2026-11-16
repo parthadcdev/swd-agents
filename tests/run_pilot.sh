@@ -65,7 +65,8 @@ else
   PERMISSIONS=(--permission-mode acceptEdits --add-dir "$ROOT" --allowedTools "${ALLOWED[@]}")
 fi
 
-# Sonnet keeps a pilot affordable; the principal's playbook is written to work on a mid-tier model.
+# --model sets the session's model. /swd:build pins its own turn to Fable 5.2, and a pilot is one turn,
+# so the principal conducts on Fable 5.2 whatever this says; it no longer lowers the pilot's cost.
 # User-level settings are left out so the run sees only this plugin: a user hook that rewrites
 # shell commands would stop them matching the allowlist above.
 run_team() {  # run_team <requirement file>
