@@ -2,7 +2,7 @@
 """Validate an swd run folder.
 
     python3 check_run.py --plan <run_dir>      check spec.md and plan.md only (before the gate)
-    python3 check_run.py --seal <run_dir>      record the approved plan's checksum in decisions.md
+    python3 check_run.py --seal <run_dir>      check the plan, the 'Plan judged:' line and staffing.md, then record the plan's checksum in decisions.md
     python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review
     python3 check_run.py <run_dir>             check a finished run
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
@@ -27,7 +27,9 @@ BUILDERS = {
 }
 STATUSES = {"todo", "in-progress", "in-review", "done", "blocked"}
 EVENTS = {"dispatch", "return", "verdict", "commit", "fix", "replan", "ruling", "wave-done", "blocked", "done"}
-TASK_FIELDS = ("Role", "Wave", "Files", "Depends", "Check")
+TASK_FIELDS = ("Role", "Wave", "Files", "Depends", "Check", "Outcome")
+MODELS = ("haiku", "sonnet", "opus", "fable")
+EFFORTS = ("low", "medium", "high", "xhigh")
 BUILDER_SECTIONS = ("Summary", "Files changed", "Test first (failing)", "Test after (passing)", "Complexity", "Concerns")
 CHECKER_SUFFIXES = ("code-reviewer", "security-reviewer", "qa-engineer")
 PLACEHOLDERS = {"todo", "tbd", "n/a", "na", "none", "...", "-"}  # not evidence
@@ -130,6 +132,44 @@ def check_finish_choice(run_dir):
     return []
 
 
+def check_staffing(run_dir):
+    """Before the seal: the plan is judged, and staffing.md gives every task its agent, model and effort."""
+    problems = []
+    lines = (read(run_dir / "decisions.md") or "").splitlines()
+    judged = [i for i, l in enumerate(lines) if l.startswith("Plan judged:") and l[12:].strip().lower() not in PLACEHOLDERS | {""}]
+    sealed = [i for i, l in enumerate(lines) if SEAL_RE.match(l)]
+    if not judged:
+        problems.append("decisions.md: needs a line 'Plan judged: ...'; the principal judges the plan against the spec before the gate")
+    elif sealed and judged[-1] < sealed[-1]:
+        problems.append("decisions.md: the 'Plan judged:' line is older than the last 'Plan checksum:'; "
+                        "judge the amended plan and add a new 'Plan judged: ...' line")
+    text = read(run_dir / "staffing.md")
+    if text is None:
+        return problems + ["missing staffing.md: the agent, model and effort for each task"]
+    agents = {}  # first cell -> Agent cell
+    for number, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if cells[0] == "For" or set(cells[0]) <= set("-: "):
+            continue  # header and separator rows
+        if len(cells) != 5:
+            problems.append(f"staffing.md line {number}: expected 5 columns, got {len(cells)}")
+            continue
+        agents[cells[0]] = cells[1]
+        if cells[2] not in MODELS:
+            problems.append(f"staffing.md line {number}: Model must be one of {', '.join(MODELS)}, got '{cells[2]}'")
+        if cells[3] not in EFFORTS:
+            problems.append(f"staffing.md line {number}: Effort must be one of {', '.join(EFFORTS)}, got '{cells[3]}'")
+    for task in load_plan(run_dir)[0]:
+        if task["id"] not in agents:
+            problems.append(f"staffing.md: no row for {task['id']}")
+        elif agents[task["id"]] != task["role"]:
+            problems.append(f"staffing.md: {task['id']} Agent '{agents[task['id']]}' is not the plan's Role '{task['role']}'")
+    return problems
+
+
 def run_mode(run_dir):
     match = re.search(r"^Mode: (prototype|production|quick)\s*$", read(run_dir / "spec.md") or "", re.M)
     return match.group(1) if match else None
@@ -166,6 +206,13 @@ def check_plan(run_dir):
         return problems + ["missing plan.md"]
     if not re.search(r"^Test command: `.+`", plan, re.M):
         problems.append("plan.md: needs a line 'Test command: `<command>`'")
+    outcome = []  # the section's text up to the first task heading, which a plan with no '## Tasks' puts right below it
+    for line in sections(plan).get("Outcome", "").splitlines():
+        if TASK_RE.match(line) or TASK_LIKE_RE.match(line):
+            break
+        outcome.append(line)
+    if "\n".join(outcome).strip().lower() in PLACEHOLDERS | {""}:
+        problems.append("plan.md: needs a '## Outcome' section showing the finished result as it will really appear")
     tasks, parse_problems = parse_plan(plan)
     problems += parse_problems
     if not tasks:
@@ -235,8 +282,10 @@ def plan_checksum(run_dir):
 def seal_plan(run_dir):
     """Record plan.md's checksum in decisions.md. Done at the gate, and again after an approved re-plan."""
     checksum = plan_checksum(run_dir)
+    before = read(run_dir / "decisions.md") or ""
     with open(run_dir / "decisions.md", "a") as f:
-        f.write(f"Plan checksum: {checksum}\n")
+        # A last line with no newline would swallow the checksum, and the seal would never be read back.
+        f.write(("" if before.endswith("\n") or not before else "\n") + f"Plan checksum: {checksum}\n")
     return checksum
 
 
@@ -501,7 +550,7 @@ def latest_run(repo_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--plan", action="store_true", help="check spec.md and plan.md only")
-    parser.add_argument("--seal", action="store_true", help="check the plan, then record its checksum")
+    parser.add_argument("--seal", action="store_true", help="check the plan, the Plan judged line and staffing.md, then record the plan's checksum")
     parser.add_argument("--task", metavar="ID", help="check a returned task's changes before review")
     parser.add_argument("--finish", action="store_true", help="check the run was delivered and cleaned up")
     parser.add_argument("path", type=Path, help="a run folder, or a project folder")
@@ -519,7 +568,7 @@ def main(argv=None):
     if args.finish:
         problems = check_finish(run_dir, project_dir)
     elif args.seal:
-        problems = check_plan(run_dir) + check_finish_choice(run_dir)
+        problems = check_plan(run_dir) + check_finish_choice(run_dir) + check_staffing(run_dir)
         if not problems:
             print(f"sealed plan.md: {seal_plan(run_dir)}")
     elif args.task:

@@ -13,12 +13,19 @@ PLAN = """# Plan
 
 Test command: `python3 -m unittest`
 
+## Outcome
+$ python3 -m unittest
+OK
+
+## Tasks
+
 ### T1: First thing
 - Role: generalist-engineer
 - Wave: 1
 - Files: a.py, tests/test_a.py
 - Depends: none
 - Check: `python3 -m unittest tests.test_a`
+- Outcome: a.py exists
 
 ### T2: Second thing
 - Role: backend-engineer
@@ -26,6 +33,7 @@ Test command: `python3 -m unittest`
 - Files: b.py
 - Depends: T1
 - Check: `python3 -m unittest tests.test_b`
+- Outcome: b.py exists
 """
 
 LEDGER = """| Task | Role | Status | Attempts |
@@ -46,6 +54,17 @@ OK
 O(n) time, O(1) space.
 ## Concerns
 None.
+"""
+
+STAFFING = """# Staffing
+
+| For | Agent | Model | Effort | Why |
+|---|---|---|---|---|
+| plan | architect | opus | medium | Design |
+| T1 | generalist-engineer | opus | medium | Multistep |
+| T2 | backend-engineer | opus | low | Specified |
+| review | code-reviewer, security-reviewer | opus | medium | Review |
+| final | qa-engineer | sonnet | medium | Runs commands |
 """
 
 CHECKER_REPORT = "Verdict: pass\n\n## Findings\nNone.\n"
@@ -108,7 +127,8 @@ def make_run(tmp, mode="production", single=False):
     commit(repo, "T9: task from an earlier run", ["old/x.py"])
     base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     (run / "decisions.md").write_text(
-        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nHousekeeping: removed 0, kept 0\nFinish: branch\n\n- None.\n")
+        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nHousekeeping: removed 0, kept 0\nFinish: branch\nPlan judged: the outcome meets the criteria.\n\n- None.\n")
+    (run / "staffing.md").write_text(STAFFING)
     if mode == "production":
         names = ["T1-code-reviewer", "T1-security-reviewer"]
         if not single:  # a one-task run needs no final reviews: the task's own reviews covered the whole change
@@ -464,6 +484,127 @@ class CheckRunTest(unittest.TestCase):
         repo, run = make_run(self.tmp)
         replace(run / "activity.md", "- 10:06:00 dispatch T2 backend-engineer\n", "")
         self.assertProblem(self.problems(repo, run), "activity.md", "T2")
+
+    # --- outcome, judgement and staffing ------------------------------------------------------
+
+    def test_plan_needs_an_outcome_section(self):
+        for new in ("", "## Outcome\nTODO\n\n", "## Outcome\n\n"):
+            with self.subTest(section=new), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                replace(run / "plan.md", "## Outcome\n$ python3 -m unittest\nOK\n\n", new)
+                self.assertProblem(self.cr.check_plan(run), "## Outcome", "really appear")
+
+    def test_outcome_is_judged_only_up_to_the_first_task_heading(self):
+        # No '## Tasks' heading (the quick-mode plan): the task text must not count as the outcome.
+        outcome = "## Outcome\n$ python3 -m unittest\nOK\n\n## Tasks\n\n"
+        for new in ("## Outcome\n\n", "## Outcome\nTODO\n\n"):
+            with self.subTest(section=new), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                replace(run / "plan.md", outcome, new)
+                self.assertProblem(self.cr.check_plan(run), "## Outcome", "really appear")
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", outcome, "## Outcome\n$ python3 -m unittest\nOK\n\n")
+        self.assertEqual(self.cr.check_plan(run), [])
+
+    def test_seal_help_says_it_checks_judgement_and_staffing(self):
+        self.assertIn("staffing.md", self.cr.__doc__.split("--seal", 1)[1].splitlines()[0])
+        self.assertIn("staffing", self.cli("--help").stdout)
+
+    def test_plan_judged_needs_a_real_value(self):
+        for line in ("Plan judged:  \n", "Plan judged: TODO\n", "Plan judged: tbd\n"):
+            with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                replace(run / "decisions.md", "Plan judged: the outcome meets the criteria.\n", line)
+                self.assertProblem(self.cr.check_staffing(run), "Plan judged")
+
+    def test_a_judgement_before_the_last_seal_is_stale(self):
+        repo, run = make_run(self.tmp)
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        replace(run / "plan.md", "First thing", "First thing, amended")
+        refused = self.cli("--seal", str(run))
+        self.assertEqual(refused.returncode, 1)
+        self.assertEqual(refused.stdout.splitlines(), [
+            "decisions.md: the 'Plan judged:' line is older than the last 'Plan checksum:'; "
+            "judge the amended plan and add a new 'Plan judged: ...' line"])
+        self.assertEqual((run / "decisions.md").read_text().count("Plan checksum: "), 1)
+        with open(run / "decisions.md", "a") as f:
+            f.write("Plan judged: the amended plan still meets the criteria.\n")
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        self.assertEqual((run / "decisions.md").read_text().count("Plan checksum: "), 2)
+
+    def test_seal_is_readable_when_decisions_has_no_trailing_newline(self):
+        repo, run = make_run(self.tmp)
+        decisions = run / "decisions.md"
+        decisions.write_text(decisions.read_text().rstrip("\n"))
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        self.assertEqual(len(self.cr.SEAL_RE.findall(decisions.read_text())), 1)
+        self.assertEqual(self.cr.check_seal(run), [])
+        # The re-seal: a new judgement appended without a newline.
+        replace(run / "plan.md", "First thing", "First thing, amended")
+        with open(decisions, "a") as f:
+            f.write("Plan judged: the amended plan still meets the criteria.")
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        self.assertEqual(len(self.cr.SEAL_RE.findall(decisions.read_text())), 2)
+        self.assertEqual(self.cr.check_seal(run), [])
+
+    def test_task_needs_an_outcome_line(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Outcome: b.py exists\n", "")
+        self.assertEqual(self.cr.check_plan(run), ["plan.md: T2 is missing '- Outcome:'"])
+
+    def test_cli_plan_reports_both_outcome_problems_and_passes_when_present(self):
+        repo, run = make_run(self.tmp)
+        good = (run / "plan.md").read_text()
+        replace(run / "plan.md", "## Outcome\n$ python3 -m unittest\nOK\n\n", "")
+        replace(run / "plan.md", "- Outcome: b.py exists\n", "")
+        bad = self.cli("--plan", str(run))
+        self.assertEqual(bad.returncode, 1)
+        self.assertEqual(bad.stdout.splitlines(), [
+            "plan.md: needs a '## Outcome' section showing the finished result as it will really appear",
+            "plan.md: T2 is missing '- Outcome:'"])
+        (run / "plan.md").write_text(good)
+        ok = self.cli("--plan", str(run))
+        self.assertEqual((ok.returncode, ok.stdout), (0, ""))
+
+    def test_seal_needs_plan_judged_and_staffing(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "decisions.md", "Plan judged: the outcome meets the criteria.\n", "")
+        (run / "staffing.md").unlink()
+        refused = self.cli("--seal", str(run))
+        self.assertEqual(refused.returncode, 1)
+        self.assertEqual(refused.stdout.splitlines(), [
+            "decisions.md: needs a line 'Plan judged: ...'; the principal judges the plan against the spec before the gate",
+            "missing staffing.md: the agent, model and effort for each task"])
+        self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+
+    def test_staffing_rows_are_checked(self):
+        cases = [
+            ("| T2 | backend-engineer | opus | low | Specified |\n", "", ["staffing.md: no row for T2"]),
+            ("| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | max |",
+             ["staffing.md line 6: Effort must be one of low, medium, high, xhigh, got 'max'"]),
+            ("| sonnet | medium |", "| gpt | medium |", ["staffing.md line 9: Model must be one of haiku, sonnet, opus, fable, got 'gpt'"]),
+            ("| T1 | generalist-engineer | opus | medium | Multistep |", "| T1 | generalist-engineer | opus | medium |",
+             ["staffing.md line 6: expected 5 columns, got 4", "staffing.md: no row for T1"]),
+            ("| T2 | backend-engineer |", "| T2 | docs-writer |",
+             ["staffing.md: T2 Agent 'docs-writer' is not the plan's Role 'backend-engineer'"]),
+        ]
+        for old, new, expected in cases:
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                text = (run / "staffing.md").read_text()
+                assert old in text, old
+                (run / "staffing.md").write_text(text.replace(old, new, 1))
+                self.assertEqual(self.cr.check_staffing(run), expected)
+
+    def test_seal_succeeds_with_judgement_and_full_staffing(self):
+        repo, run = make_run(self.tmp)
+        self.assertEqual(self.cr.check_staffing(run), [])
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+
+    def test_finished_run_without_staffing_still_checks_clean(self):
+        repo, run = make_run(self.tmp)
+        (run / "staffing.md").unlink()
+        self.assertEqual(self.problems(repo, run), [])
 
     def cli(self, *args):
         return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
