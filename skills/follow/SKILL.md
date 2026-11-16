@@ -14,7 +14,7 @@ The plugin root is two directories above this skill's base directory;
 the user's project, given as an absolute path.
 
 The rules of the build playbook apply to every change you make here. Read
-the Build, Fix loop and Never sections of
+the Design steps 4 and 5, Gate, Build, Fix loop and Never sections of
 `<plugin>/skills/build/SKILL.md` before you dispatch anyone. You still
 never write product code yourself.
 
@@ -56,8 +56,18 @@ The script has written the failing checks and the new comments to
    in `plan.md` gets the normal brief plus `Fix: reports/pr-feedback-<n>.md`.
    Test-first, the `check_run.py --task` check, the reviews for the run's
    mode and the commit all work exactly as in the build playbook's Fix
-   loop. If a change is in a file no task owns, send the architect to add a
-   task, check and seal the amended plan, and build that task.
+   loop. Set the Agent tool's `model` and `effort` on every dispatch, as
+   `<plugin>/standards/models.md` says: the task's row in the run's
+   `staffing.md` where there is one, your own choice by that rule where
+   there is not.
+   If a change is in a file no task owns, send the architect to add a
+   task, then check, judge, staff and seal the amended plan as the build
+   playbook's Gate describes, and build that task. A run from before 0.8.0
+   has no `## Outcome`, no `- Outcome:` lines and no `staffing.md`, and
+   the seal needs all three: have the architect add the Outcome section
+   and every task's `- Outcome:` in the same amendment, and write
+   `staffing.md` with a row for every task. A finished task's row says
+   what a fix to it is dispatched at.
 4. **Keep the records.** Update the ledger and log every dispatch, verdict
    and commit with `swd-log.sh`. When the fixes are in, log `done` again and
    run `python3 <plugin>/scripts/check_run.py <run>` until it prints

@@ -606,6 +606,53 @@ class CheckRunTest(unittest.TestCase):
         (run / "staffing.md").unlink()
         self.assertEqual(self.problems(repo, run), [])
 
+    def old_run(self):
+        """A run shaped like one that finished under 0.7.1: no outcome, no judgement, no staffing.md."""
+        repo, run = make_run(self.tmp)
+        plan = (run / "plan.md").read_text()
+        plan = plan.replace("## Outcome\n$ python3 -m unittest\nOK\n\n", "")
+        plan = plan.replace("- Outcome: a.py exists\n", "").replace("- Outcome: b.py exists\n", "")
+        (run / "plan.md").write_text(plan)
+        replace(run / "decisions.md", "Plan judged: the outcome meets the criteria.\n", "")
+        (run / "staffing.md").unlink()
+        self.cr.seal_plan(run)
+        return repo, run
+
+    def test_run_from_before_outcome_still_checks_clean(self):
+        repo, run = self.old_run()
+        self.assertNotIn("Outcome", (run / "plan.md").read_text())
+        self.assertEqual(self.problems(repo, run), [])
+        done = self.cli(str(run))
+        self.assertEqual((done.returncode, done.stdout), (0, ""))
+
+    def test_unsealed_run_without_outcome_is_refused_by_the_finished_run_check(self):
+        repo, run = self.old_run()
+        replace(run / "decisions.md", f"Plan checksum: {self.cr.plan_checksum(run)}\n", "")
+        self.assertEqual(self.problems(repo, run), [
+            "plan.md: needs a '## Outcome' section showing the finished result as it will really appear",
+            "plan.md: T1 is missing '- Outcome:'",
+            "plan.md: T2 is missing '- Outcome:'"])
+        self.assertEqual(self.cli(str(run)).returncode, 1)
+
+    def test_plan_still_asks_for_outcome_on_an_old_run(self):
+        repo, run = self.old_run()
+        plan = self.cli("--plan", str(run))
+        self.assertEqual(plan.returncode, 1)
+        self.assertEqual(plan.stdout.splitlines(), [
+            "plan.md: needs a '## Outcome' section showing the finished result as it will really appear",
+            "plan.md: T1 is missing '- Outcome:'",
+            "plan.md: T2 is missing '- Outcome:'"])
+        before = (run / "decisions.md").read_text()
+        seal = self.cli("--seal", str(run))
+        self.assertEqual(seal.returncode, 1)
+        self.assertEqual((run / "decisions.md").read_text(), before)
+
+    def test_other_plan_rules_still_reach_a_finished_run_without_outcome(self):
+        repo, run = self.old_run()
+        replace(run / "plan.md", "- Check: `python3 -m unittest tests.test_b`\n", "")
+        self.cr.seal_plan(run)
+        self.assertEqual(self.problems(repo, run), ["plan.md: T2 is missing '- Check:'"])
+
     def cli(self, *args):
         return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
 

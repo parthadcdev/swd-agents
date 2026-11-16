@@ -4,7 +4,13 @@
 
 - Outcome-shaped plans: `plan.md` needs an `## Outcome` section showing the
   finished result as it will really appear, and every task an `- Outcome:`
-  line. `check_run.py --plan` names what is missing.
+  line. `check_run.py --plan` and `--seal` name what is missing.
+- Runs from before 0.8.0 keep working: the check of a finished run
+  does not ask a sealed run for `## Outcome` (a run never sealed is still
+  held to it), so `/swd:follow` still works on the pull
+  requests earlier versions opened. When such a run's plan is amended,
+  the amendment adds the outcome, and the plan is judged and staffed
+  before it is sealed again.
 - QA compares the built result with the plan's `## Outcome`, and the quick-run
   reviewer does the same.
 - `/swd:build` asks for Fable 5.2 at high effort. The pin lasts for the turn

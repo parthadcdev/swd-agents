@@ -102,8 +102,9 @@ The principal picks a delivery mode from your requirement and you can change
 it at the approval gate.
 
 - **Quick:** a small, low-risk change in a project the team has worked in
-  before. One builder, then one reviewer who also runs the tests and checks
-  each acceptance criterion. No architect.
+  before. One builder, then one reviewer who also runs
+  the tests, checks each acceptance criterion and compares the result with
+  the plan's outcome. No architect.
 - **Prototype / MVP:** fastest working result, fewest tokens, one review at
   the end.
 - **Production:** every task reviewed for quality and security, full suite

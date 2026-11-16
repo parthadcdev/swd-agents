@@ -259,8 +259,13 @@ task's row in `staffing.md` and record the ruling.
    ```
 
    Write the `plan`, `review` and `final` rows only for the dispatches the
-   mode has: in quick mode there is no `plan` or `review` row and `final`
-   names `code-reviewer`; in prototype mode there is no `review` row.
+   mode has. The `review` row is for the code reviewer and the security
+   reviewer wherever the mode dispatches them, for one task or for the
+   whole change in Final verification; the `final` row is for final QA.
+   In prototype mode the `review` row names `code-reviewer`, and
+   `security-reviewer` too when the change touches a trust boundary: its
+   one review is the final one. In quick mode there is no `plan` or
+   `review` row and `final` names `code-reviewer`, the run's only checker.
 
    The `Agent` of a task is the role its plan names. If you think a
    role is wrong, send the architect back to amend the plan; do not
@@ -449,8 +454,9 @@ What happens next depends on the mode.
 
 3. Set the task `in-review` and dispatch `swd:code-reviewer` with `final`
    and the base commit. It is the only checker in a quick run: it reviews
-   the change, runs the project's test command, and exercises each
-   acceptance criterion.
+   the change, runs the project's test command, exercises each
+   acceptance criterion, and compares the result with the plan's
+   `## Outcome`.
 4. On `Verdict: pass`, commit the task's files as `T1: <title>` and set it
    `done`. On `Verdict: fail`, see Fix loop. There is no other review and
    no QA dispatch in a quick run, so skip Final verification's step 1.
@@ -656,7 +662,10 @@ merging and pushing a branch that was left for them.
 1. Read `ledger.md`, `plan.md`, `staffing.md` and `decisions.md` in the unfinished run.
    Its `Worktree:` line is `<work>`. If that folder is missing, recreate it
    from the run's branch: `git worktree add <work> swd/<short-name>`. Then
-   move into it (`cd <work>`) and confirm with `pwd`.
+   move into it (`cd <work>`) and confirm with `pwd`. A run sealed before
+   0.8.0 has no `staffing.md`: choose each dispatch's model and effort by
+   `<plugin>/standards/models.md`, and write the file if the plan is sealed
+   again.
 2. For each task that is `in-progress`, run `git -C <work> status --short`
    on its files. Keep half-finished edits in place and set the task back to
    `todo`; the builder will pick up from them. Do not reset its attempt

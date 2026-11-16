@@ -44,9 +44,9 @@ reporting, because nobody else will before review.
 ## Review
 
 One review of the whole change. The reviewer is the only checker, so it
-also runs the project's test command and exercises each acceptance
-criterion in `spec.md` against the real software, and records the command
-and output for each.
+also runs the project's test command, exercises each acceptance criterion
+in `spec.md` against the real software and compares the result with the
+plan's `## Outcome`, and records the command and output for each.
 
 ## Security
 

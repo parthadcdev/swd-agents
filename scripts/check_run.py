@@ -4,7 +4,7 @@
     python3 check_run.py --plan <run_dir>      check spec.md and plan.md only (before the gate)
     python3 check_run.py --seal <run_dir>      check the plan, the 'Plan judged:' line and staffing.md, then record the plan's checksum in decisions.md
     python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review
-    python3 check_run.py <run_dir>             check a finished run
+    python3 check_run.py <run_dir>             check a finished run (a sealed run is not asked for '## Outcome'; an unsealed one is)
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
 
 <run_dir> is .swd/runs/<name>/ in the project. A project folder also works: its last run by
@@ -180,8 +180,10 @@ def load_plan(run_dir):
     return parse_plan(text) if text is not None else ([], [])
 
 
-def check_plan(run_dir):
-    """Problems in spec.md and plan.md. Run before the approval gate."""
+def check_plan(run_dir, outcome=True):
+    """Problems in spec.md and plan.md. Run before the approval gate.
+
+    outcome=False leaves out the two Outcome rules, so a plan from before they existed still passes."""
     problems = []
     for key in ("Base branch", "Branch", "Worktree"):
         if not decision(run_dir, key):
@@ -206,14 +208,17 @@ def check_plan(run_dir):
         return problems + ["missing plan.md"]
     if not re.search(r"^Test command: `.+`", plan, re.M):
         problems.append("plan.md: needs a line 'Test command: `<command>`'")
-    outcome = []  # the section's text up to the first task heading, which a plan with no '## Tasks' puts right below it
-    for line in sections(plan).get("Outcome", "").splitlines():
-        if TASK_RE.match(line) or TASK_LIKE_RE.match(line):
-            break
-        outcome.append(line)
-    if "\n".join(outcome).strip().lower() in PLACEHOLDERS | {""}:
-        problems.append("plan.md: needs a '## Outcome' section showing the finished result as it will really appear")
+    if outcome:
+        section = []  # the section's text up to the first task heading, which a plan with no '## Tasks' puts right below it
+        for line in sections(plan).get("Outcome", "").splitlines():
+            if TASK_RE.match(line) or TASK_LIKE_RE.match(line):
+                break
+            section.append(line)
+        if "\n".join(section).strip().lower() in PLACEHOLDERS | {""}:
+            problems.append("plan.md: needs a '## Outcome' section showing the finished result as it will really appear")
     tasks, parse_problems = parse_plan(plan)
+    if not outcome:
+        parse_problems = [p for p in parse_problems if not p.endswith(" is missing '- Outcome:'")]
     problems += parse_problems
     if not tasks:
         problems.append("plan.md: has no tasks")
@@ -382,8 +387,9 @@ def check_commits(run_dir, repo_dir, tasks):
 
 
 def check_run(run_dir, repo_dir):
-    """Problems in a finished run. Includes everything check_plan reports."""
-    problems = check_plan(run_dir) + check_seal(run_dir)
+    """Problems in a finished run. Includes what check_plan reports; a sealed run is not held to the Outcome rules, which --plan and --seal enforce."""
+    sealed = bool(SEAL_RE.search(read(run_dir / "decisions.md") or ""))
+    problems = check_plan(run_dir, outcome=not sealed) + check_seal(run_dir)
     for name in ("requirement.md", "standards.md", "ledger.md", "decisions.md", "activity.md"):
         if read(run_dir / name) is None:
             problems.append(f"missing {name}")

@@ -450,6 +450,40 @@ class StructureTest(unittest.TestCase):
         first = next(line for line in (ROOT / "CHANGELOG.md").read_text().splitlines() if line.startswith("## "))
         self.assertEqual(first, "## " + manifest["version"])
 
+    def test_runs_from_before_0_8_0_and_the_docs_agree(self):
+        def words(*parts: str) -> str:
+            return " ".join((ROOT.joinpath(*parts)).read_text().split())
+
+        wanted = {
+            ("skills", "follow", "SKILL.md"): (
+                "check, judge, staff and seal the amended plan as the build playbook's Gate describes",
+                "A run from before 0.8.0", "`model` and `effort` on every dispatch",
+                "the Design steps 4 and 5, Gate, Build, Fix loop and Never sections",
+            ),
+            ("skills", "build", "SKILL.md"): (
+                "the `final` row is for final QA", "compares the result with the plan's `## Outcome`",
+                "A run sealed before 0.8.0 has no `staffing.md`",
+            ),
+            ("standards", "run-folder.md"): (
+                "the `final` row is for final QA", "below the last `Plan checksum:` line",
+                "The check of a finished run does not, for a run that has a `Plan checksum:` line",
+            ),
+            ("standards", "quick.md"): ("compares the result with the plan's `## Outcome`",),
+            ("README.md",): ("compares the result with the plan's outcome",),
+            ("CHANGELOG.md",): ("Runs from before 0.8.0 keep working", "does not ask a sealed run for `## Outcome`"),
+        }
+        for parts, needles in wanted.items():
+            for needle in needles:
+                with self.subTest(file=parts[-1], needle=needle):
+                    self.assertIn(needle, words(*parts))
+        absent = {
+            ("skills", "follow", "SKILL.md"): "task, check and seal the amended plan",
+            ("skills", "build", "SKILL.md"): "in prototype mode there is no `review` row",
+        }
+        for parts, needle in absent.items():
+            with self.subTest(file=parts[-1], absent=needle):
+                self.assertNotIn(needle, words(*parts))
+
 
 if __name__ == "__main__":
     unittest.main()

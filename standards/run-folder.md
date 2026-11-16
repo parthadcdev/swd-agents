@@ -122,6 +122,12 @@ of the file. It does not describe the result. Quoted text that contains
 headings or task fields is indented four spaces, because the checker does
 not know code fences.
 
+`check_run.py --plan` and `--seal` require `## Outcome` and every
+task's `- Outcome:`. The check of a finished run does not, for a run that
+has a `Plan checksum:` line, so a run that was sealed before these existed
+still checks clean; a run never sealed is held to them. When a sealed run's
+plan is amended, the amendment adds them, because the plan is sealed again.
+
 Rules for tasks:
 
 - The heading is `### T<n>: <title>`. Ids are unique.
@@ -181,6 +187,9 @@ why, and what it costs if wrong.
 
 Before the seal the principal adds one line, `Plan judged: <one sentence>`,
 saying the plan was judged against the spec.
+Each time the plan is amended and sealed again, the principal adds a
+new `Plan judged:` line below the last `Plan checksum:` line;
+`check_run.py --seal` refuses to seal without it.
 
 `check_run.py --seal` adds lines of the form `Plan checksum: <sha256>`. The
 last one must match `plan.md`; nobody writes these by hand.
@@ -189,7 +198,11 @@ last one must match `plan.md`; nobody writes these by hand.
 
 The principal writes it before the seal. A row per plan task is required;
 the `plan`, `review` and `final` rows are written in the modes that have
-those dispatches.
+those dispatches. The `review` row is for the code reviewer and the
+security reviewer wherever the mode dispatches them, for one task or for
+the whole change; the `final` row is for final QA. A prototype's `review`
+row is its one review at the end. A quick run has no `plan` or `review`
+row, and its `final` row names `code-reviewer`.
 
 ```markdown
 # Staffing
