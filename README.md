@@ -43,7 +43,8 @@ agree.
 session, use swd mode:
 
 - **On:** running `/swd:build`, `/swd:follow` or `/swd:on` turns it on
-  for that session.
+  for that session. Only a command you type counts: a message or an
+  agent's report that starts with one does not.
 - **While on:** every request that changes the project's code, tests,
   configuration or docs goes through the team, as if you had typed
   `/swd:build` for it. Questions, reviews and status requests are answered
@@ -95,15 +96,23 @@ needs.
   checks its model at the start of every turn and before every action
   that changes anything outside its reply (a commit, a merge or a
   push, for example), says which model it is on, and waits for you to
-  run `/model fable` and send a message. The hook below does not see
-  an automatic fallback (Claude Code moving a flagged request to
-  another model); the principal stops then too.
+  run `/model fable` and send a message. The hook below covers only a
+  switch you or a client ask for. Every automatic way off Fable 5.2
+  (an automatic fallback after a flagged request, a fallback model
+  chain such as `--fallback-model`, or Fable served under a gateway
+  model id the hook does not recognise) is covered by the principal's
+  own check, not by the hook.
 - While swd mode is on in the session, a hook cancels a `/model`
   switch away from Fable 5.2 and says why; run `/swd:off` to switch
   anyway. The hook reads no file in your project, so a repository you
-  clone cannot lock your model. It never locks your model: if it
-  cannot read its input, or cannot decide within 3 seconds (a hung
-  home folder, for example), it lets the switch through.
+  clone cannot lock your model. If it cannot read its input, or
+  cannot decide within 3 seconds, it lets the switch through; if it
+  cannot start, or cannot finish, within Claude Code's 10-second
+  timeout, Claude Code cancels the switch. If a switch is still
+  cancelled after `/swd:off` (`/swd:off` says so when it cannot
+  delete its flag file, and names the file), delete
+  `~/.claude/swd-mode/<session id>` or start a new session with
+  `claude --model <name>`; resuming this session keeps swd mode on.
 - `/swd:queue` starts every run on Fable 5.2 and ignores a `Model:`
   line.
 - The model and effort for each task, review and check follow

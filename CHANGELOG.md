@@ -19,15 +19,27 @@
   switch anyway. A switch to Fable 5.2 is never cancelled. The hook
   reads no file in your project, so a repository you clone cannot
   lock your model or write into its message. It lets a switch through
-  when it cannot read its input or cannot decide within 3 seconds, so
-  a hung home folder never locks your model. Claude Code 2.1.321 or
-  later is required (Fable 5.2 needs it).
+  when it cannot read its input or cannot decide within 3 seconds; if
+  it cannot start, or cannot finish, within Claude Code's 10-second
+  timeout, Claude Code cancels the switch. If `/swd:off` cannot delete
+  its flag file, it says so and names the file: delete it by hand, or
+  start a new session (not a resumed one). Every automatic way off
+  Fable 5.2 (an automatic fallback, a fallback model chain, a gateway
+  model id the hook does not recognise) is covered by the principal's
+  own check, not by the hook. Claude Code 2.1.321 or later is required
+  (Fable 5.2 needs it).
 - swd mode turns off only when "stop swd" or `/swd:off` is the whole
   message (letter case and spaces around it ignored). Before, the
   words anywhere in a message turned it off, and so did a background
   agent's report or another session's message that quoted them. If
   you used to type "stop swd" inside a longer sentence, send it on
   its own.
+- swd mode turns on only when you type `/swd:build`, `/swd:follow` or
+  `/swd:on`: the hook reads the command Claude Code expands, not the
+  text of a message, so an agent's report or another session's
+  message that starts with one cannot turn it on. `/swd:off` now says
+  when swd mode stayed on (`/swd:off please` or the short form `/off`,
+  for example) instead of reporting it off.
 - The swd-mode hook counts only a regular file as its flag, so a
   folder left at the flag's path no longer cancels every switch with
   a `/swd:off` that cannot remove it. `/swd:on` replaces a symbolic

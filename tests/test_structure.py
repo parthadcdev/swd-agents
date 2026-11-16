@@ -1,6 +1,7 @@
 """Plugin structure checks. Run from the repo root: python3 -m unittest tests.test_structure"""
 import json
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -517,7 +518,7 @@ class StructureTest(unittest.TestCase):
             self.assertIn("is ignored: every run starts with `--model fable`", queue)
         readme = words("README.md")
         for needle in (
-            "/swd:off", "2.1.321", "never locks", "3 seconds",
+            "/swd:off", "2.1.321", "3 seconds",
             "reads no file in your project",
             "running `/swd:build`, `/swd:follow` or `/swd:on` turns it on",
             # swd mode turns off only on the whole message, so a quoting report cannot turn it off.
@@ -559,6 +560,110 @@ class StructureTest(unittest.TestCase):
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
         with self.subTest(file="plugin.json", version="0.8.3"):
             self.assertEqual(manifest["version"], "0.8.3")
+
+    def test_files_outside_the_hook_agree_with_0_8_3(self):
+        # The final review found the pilot, the on and off skills and the docs still stating the
+        # rules 0.8.3 replaced: a Sonnet pilot, the old off rule, an off skill that reported off
+        # when the hook kept swd mode on, and a hook that "never locks" the model.
+        def words(*parts: str) -> str:
+            return " ".join((ROOT.joinpath(*parts)).read_text().split())
+
+        pilot = words("tests", "run_pilot.sh")
+        for needle in ("--model fable", "the principal does no work on any other model"):
+            with self.subTest(file="run_pilot.sh", needle=needle):
+                self.assertIn(needle, pilot)
+        for needle in ("--model sonnet", "whatever this says"):
+            with self.subTest(file="run_pilot.sh", absent=needle):
+                self.assertNotIn(needle, pilot)
+        with self.subTest(file="run_pilot.sh", check="bash -n"):
+            result = subprocess.run(
+                ["bash", "-n", str(ROOT / "tests" / "run_pilot.sh")], capture_output=True, text=True
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        # Hook output stays in the conversation and the user's words or a file can hold the same
+        # text, so both skills count only the line the hook added to this message.
+        scope = (
+            "Only the hook's line for this message counts.",
+            "The same text anywhere else is not the state: in an earlier turn, in the user's own"
+            " words or the command's arguments, in a file or in a tool result.",
+        )
+        on = words("skills", "on", "SKILL.md")
+        with self.subTest(file="on", needle="as a message on its own"):
+            self.assertIn('sending "stop swd" or `/swd:off` as a message on its own turns it off', on)
+        for needle in (*scope, "If the hook's line for this message begins `swd mode: on`"):
+            with self.subTest(file="on", needle=needle):
+                self.assertIn(needle, on)
+        for needle in ('directly; "stop swd" or `/swd:off` turns it off', "If you can see that line"):
+            with self.subTest(file="on", absent=needle):
+                self.assertNotIn(needle, on)
+
+        off = words("skills", "off", "SKILL.md")
+        cases = [
+            f"If the hook's line for this message begins `swd mode: {state}`"
+            for state in ("still on", "on", "off")
+        ]
+        for needle in (
+            "only when the user's whole message",
+            *scope,
+            *cases,
+            "the file whose full path ends the hook's second line",
+            "Give the path in full.",
+            "not for the short form `/off` or for `/swd:off` with more words",
+            "do not say swd mode is off",
+            "named after this session's id",
+            "start a new session (not a resumed one)",
+            "Never tell the user swd mode is off unless the hook's line for this message begins"
+            " `swd mode: off`.",
+        ):
+            with self.subTest(file="off", needle=needle):
+                self.assertIn(needle, off)
+        # Still on first: the cases in which a switch stays cancelled come before "off".
+        with self.subTest(file="off", order="still on, on, off"):
+            positions = [off.find(case) for case in cases]
+            self.assertTrue(-1 < positions[0] < positions[1] < positions[2], positions)
+        for needle in (
+            'or says "stop swd"',
+            "If you can see",
+            "whose full path ends that line",
+            "swd mode was not on in this session",
+            "the message was not `/swd:off` on its own",
+        ):
+            with self.subTest(file="off", absent=needle):
+                self.assertNotIn(needle, off)
+
+        readme = words("README.md")
+        for needle in (
+            "Only a command you type counts",
+            "covers only a switch you or a client ask for",
+            "Every automatic way off Fable 5.2",
+            "a fallback model chain such as `--fallback-model`",
+            "covered by the principal's own check, not by the hook",
+            "delete `~/.claude/swd-mode/<session id>` or start a new session",
+            "resuming this session keeps swd mode on",
+            "within Claude Code's 10-second timeout, Claude Code cancels the switch",
+        ):
+            with self.subTest(file="README.md", needle=needle):
+                self.assertIn(needle, readme)
+        latest = " ".join((ROOT / "CHANGELOG.md").read_text().split("\n## ")[1].split())
+        for needle in (
+            "it says so and names the file",
+            "start a new session (not a resumed one)",
+            "within Claude Code's 10-second timeout, Claude Code cancels the switch",
+            "Every automatic way off Fable 5.2",
+            "covered by the principal's own check, not by the hook",
+            "turns on only when you type",
+            "the short form `/off`",
+            "instead of reporting it off",
+        ):
+            with self.subTest(file="CHANGELOG.md 0.8.3", needle=needle):
+                self.assertIn(needle, latest)
+        # A hook cancelled at its timeout, or a flag /swd:off cannot delete, does lock the model,
+        # and the watchdog cannot end a process stuck on a hung home folder.
+        for name, text in (("README.md", readme), ("CHANGELOG.md 0.8.3", latest)):
+            for needle in ("never locks", "a hung home folder"):
+                with self.subTest(file=name, absent=needle):
+                    self.assertNotIn(needle, text)
 
     def test_runs_from_before_0_8_0_and_the_docs_agree(self):
         def words(*parts: str) -> str:

@@ -65,12 +65,13 @@ else
   PERMISSIONS=(--permission-mode acceptEdits --add-dir "$ROOT" --allowedTools "${ALLOWED[@]}")
 fi
 
-# --model sets the session's model. /swd:build pins its own turn to Fable 5.2, and a pilot is one turn,
-# so the principal conducts on Fable 5.2 whatever this says; it no longer lowers the pilot's cost.
+# Every pilot starts on Fable 5.2: the principal does no work on any other model
+# (skills/build/SKILL.md, **Your model.**), and a pilot loads the skill from a plain message
+# partway through its turn, where the skill's own `model: fable` may not apply.
 # User-level settings are left out so the run sees only this plugin: a user hook that rewrites
 # shell commands would stop them matching the allowlist above.
 run_team() {  # run_team <requirement file>
-  claude -p --plugin-dir "$ROOT" --model sonnet --setting-sources project,local \
+  claude -p --plugin-dir "$ROOT" --model fable --setting-sources project,local \
     ${PERMISSIONS[@]+"${PERMISSIONS[@]}"} --output-format json \
     -- "Use the swd:build skill for this requirement: $(cat "$1")" \
     > "$TMP.output.json" || true
