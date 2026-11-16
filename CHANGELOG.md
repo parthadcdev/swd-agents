@@ -29,12 +29,17 @@
   production and prototype mode.
 - A `review` or `final` row may not be on a model below any task's row. The
   seal refuses it.
+- The seal reads every line of `staffing.md` that contains `|` as a row,
+  and refuses a row whose `For` is not a plan task id, `plan`, `review`
+  or `final`, an empty one included. 0.8.0 skipped a line with no leading
+  `|` and accepted a row with any other `For`. A note in `staffing.md`
+  must not contain `|`.
 - `check_run.py --seal` also records `Staffing checksum:`, and a `staffing.md`
   changed after the seal is reported until the run is sealed again. A change
   to `staffing.md` alone is sealed again without a new `Plan judged:` line.
 - Runs sealed by 0.7.1 and 0.8.0 keep checking clean: with no
   `Staffing checksum:` line nothing is compared. A 0.8.0 run that is sealed
-  again is held to the new rows and the floor.
+  again is held to the new rows, the floor and these row rules.
 
 ## 0.8.0
 

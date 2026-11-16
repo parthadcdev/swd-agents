@@ -562,20 +562,30 @@ class StructureTest(unittest.TestCase):
                 "Never staff a checker below a builder",
                 "this seal needs no new `Plan judged:` line",
                 "A run sealed before 0.8.1 has no `Staffing checksum:` line",
+                "Put nothing else with a `|` in the file",
+                "seal again before you dispatch",
             ),
             ("skills", "follow", "SKILL.md"): (
+                "reads any line with a `|` as a row",
                 "no checker's model below a builder's", "the `review` row for its reviewers (the `final` row in a quick run)",
             ),
             ("standards", "run-folder.md"): (
                 "Staffing checksum: <sha256>", "The seal requires the `final` row in every mode",
                 "a row naming two agents is compared once",
+                "Every line of this file that contains `|` is read as a row, with or without "
+                "a leading `|`",
+                "a note in this file must not contain `|`",
+                "for the reviews and for the final check",
             ),
             ("README.md",): (
                 "never runs on a model below a builder's",
                 "sends anything to a host outside this machine",
+                "requires the `final` row and, outside a quick run, the `review` row",
             ),
             ("CHANGELOG.md",): (
                 "Staffing checksum:",
+                "0.8.0 skipped a line with no leading `|` and accepted a row with any other `For`",
+                "the floor and these row rules",
                 "that commits, pushes, publishes, deploys or sends anything to a host outside "
                 "this machine (any request counts: an upload, a download, a `git fetch`, a name "
                 "lookup), in the worktree or in a copy",
@@ -588,6 +598,8 @@ class StructureTest(unittest.TestCase):
             for needle in needles:
                 with self.subTest(file=parts[-1], needle=needle):
                     self.assertIn(needle, words(*parts))
+        with self.subTest(file="README.md", absent="reviewers' and QA's rows"):
+            self.assertNotIn("reviewers' and QA's rows", words("README.md"))
         for parts in (("skills", "build", "SKILL.md"), ("standards", "run-folder.md")):
             with self.subTest(file=parts[-1], table="final row"):
                 self.assertIn("| final | qa-engineer | opus | low |", words(*parts))

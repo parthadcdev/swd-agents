@@ -16,7 +16,7 @@ report in `reports/` must say `Verdict: pass`.
 | `spec.md` | Principal | What will be built, acceptance criteria, assumptions, delivery mode and why |
 | `standards.md` | Principal | The engineering bar for this run, the model guidance, then this document |
 | `plan.md` | Architect | Outcome, design, contracts, test command, task list in waves |
-| `staffing.md` | Principal | The agent, model and effort for each task |
+| `staffing.md` | Principal | The agent, model and effort for each task, for the reviews and for the final check |
 | `ledger.md` | Principal only | One row per task: status, role, attempt count |
 | `activity.md` | Principal only | A timeline of the run, one line per event |
 | `decisions.md` | Principal | Every ruling and assumption made after the gate |
@@ -228,6 +228,14 @@ comma-separated. A task's `Agent` is the `Role` its plan names. `Model` is
 `haiku`, `sonnet`, `opus` or `fable`; `Effort` is `low`, `medium`, `high` or
 `xhigh`. When a task is moved up after a failed fix, its row is changed and
 the ruling goes in `decisions.md`, and the run is sealed again.
+
+Every line of this file that contains `|` is read as a row, with or
+without a leading `|`. Only the header (its first four cells are `For`,
+`Agent`, `Model`, `Effort`) and a separator whose cells hold nothing but
+dashes and colons are skipped. `check_run.py --seal` refuses a row that
+does not have five cells, and a row whose `For` cell is not a task id of
+the plan, `plan`, `review` or `final`, an empty cell included. So a note
+in this file must not contain `|`, and neither may a `Why` cell.
 
 The model on a `review` or `final` row may not rank below the model on
 any task's row (`haiku` < `sonnet` < `opus` < `fable`); a row naming

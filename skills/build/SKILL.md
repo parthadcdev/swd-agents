@@ -309,6 +309,10 @@ has not changed, so this seal needs no new `Plan judged:` line.
    task. The seal refuses it. Above that floor the choice is yours, and
    effort is not compared.
 
+   Put nothing else with a `|` in the file. The seal reads every line that
+   contains one as a row, and refuses a row without five cells or with a
+   `For` that is not a task id, `plan`, `review` or `final`.
+
    The `Agent` of a task is the role its plan names. If you think a
    role is wrong, send the architect back to amend the plan; do not
    dispatch a different agent.
@@ -532,7 +536,9 @@ finished while a test fails or a finding is open.
 
   Increment the task's `Attempts`, set it `in-progress`, log a `fix` line,
   and re-check the result exactly as in Build. Fixes for unrelated failures
-  go out in one message so they run in parallel.
+  go out in one message so they run in parallel. If you move the task up
+  for the attempt, change its row in `staffing.md` and seal again before
+  you dispatch, as "Model and effort per dispatch" says.
 - **Counting.** `Attempts` counts every dispatch of a task's builder: the
   first build is 1 and each fix adds 1, whatever the failure was.
 - **Three fixes, then re-plan.** When a task still fails and its

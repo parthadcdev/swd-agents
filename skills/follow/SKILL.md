@@ -71,7 +71,9 @@ The script has written the failing checks and the new comments to
    `final` rows the run's mode has, no checker's model below a builder's.
    A run sealed under 0.8.0 is held to the same rows and floor when it is
    sealed again, so raise a `review` or `final` row that sits below a
-   builder's first. A change to `staffing.md` without an amended plan is
+   builder's first. That seal also reads any line with a `|` as a row and
+   refuses a `For` that is not a task id, `plan`, `review` or `final`, so
+   rename such a row and take any `|` out of a note. A change to `staffing.md` without an amended plan is
    sealed again without a new `Plan judged:` line. A finished task's row
    says what a fix to it is dispatched at.
 4. **Keep the records.** Update the ledger and log every dispatch, verdict

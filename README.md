@@ -96,8 +96,8 @@ needs.
   the approval gate, together with the plan's `## Outcome`: the finished
   result as the plan says it will appear.
 - A reviewer or QA never runs on a model below a builder's. The seal
-  refuses such a table, requires the reviewers' and QA's rows, and
-  covers `staffing.md`: a row changed after the gate is reported until
+  refuses such a table, requires the `final` row and, outside a quick run,
+  the `review` row, and covers `staffing.md`: a row changed after the gate is reported until
   the run is sealed again.
 - The principal reads the commands a checker will run before the gate.
   The project's own test, lint, type check and build commands are run as
