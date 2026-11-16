@@ -1,5 +1,6 @@
-"""Tests for hooks/swd-mode.py: the UserPromptSubmit hook that keeps a session in swd mode, and
-the PreModelSwitch hook that keeps a session in swd mode on Fable 5.2.
+"""Tests for hooks/swd-mode.py: the UserPromptExpansion hook that turns swd mode on from a typed
+command, the UserPromptSubmit hook that keeps a session in swd mode, and the PreModelSwitch hook
+that keeps a session in swd mode on Fable 5.2.
 
 Every subprocess gets an environment built from scratch and temporary folders for HOME and its
 working directory: this suite runs inside a project whose own .swd/runs holds real runs, which the
@@ -32,6 +33,17 @@ ON_SENTENCE = (
     "pull request or write to the run folder; if you cannot tell, it is not Fable 5.2; if it is not Fable "
     "5.2, do no principal work and change nothing for the run outside your own reply: say which model you "
     "are on and that the run continues once the user runs /model fable and sends a message, and stop.")
+
+OFF = ("swd mode: off\n"
+       "swd mode has been turned off for this session. Handle requests normally from here on; the\n"
+       "swd team is used again only when the user runs /swd:build, /swd:follow or /swd:on.\n")
+
+
+def off_failed(flag):
+    return ("swd mode: still on\n"
+            "The swd-mode hook could not delete its flag file, so swd mode is still on and switches away "
+            "from Fable 5.2 are still cancelled. Tell the user to delete this file by hand, or to start a "
+            f"new session (not a resumed one): {flag}\n")
 
 # Loads the hook as a module, sets its own time limit, optionally slows flag_for or records every
 # file the hook opens or lists, and runs it as the command line would.
@@ -75,35 +87,81 @@ class ModeTest(unittest.TestCase):
     def env(self):
         return {"HOME": self.home, "PATH": "/usr/bin:/bin"}
 
+    def run_hook(self, payload):
+        result = subprocess.run([sys.executable, str(HOOK)], input=payload, capture_output=True, text=True,
+                                env=self.env(), cwd=self.elsewhere)
+        self.assertEqual(result.returncode, 0, result.stderr)  # exit 2 would block the user's command
+        self.assertNotIn("Traceback", result.stderr)
+        return result.stdout
+
     def prompt(self, text, session="s1", raw=None):
         payload = raw if raw is not None else json.dumps(
             {"hook_event_name": "UserPromptSubmit", "session_id": session, "prompt": text})
-        result = subprocess.run([sys.executable, str(HOOK)], input=payload, capture_output=True, text=True,
-                                env=self.env(), cwd=self.elsewhere)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn("Traceback", result.stderr)
-        return result.stdout
+        return self.run_hook(payload)
+
+    def expand(self, command_name, session="s1", args=""):
+        """The event Claude Code sends when the user types a command and it expands."""
+        return self.run_hook(json.dumps({
+            "hook_event_name": "UserPromptExpansion", "session_id": session, "expansion_type": "slash_command",
+            "command_name": command_name, "command_args": args, "command_source": "plugin",
+            "prompt": "/" + command_name + (" " + args if args else "")}))
 
     def test_off_by_default(self):
         self.assertEqual(self.prompt("add a login page"), "")
 
     def test_build_turns_it_on_and_it_stays_on(self):
-        self.assertIn("swd mode: on", self.prompt("/swd:build add a login page"))
+        self.assertTrue(self.expand("swd:build", args="x").startswith("swd mode: on"))
+        self.assertTrue(self.flag().is_file())
         later = self.prompt("now add a logout button")
         self.assertIn("swd mode: on", later)
         self.assertIn("swd:build", later)          # how to route a change
         self.assertIn("stop swd", later)           # how to leave
 
     def test_follow_turns_it_on_and_it_stays_on(self):
-        self.assertIn("swd mode: on", self.prompt("/swd:follow"))
+        self.assertTrue(self.expand("swd:follow").startswith("swd mode: on"))
+        self.assertTrue(self.flag().is_file())
         self.assertIn("swd mode: on", self.prompt("reply to the review"))
 
     def test_on_command_turns_it_on(self):
-        self.assertIn("swd mode: on", self.prompt("/swd:on"))
+        self.assertTrue(self.expand("swd:on").startswith("swd mode: on"))
+        self.assertTrue(self.flag().is_file())
         self.assertIn("swd mode: on", self.prompt("fix the typo in the README"))
 
+    def test_a_command_typed_while_on_adds_the_text_only_once(self):
+        self.expand("swd:on")
+        self.assertEqual(self.expand("swd:build", args="x"), "")  # UserPromptSubmit printed it already
+        self.assertTrue(self.flag().is_file())
+
+    def test_no_other_command_turns_it_on(self):
+        for name in ("swd:off", "other:build", "build", "swd:buildx", "swd:on2", ""):
+            with self.subTest(command_name=name):
+                self.assertEqual(self.expand(name), "")
+                self.assertFalse(self.flag().exists())
+
+    def test_an_expansion_without_a_usable_command_name_turns_nothing_on(self):
+        # The prompt field reads /swd:on, so only command_name can keep these off.
+        base = {"hook_event_name": "UserPromptExpansion", "session_id": "s1", "expansion_type": "slash_command",
+                "command_args": "", "command_source": "plugin", "prompt": "/swd:on"}
+        for name in (["swd:on"], None, 5, "missing"):
+            event = dict(base) if name == "missing" else {**base, "command_name": name}
+            with self.subTest(command_name=name):
+                self.assertEqual(self.run_hook(json.dumps(event)), "")
+                self.assertFalse(self.flag().exists())
+
+    def test_an_expansion_with_a_bad_session_turns_nothing_on(self):
+        self.assertEqual(self.expand("swd:on", session=""), "")
+        self.assertEqual(self.expand("swd:on", session="../escaped"), "")
+        self.assertFalse((Path(self.home) / ".claude").exists())
+
+    def test_a_prompt_that_starts_with_an_on_command_does_not_turn_it_on(self):
+        # UserPromptSubmit also carries text the user did not type, such as an agent's report.
+        for text in ("/swd:build x", "/swd:follow", "/swd:on"):
+            with self.subTest(text=text):
+                self.assertEqual(self.prompt(text), "")
+                self.assertFalse(self.flag().exists())
+
     def test_mode_text_names_the_principals_model_and_the_stop(self):
-        text = self.prompt("/swd:on")
+        text = self.expand("swd:on")
         last = text.strip().splitlines()[-1]
         self.assertEqual(last, ON_SENTENCE)
         self.assertTrue(last.startswith("The principal of an swd run runs on Fable 5.2."), last)
@@ -123,7 +181,7 @@ class ModeTest(unittest.TestCase):
                 self.assertNotIn(absent, text)
 
     def test_other_sessions_are_not_affected(self):
-        self.prompt("/swd:on", session="s1")
+        self.expand("swd:on", session="s1")
         self.assertEqual(self.prompt("add a login page", session="s2"), "")
 
     def flag(self, session="s1"):
@@ -132,16 +190,41 @@ class ModeTest(unittest.TestCase):
     def test_stop_phrase_and_off_command_turn_it_off_as_the_whole_message(self):
         for stop in ("stop swd", "  Stop SWD  ", "/swd:off", "/SWD:OFF"):
             with self.subTest(stop=stop):
-                self.prompt("/swd:on")
-                self.assertTrue(self.prompt(stop).startswith("swd mode: off"))
+                self.expand("swd:on")
+                self.assertEqual(self.prompt(stop), OFF)
                 self.assertFalse(self.flag().exists())
                 self.assertEqual(self.prompt("add a login page"), "")
+
+    def test_off_names_every_command_that_turns_it_on(self):
+        self.expand("swd:on")
+        out = self.prompt("/swd:off")
+        self.assertEqual(out, OFF)
+        self.assertIn("/swd:build, /swd:follow or /swd:on", out)
+
+    def test_off_says_so_when_it_cannot_delete_the_flag(self):
+        if os.geteuid() == 0:
+            self.skipTest("root can delete the flag from a read-only folder")
+        flag = f"{self.home}/.claude/swd-mode/s1"  # Path.home() is HOME as given, unresolved
+        for stop in ("/swd:off", "stop swd"):
+            with self.subTest(stop=stop):
+                self.expand("swd:on")
+                folder = self.flag().parent
+                folder.chmod(0o500)
+                self.addCleanup(folder.chmod, 0o700)  # runs before the temporary folder is removed
+                self.assertEqual(self.prompt(stop), off_failed(flag))  # exits 0, checked by run_hook
+                self.assertTrue(self.flag().is_file())
+                switch = json.dumps({"hook_event_name": "PreModelSwitch", "session_id": "s1",
+                                     "from_model": FABLE, "to_model": SONNET})
+                result = subprocess.run([sys.executable, str(HOOK)], input=switch, capture_output=True,
+                                        text=True, env=self.env(), cwd=self.elsewhere)
+                self.assertEqual((result.returncode, result.stdout, result.stderr.strip()), (2, "", MESSAGE))
+                folder.chmod(0o700)
 
     def test_the_off_words_inside_a_longer_message_leave_it_on(self):
         report = "Review of T1 done.\nThe ON text says:\nstop swd\nAll tests pass."  # as a report would quote it
         for text in ("please stop swd now", "don't stop swd yet", "stop swd.", "/swd:off please", report):
             with self.subTest(text=text):
-                self.prompt("/swd:on")
+                self.expand("swd:on")
                 self.assertTrue(self.prompt(text).startswith("swd mode: on"))
                 self.assertTrue(self.flag().is_file())
 
@@ -161,7 +244,7 @@ class ModeTest(unittest.TestCase):
     def test_a_folder_at_the_flag_path_is_not_mode_on(self):
         self.flag().mkdir(parents=True)
         self.assertEqual(self.prompt("add a login page"), "")
-        self.assertEqual(self.prompt("/swd:on"), "")  # its unlink raises into except OSError: stays off
+        self.assertEqual(self.expand("swd:on"), "")  # its unlink raises into except OSError: stays off
         self.assertTrue(self.flag().is_dir())
 
     def test_on_replaces_a_link_and_leaves_its_target_alone(self):
@@ -169,26 +252,38 @@ class ModeTest(unittest.TestCase):
         target.write_text("precious data")
         self.flag().parent.mkdir(parents=True)
         self.flag().symlink_to(target)
-        self.assertTrue(self.prompt("/swd:on").startswith("swd mode: on"))
+        self.expand("swd:on")  # the link counts as on, so the text is not repeated here
         self.assertEqual(target.read_text(), "precious data")
         self.assertTrue(self.flag().is_file())
         self.assertFalse(self.flag().is_symlink())
+        self.assertTrue(self.prompt("hello").startswith("swd mode: on"))
 
     def test_on_replaces_a_dangling_link_without_creating_its_target(self):
         target = Path(self.home) / "nothing-here"
         self.flag().parent.mkdir(parents=True)
         self.flag().symlink_to(target)
-        self.assertTrue(self.prompt("/swd:on").startswith("swd mode: on"))
+        self.assertTrue(self.expand("swd:on").startswith("swd mode: on"))
         self.assertFalse(target.exists())
         self.assertTrue(self.flag().is_file())
         self.assertFalse(self.flag().is_symlink())
 
     def test_on_keeps_a_stale_flag(self):
-        self.prompt("/swd:on")
+        self.expand("swd:on")
         eight_days_ago = time.time() - 8 * 24 * 60 * 60
         os.utime(self.flag(), (eight_days_ago, eight_days_ago))
-        self.assertTrue(self.prompt("/swd:on").startswith("swd mode: on"))
+        self.assertEqual(self.expand("swd:on"), "")  # already on: the text is not repeated
+        self.assertTrue(self.flag().is_file())  # recreated, so the stale sweep did not take it
         self.assertIn("swd mode: on", self.prompt("add a login page"))
+
+    def test_on_sweeps_other_sessions_stale_flags(self):
+        self.flag().parent.mkdir(parents=True)
+        for session in ("s2", "s3"):
+            self.flag(session).write_text("")
+        eight_days_ago = time.time() - 8 * 24 * 60 * 60
+        os.utime(self.flag("s2"), (eight_days_ago, eight_days_ago))
+        self.expand("swd:on")
+        self.assertFalse(self.flag("s2").exists())
+        self.assertTrue(self.flag("s3").is_file())
 
     def test_the_source_checks_the_flag_as_a_regular_file_and_never_writes_through_it(self):
         source = HOOK.read_text()
@@ -197,12 +292,12 @@ class ModeTest(unittest.TestCase):
                 self.assertNotIn(needle, source)
 
     def test_session_id_cannot_escape_the_state_folder(self):
-        self.prompt("/swd:on", session="../../escaped")
+        self.expand("swd:on", session="../../escaped")
         self.assertFalse((Path(self.home) / "escaped").exists())
         self.assertFalse((Path(self.home) / ".claude" / "escaped").exists())
 
     def test_a_prompt_event_with_model_fields_is_still_a_prompt(self):
-        self.prompt("/swd:on")
+        self.expand("swd:on")
         payload = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "hi",
                               "from_model": FABLE, "to_model": SONNET})
         self.assertIn("swd mode: on", self.prompt("", raw=payload))  # exits 0, checked by prompt()
@@ -382,15 +477,17 @@ class SwitchTest(unittest.TestCase):
 
 
 class HooksJsonTest(unittest.TestCase):
-    def test_the_hook_is_registered_for_both_events(self):
+    def test_the_hook_is_registered_for_all_three_events(self):
         hooks = json.loads(HOOKS_JSON.read_text())["hooks"]
-        for event in ("UserPromptSubmit", "PreModelSwitch"):
+        self.assertEqual(set(hooks), {"UserPromptSubmit", "UserPromptExpansion", "PreModelSwitch"})
+        for event in hooks:
             with self.subTest(event=event):
                 commands = [h for group in hooks[event] for h in group["hooks"]]
                 self.assertEqual(len(commands), 1)
                 self.assertEqual(commands[0]["type"], "command")
                 self.assertIn("swd-mode.py", commands[0]["command"])
                 self.assertIn("CLAUDE_PLUGIN_ROOT", commands[0]["command"])
+                self.assertEqual(commands[0]["timeout"], 10)
                 self.assertNotIn("matcher", hooks[event][0])
 
 

@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit and PreModelSwitch hook: swd mode, and keeping the principal on Fable 5.2.
+"""UserPromptExpansion, UserPromptSubmit and PreModelSwitch hook: swd mode, and keeping the
+principal on Fable 5.2.
 
 Reads the hook's JSON from stdin and dispatches on `hook_event_name`.
 
-UserPromptSubmit (and any other event): a prompt starting `/swd:build`, `/swd:follow` or `/swd:on`
-turns swd mode on for that session; `/swd:off` or "stop swd" turn it off only as the whole prompt,
-because this event also fires for text the user did not type, such as an agent's report. The flag
-counts only as a regular file. While it is on, every prompt gets a short reminder added to the
-session's context: route code changes through the swd team, and the principal runs on Fable 5.2.
-This path never exits non-zero.
+UserPromptExpansion: when the user types `/swd:build`, `/swd:follow` or `/swd:on` (the event's
+`command_name`), swd mode turns on for that session. Only this event turns it on, because it fires
+for a command the user typed, while a prompt also carries text the user did not type, such as an
+agent's report. This path never exits non-zero: exit 2 would block the user's command.
+
+UserPromptSubmit (and any other event): `/swd:off` or "stop swd" turn swd mode off only as the
+whole prompt; when the flag cannot be deleted, it says so and names the file. The flag counts
+only as a regular file. While it is on, every prompt gets a short reminder added to the session's
+context: route code changes through the swd team, and the principal runs on Fable 5.2. This path
+never exits non-zero.
 
 PreModelSwitch: cancels a switch from Fable 5.2 to another model (exit 2, the reason on stderr)
 only while swd mode is on for the session. It reads no file in the project, only the session's
@@ -40,7 +45,12 @@ The principal of an swd run runs on {MODEL_NAME}. Check which model you are runn
 
 OFF = """swd mode: off
 swd mode has been turned off for this session. Handle requests normally from here on; the
-swd team is used only when the user runs /swd:build again."""
+swd team is used again only when the user runs /swd:build, /swd:follow or /swd:on."""
+
+OFF_FAILED = f"""swd mode: still on
+The swd-mode hook could not delete its flag file, so swd mode is still on and switches away from {MODEL_NAME} are still cancelled. Tell the user to delete this file by hand, or to start a new session (not a resumed one): {{path}}"""
+
+ON_COMMANDS = ("swd:build", "swd:follow", "swd:on")
 
 
 def main():
@@ -50,8 +60,11 @@ def main():
         return
     if not isinstance(event, dict):
         return
-    if event.get("hook_event_name") == "PreModelSwitch":
+    name = event.get("hook_event_name")
+    if name == "PreModelSwitch":
         model_switch(event)
+    elif name == "UserPromptExpansion":
+        expansion(event)
     else:
         prompt(event)
 
@@ -64,6 +77,23 @@ def flag_for(event):
     return STATE / session
 
 
+def expansion(event):
+    flag = flag_for(event)
+    if flag is None:
+        return
+    if str(event.get("command_name") or "") not in ON_COMMANDS:
+        return
+    was_on = flag.is_file()
+    STATE.mkdir(parents=True, exist_ok=True)
+    flag.unlink(missing_ok=True)  # removes a link itself, never its target
+    os.close(os.open(flag, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    for old in STATE.iterdir():  # sessions that ended without turning it off
+        if time.time() - old.stat().st_mtime > STALE_SECONDS:
+            old.unlink()
+    if not was_on:  # when it was on, UserPromptSubmit has just printed ON for this message
+        print(ON)
+
+
 def prompt(event):
     flag = flag_for(event)
     if flag is None:
@@ -71,16 +101,13 @@ def prompt(event):
     text = str(event.get("prompt") or "").strip()
     if text.lower() in ("stop swd", "/swd:off"):  # whole prompt only: quoted words must not turn it off
         if flag.is_file():
-            flag.unlink()
-            print(OFF)
+            try:
+                flag.unlink()
+            except OSError:
+                print(OFF_FAILED.format(path=flag))
+            else:
+                print(OFF)
         return
-    if re.match(r"/swd:(build|follow|on)\b", text):
-        STATE.mkdir(parents=True, exist_ok=True)
-        flag.unlink(missing_ok=True)  # removes a link itself, never its target
-        os.close(os.open(flag, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
-        for old in STATE.iterdir():  # sessions that ended without turning it off
-            if time.time() - old.stat().st_mtime > STALE_SECONDS:
-                old.unlink()
     if flag.is_file():
         print(ON)
 

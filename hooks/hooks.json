@@ -11,6 +11,17 @@
         ]
       }
     ],
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreModelSwitch": [
       {
         "hooks": [
