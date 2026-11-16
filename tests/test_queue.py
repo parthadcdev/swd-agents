@@ -79,6 +79,8 @@ class QueueTest(unittest.TestCase):
         self.assertIn("Add item_count to the cart", result.stdout)
         self.assertIn("#12", result.stdout)
         self.assertNotIn("Already done earlier", result.stdout)
+        self.assertIn("finish: branch, model: fable", result.stdout)
+        self.assertNotIn("ignoring", result.stdout)
         self.assertEqual(self.prompts(), [])
 
     def test_each_open_item_becomes_one_pre_approved_run_and_is_ticked_off(self):
@@ -116,13 +118,73 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(len(self.prompts()), 2)
         self.assertIn("- [ ] never started", self.queue.read_text())
 
-    def test_the_queue_can_name_the_model_its_runs_use(self):
-        # An unattended backlog is where cost matters most.
-        self.work("--max", "1")
-        self.assertNotIn("--model", (self.stub / "args-1.txt").read_text())
-        self.queue.write_text("Model: sonnet\n\n- [ ] one more thing\n")
-        self.work()
-        self.assertIn("--model sonnet", (self.stub / "args-2.txt").read_text())
+    IGNORED = "ignoring 'Model: sonnet' in .swd/queue.md: every run starts with --model fable"
+
+    def test_every_run_starts_on_fable_without_a_model_line(self):
+        result = self.work()
+        self.assertNotIn("ignoring", result.stdout)
+        args = [p.read_text() for p in sorted(self.stub.glob("args-*.txt"))]
+        self.assertEqual(len(args), 3)
+        for line in args:
+            self.assertIn("--model fable", line)
+
+    def test_a_model_line_is_ignored_and_said_once_before_anything_else(self):
+        # The principal does no work off Fable 5.2, so the queue never starts a run elsewhere.
+        self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n")
+        result = self.work()
+        self.assertEqual(result.stdout.count(self.IGNORED), 1)
+        self.assertTrue(result.stdout.startswith(self.IGNORED + "\n"))
+        args = [p.read_text() for p in sorted(self.stub.glob("args-*.txt"))]
+        self.assertEqual(len(args), 2)
+        for line in args:
+            self.assertIn("--model fable", line)
+            self.assertNotIn("sonnet", line)
+
+    def test_dry_run_says_a_model_line_is_ignored_and_names_fable(self):
+        self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n")
+        result = self.work("--dry-run")
+        self.assertEqual(result.stdout.splitlines()[:2],
+                         [self.IGNORED, "2 open items, finish: pr, model: fable"])
+        self.assertEqual(result.stdout.count(self.IGNORED), 1)
+        self.assertEqual(self.prompts(), [])
+
+    def runs_args(self):
+        return [p.read_text() for p in sorted(self.stub.glob("args-*.txt"))]
+
+    def test_two_model_lines_give_one_notice_naming_the_first(self):
+        self.queue.write_text("Model: sonnet\nModel: haiku\n\n- [ ] one\n- [ ] two\n")
+        for args in (("--dry-run",), ()):
+            with self.subTest(args=args):
+                stdout = self.work(*args).stdout
+                self.assertEqual([line for line in stdout.splitlines() if line.startswith("ignoring")],
+                                 [self.IGNORED])
+                self.assertNotIn("haiku", stdout)
+        args = self.runs_args()
+        self.assertEqual(len(args), 2)
+        for line in args:
+            self.assertIn("--model fable", line)
+
+    def test_an_empty_model_line_gives_no_notice(self):
+        for queue in ("Model: \n\n- [ ] one\n", "Model:\n\n- [ ] one\n"):
+            self.queue.write_text(queue)
+            for args in (("--dry-run",), ()):
+                with self.subTest(queue=queue, args=args):
+                    self.assertNotIn("ignoring", self.work(*args).stdout)
+        args = self.runs_args()
+        self.assertEqual(len(args), 2)
+        for line in args:
+            self.assertIn("--model fable", line)
+
+    def test_the_ignored_value_is_printed_with_control_characters_escaped(self):
+        # A crafted line must not clear the screen, set the window title or recolour the output.
+        self.queue.write_text("Model: a\x1b]0;x\x07\x1b[2J\x9bb\n\n- [ ] one\n")
+        for args in (("--dry-run",), ()):
+            with self.subTest(args=args):
+                stdout = self.work(*args).stdout
+                self.assertTrue(stdout.startswith(
+                    r"ignoring 'Model: a\x1b]0;x\x07\x1b[2J\x9bb' in .swd/queue.md: every run starts with --model fable"
+                    "\n"))
+                self.assertFalse([c for c in stdout if not c.isprintable() and c != "\n"])
 
     def test_max_limits_how_many_items_run(self):
         self.work("--max", "1")

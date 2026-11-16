@@ -7,11 +7,9 @@
 
 The queue is a markdown list. `- [ ] <requirement>` is an open item; `- [ ] #12` means GitHub
 issue 12. An optional line `Finish: pr`, `Finish: merge-push` or `Finish: branch` says how
-every run is delivered (default: pr). An optional line `Model: sonnet` sets the model each
-run's session starts on. /swd:build asks for Fable 5.2 for the turn that runs it, and an
-unattended run is one turn, so the principal conducts on Fable 5.2 whatever this line says, and
-names the model and effort of every agent it dispatches. The line no longer lowers a run's cost;
-it takes effect only where Fable 5.2 is not available to the session. Each item is run as its own `claude -p "/swd:build ..."`,
+every run is delivered (default: pr). Every run starts with `--model fable`, because the
+principal does no work off Fable 5.2; a `Model:` line, which earlier versions read, is ignored
+and the script says so once. Each item is run as its own `claude -p "/swd:build ..."`,
 pre-approved, so each starts with a fresh context. When a run finishes the item becomes
 `- [x] <item> — <where the work is>`; when it does not, `- [!] <item> — blocked: <run folder>`.
 Two failures in a row stop the queue: that usually means something systemic, such as missing
@@ -55,7 +53,7 @@ def requirement(project, item):
             f"Write 'Closes #{number}' in the pull request description.")
 
 
-def run_item(project, text, finish, model=None):
+def run_item(project, text, finish):
     """Run one requirement to the end. Returns (finished, where): the run's branch or pull request, or its folder."""
     runs = project / ".swd" / "runs"
     before = set(runs.iterdir()) if runs.is_dir() else set()
@@ -67,8 +65,7 @@ def run_item(project, text, finish, model=None):
     plugin = str(Path(__file__).resolve().parent.parent)
     try:
         subprocess.run(["claude", "-p", "--plugin-dir", plugin, "--setting-sources", "project,local",
-                        *(["--model", model] if model else []),
-                        "--output-format", "json", "--", prompt], cwd=project,
+                        "--model", "fable", "--output-format", "json", "--", prompt], cwd=project,
                        capture_output=True, text=True, env={**os.environ, "SWD_NO_BROWSER": "1"})
     except OSError as error:
         return False, f"could not start claude: {error}"
@@ -111,10 +108,14 @@ def main(argv=None):
         print(f"{queue}: Finish must be one of {', '.join(FINISH_WORDS)}", file=sys.stderr)
         return 1
 
-    model = (re.search(r"^Model: (\S+)", queue.read_text(), re.M) or [None, None])[1]
+    model = re.search(r"^Model: (\S+)", queue.read_text(), re.M)
+    if model:
+        # Escape what the terminal would act on, so a crafted line cannot clear the screen or set the title.
+        shown = "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in model[1])
+        print(f"ignoring 'Model: {shown}' in .swd/queue.md: every run starts with --model fable", flush=True)
     open_items = [m.group(1) for m in map(OPEN_RE.match, queue.read_text().splitlines()) if m]
     if args.dry_run:
-        print(f"{len(open_items)} open items, finish: {finish}, model: {model or 'default'}")
+        print(f"{len(open_items)} open items, finish: {finish}, model: fable")
         for item in open_items:
             print(f"- {item}")
         return 0
@@ -122,7 +123,7 @@ def main(argv=None):
     results, failures_in_a_row = [], 0
     for item in open_items[:args.max]:
         text = requirement(project, item)
-        finished, where = run_item(project, text, finish, model) if text else (False, "could not read the issue with gh")
+        finished, where = run_item(project, text, finish) if text else (False, "could not read the issue with gh")
         mark = f"- [x] {item} — {where}" if finished else f"- [!] {item} — blocked: {where}"
         # Re-read the file each time: the user may be editing the queue while it runs.
         lines = queue.read_text().splitlines()
