@@ -58,9 +58,10 @@ session, use swd mode:
   request or branch; a blocked one is marked and the queue moves on. Run
   `/swd:setup` first: nobody is there to answer a permission prompt.
 - **`/swd:follow`** goes back to the pull requests earlier runs opened.
-  It sends failing checks and review comments through the team, pushes the
-  fixes, and replies on the pull request with what changed. It never
-  merges, approves or force-pushes.
+  It sends failing checks, and comments from the repository's owner,
+  members and collaborators, through the team, pushes the fixes, and
+  replies on the pull request with what changed. Comments from anyone else
+  get a reply only. It never merges, approves or force-pushes.
 
 ## The team
 

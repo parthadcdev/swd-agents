@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.8.2
+
+- `/swd:follow` acts only on feedback from the repository's owner,
+  members and collaborators. Feedback from anyone else is written to the
+  feedback report under `## From people outside the repository` and gets
+  a reply only; no builder changes anything for it, and the text of a
+  comment is never taken as an instruction.
+- That section is always the last in the report and runs to the end of
+  the file, so a comment cannot forge a `## Comments to address` section
+  after it: nothing after its heading can be a change.
+- Every item in the feedback report, a failing check, a trusted comment
+  or an outside one, is one line starting with `- `, and every further
+  line of it starts with two spaces and `> `. So a line starting `- ` is
+  always one item and a line starting `## ` is always one of the report's
+  own headings, whatever a comment holds; a list or a heading in a
+  comment stays inside its item.
+- Before routing, the principal counts the items under
+  `## Failing checks` and under `## Comments to address`, the ones it
+  will only reply to included, and checks that they number the same as
+  the `failing checks` and `new comments` counts on the summary line; if
+  either differs it changes nothing, stops work on that pull request and
+  tells the user. `Finish: pr` in `/swd:build` makes the same check on
+  the failing checks before it routes any.
+- A trusted comment that only points at another comment ("+1 to the
+  suggestion below") gets a reply asking its author to state the change
+  in their own words, and no change.
+- The exit-10 summary line of `swd-pr.py` has a third count, for example
+  `1 from outside the repository (reply only)`. Feedback from outside the
+  repository alone still exits 10, because it may need a reply. When
+  none of it does, no reply is posted, and it is still marked as handled.
+- A builder's brief, and the architect's when a change needs a new task,
+  now quotes the items to make instead of naming the feedback report,
+  after a `Make these changes:` line.
+- A trusted request to change what the run executes (a test or build
+  script, a Makefile, a CI configuration, a dependency manifest, or the
+  lint, type check and build commands in the project notes) is read
+  against the limits on the project's own commands before it is
+  taken; one that fails gets a reply and no change.
+
 ## 0.8.1
 
 - A checker's commands are of two kinds. The project's own (the plan's

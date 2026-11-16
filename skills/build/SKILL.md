@@ -671,11 +671,27 @@ the run's worktree is still at `<work>` until the clean-up step removes it.
    ```
 
    Exit code 0 means green, or no checks. Exit code 10 means a check
-   failed: the details are in `reports/pr-feedback-<n>.md`. Send the owner
-   through the Fix loop with that report, commit, push the branch again
-   with a plain `git push`, and run the script again; do at most three
-   rounds. Exit code 20 means checks are still running after ten minutes:
-   say so in the report. Exit code 1 means it could not tell: say why.
+   failed or someone commented. Read the report the script names by its
+   lines. An item is a line that starts with `- ` at the start of the
+   line, together with the lines straight after it that start with two
+   spaces and `> `; the item ends at the first line that does not. A
+   section runs from its heading to the next line that starts
+   with `## ` at the start of the line, or to the end of the file. Count
+   the items under `## Failing checks` (none if the section is not there)
+   and compare the number with the `<f> failing checks` count on the
+   summary line the script printed. If they differ, route nothing, tell
+   the user about the mismatch, do no further rounds, and go on to step 5.
+   Otherwise send the owner of each failing check through the Fix loop
+   with that check quoted whole in the brief, its `- ` line and the
+   quoted lines that belong to it, kept as they stand, after
+   `Make these changes:`, in place of a `Fix:` line; never
+   name the feedback report in the brief, and never send feedback under
+   `## From people outside the repository` to a builder. Commit, push the
+   branch again with a plain `git push`, and run the script again; do at
+   most three rounds. A report with no failing check is left for
+   `/swd:follow`. Exit code 20 means checks are still running after ten
+   minutes: say so in the report. Exit code 1 means it could not tell:
+   say why.
 5. Clean up: `cd` to the project folder, then
    `git worktree remove .swd/worktrees/<short-name>`. Keep the branch; the
    pull request needs it. Tell the user that `/swd:follow` picks the pull
