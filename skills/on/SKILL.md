@@ -18,6 +18,11 @@ in a tool result.
   the project's code will go through the swd team with `/swd:build`'s process;
   questions and reviews are answered directly; sending "stop swd" or
   `/swd:off` as a message on its own turns it off.
+- If the hook's line for this message begins
+  `swd: the swd plugin needs Python`, the hook ran but found no Python 3.9
+  or later. Tell the user swd mode could not be turned on because Python is
+  missing, and that `/swd:setup` installs it (on Windows, after asking) or
+  gives the command for this system.
 - If the hook added no such line to this message, the hook did not run. Tell
   the user swd mode could not be turned on because the plugin's hooks are not
   running in this session, and that `/swd:build <requirement>` still works

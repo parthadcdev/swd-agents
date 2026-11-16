@@ -11,9 +11,16 @@ A run that finished with a pull request is not finished for the user until
 the pull request is green and its review comments are answered. This skill
 picks those runs up again.
 
-The plugin root is two directories above this skill's base directory;
-`<plugin>` means that path. `<run>` is a run folder under `.swd/runs/` in
-the user's project, given as an absolute path.
+`<plugin>` means `${CLAUDE_PLUGIN_ROOT}`, the plugin root, two directories
+above this skill's base directory. `<python>` is the command `check`
+printed: the text between `python: ` and ` (Python`. In a brief, write
+that command in place of `<python>`. `<run>` is a run folder under
+`.swd/runs/` in the user's project, given as an absolute path.
+
+**Your own commands.** Give the shell one plain command per call, as the
+build playbook says. Run every command with the Bash tool, never the
+PowerShell tool: on Windows the Bash tool is Git Bash, which these
+commands are written for. Write paths with forward slashes.
 
 The rules of the build playbook apply to every change you make here. Read
 the Design steps 4 and 5, Gate, Build, Fix loop and Never sections of
@@ -44,12 +51,26 @@ replying keeps the follow-up going.
 ## Steps
 
 1. Find the runs to follow: every run folder whose last `Finish:` line in
-   `decisions.md` is `Finish: pr`.
+   `decisions.md` is `Finish: pr`. Then find Python, which every script
+   below runs with. Run this exact command, with nothing added:
+
+   ```bash
+   sh <plugin>/scripts/swd-python.sh check
+   ```
+
+   Exit 0 prints `python: <command> (Python <version>)`; that command is
+   `<python>` from here on. Exit 3 means Python is missing: follow "When
+   Python is missing" in `<plugin>/skills/setup/SKILL.md`, then run
+   `check` again. An unattended run stops there, reports what `check`
+   printed, and never installs Python. If its `python:` line shows a
+   quoted full path, Python is not on this terminal's PATH (it was just
+   installed, or its installer left it off PATH): tell the user to open a new terminal and start
+   Claude Code again, as the setup skill says, and stop.
 2. For each, ask what its pull request needs, waiting up to five minutes
    for checks that are still running:
 
    ```bash
-   python3 <plugin>/scripts/swd-pr.py --wait 300 <run>
+   <python> <plugin>/scripts/swd-pr.py --wait 300 <run>
    ```
 
    | Exit code | Meaning | What you do |
@@ -149,8 +170,9 @@ of the file. A section that is not in the report has no items.
    sealed again without a new `Plan judged:` line. A finished task's row
    says what a fix to it is dispatched at.
 4. **Keep the records.** Update the ledger and log every dispatch, verdict
-   and commit with `swd-log.sh`. When the fixes are in, log `done` again and
-   run `python3 <plugin>/scripts/check_run.py <run>` until it prints
+   and commit with `<python> <plugin>/scripts/swd-log.py`, as the build
+   playbook shows. When the fixes are in, log `done` again and
+   run `<python> <plugin>/scripts/check_run.py <run>` until it prints
    nothing.
 5. **Push.** `git -C <work> push origin <branch>`. A plain push only; if it
    is rejected, stop and ask the user.
@@ -169,11 +191,11 @@ of the file. A section that is not in the report has no items.
    worktree, and remove it:
 
    ```bash
-   python3 <plugin>/scripts/swd-pr.py --mark-handled <run>
+   <python> <plugin>/scripts/swd-pr.py --mark-handled <run>
    ```
 
    then `cd <project folder>`, `git worktree remove <worktree path>` and
-   `python3 <plugin>/scripts/check_run.py --finish <run>`.
+   `<python> <plugin>/scripts/check_run.py --finish <run>`.
 8. **Check again.** Run step 2 once more for this pull request, so a check
    that fails on the new commit is caught. Do at most three rounds for one
    pull request in one go; after that, report what is still failing and

@@ -20,7 +20,9 @@ coordination.
 variable such as `R=/some/path`, no `;` or `&&` chain. Chained commands
 are held for approval, and in an unattended run nobody is there to give
 it. The commands in this playbook are written in that form; run them as
-written.
+written. Run every command with the Bash tool, never the PowerShell
+tool: on Windows the Bash tool is Git Bash, which these commands are
+written for. Write paths with forward slashes.
 
 **Your model.** The principal runs on Fable 5.2, whatever model the
 session or the user's default is. This rule is for whichever model is
@@ -44,9 +46,12 @@ allowlist blocks it, so whenever you stop to ask the user anything,
 the gate included, add one line: if the session is not on Fable 5.2,
 `/model fable` before replying keeps the run going.
 
-**Where things are.** This skill's base directory is shown when the skill
-loads. The plugin root is two directories above it; `<plugin>` below means
-that path. `<run>` means the run folder,
+**Where things are.** `<plugin>` means `${CLAUDE_PLUGIN_ROOT}`, the plugin
+root, two directories above this skill's base directory. `<python>` is the
+command `check` printed: the text between `python: ` and ` (Python`.
+Preflight step 0 runs `check`. In a brief, write the command `check`
+printed in place of `<python>`, as you write `<run>` and `<plugin>` as
+absolute paths: an agent never sees `<python>`. `<run>` means the run folder,
 `.swd/runs/<YYYY-MM-DD>-<short-name>/` in the user's project, where
 `<short-name>` is two to four lowercase words joined by hyphens. Give agents
 the absolute path.
@@ -91,6 +96,21 @@ Work through the sections below in order.
 
 ## Preflight
 
+0. **Find Python.** Every script below runs with it. Run this exact
+   command, with nothing added:
+
+   ```bash
+   sh <plugin>/scripts/swd-python.sh check
+   ```
+
+   Exit 0 prints `python: <command> (Python <version>)`; that command is
+   `<python>` from here on. Exit 3 means Python is missing: follow "When
+   Python is missing" in `<plugin>/skills/setup/SKILL.md`, then run
+   `check` again. An unattended run stops there, reports what `check`
+   printed, and never installs Python. If its `python:` line shows a
+   quoted full path, Python is not on this terminal's PATH (it was just
+   installed, or its installer left it off PATH): tell the user to open a new terminal and start
+   Claude Code again, as the setup skill says, and stop.
 1. Look in `.swd/runs/` for an unfinished run: one whose `ledger.md` has a
    task that is not `done`, and whose `decisions.md` has no `Abandoned:`
    line. If there is one, tell the user what it was for and ask whether to
@@ -138,7 +158,7 @@ Work through the sections below in order.
 6. Housekeeping. Clear out what earlier runs left behind:
 
    ```bash
-   python3 <plugin>/scripts/swd-clean.py <run>
+   <python> <plugin>/scripts/swd-clean.py <run>
    ```
 
    It removes the worktrees of finished and abandoned runs, and deletes
@@ -233,7 +253,7 @@ that task up for the next attempt: raise the effort first, and the
 model only when more effort is not what the failure needs. Change the
 task's row in `staffing.md` and record the ruling. If you raise its model,
 raise the `review` and `final` rows to at least that model in the same
-edit. Then seal again with `check_run.py --seal <run>`: the seal covers
+edit. Then seal again with `<python> <plugin>/scripts/check_run.py --seal <run>`: the seal covers
 `staffing.md`, and the checker reports it as changed until you do. The plan
 has not changed, so this seal needs no new `Plan judged:` line.
 
@@ -254,7 +274,7 @@ has not changed, so this seal needs no new `Plan judged:` line.
 2. Check the plan:
 
    ```bash
-   python3 <plugin>/scripts/check_run.py --plan <run>
+   <python> <plugin>/scripts/check_run.py --plan <run>
    ```
 
 3. If it prints problems, send them to the architect and repeat until it
@@ -375,7 +395,7 @@ Once the plan is approved, seal it. The seal is refused until a `Finish:`
 line, the `Plan judged:` line and `staffing.md` are there:
 
 ```bash
-python3 <plugin>/scripts/check_run.py --seal <run>
+<python> <plugin>/scripts/check_run.py --seal <run>
 ```
 
 This records the checksums of `plan.md` and `staffing.md` in `decisions.md`.
@@ -410,7 +430,7 @@ that has no `dashboard.html`. Run this as a background command, so it does
 not block you, and tell the user the page is at `<run>/dashboard.html`:
 
 ```bash
-python3 <plugin>/scripts/swd-dashboard.py --watch --open <run>
+<python> <plugin>/scripts/swd-dashboard.py --watch --open <run>
 ```
 
 It opens a page in the user's browser showing the tasks by wave and the
@@ -420,7 +440,7 @@ which is one more reason to keep the ledger and timeline current. If the `HERDR_
 set, run this once:
 
 ```bash
-<plugin>/scripts/swd-watch.sh <run>
+sh <plugin>/scripts/swd-watch.sh <run>
 ```
 
 **Keep the timeline.** Every time you dispatch an agent, get a result, get a
@@ -430,8 +450,8 @@ happens. The logger stamps the line from the clock, which is what makes the
 timeline worth watching; do not write `activity.md` by hand.
 
 ```bash
-<plugin>/scripts/swd-log.sh <run> dispatch T1 generalist-engineer
-<plugin>/scripts/swd-log.sh <run> verdict T1 code-reviewer pass
+<python> <plugin>/scripts/swd-log.py <run> dispatch T1 generalist-engineer
+<python> <plugin>/scripts/swd-log.py <run> verdict T1 code-reviewer pass
 ```
 
 The events are `dispatch`, `return`, `verdict`, `commit`, `fix`, `replan`,
@@ -461,7 +481,7 @@ Then, for each wave in order:
    Run folder: <absolute run path>
    Work in: <work>
    Project notes: <absolute path of .swd/project.md>
-   Run tests with: python3 <plugin>/scripts/swd-test.py <run> T2
+   Run tests with: <python> <plugin>/scripts/swd-test.py <run> T2
    Task: T2
    Goal: Expose the cart total over the API, so the checkout page in T3 has something to call.
    You own: src/api.py, tests/test_api.py
@@ -473,7 +493,7 @@ Then, for each wave in order:
    the report claims:
 
    ```bash
-   python3 <plugin>/scripts/check_run.py --task T2 <run>
+   <python> <plugin>/scripts/check_run.py --task T2 <run>
    ```
 
    It prints nothing when every uncommitted change is owned by a task, the
@@ -509,7 +529,7 @@ What happens next depends on the mode.
    the next wave builds on it. This is a script, not an agent:
 
    ```bash
-   python3 <plugin>/scripts/swd-test.py <run> wave-<n>
+   <python> <plugin>/scripts/swd-test.py <run> wave-<n>
    ```
 
    It prints the end of the output and records all of it under
@@ -563,7 +583,7 @@ finished while a test fails or a finding is open.
 - **Three fixes, then re-plan.** When a task still fails and its
   `Attempts` reaches 4 (the build and three fixes), stop patching. Dispatch
   `swd:architect` with the failing reports and ask for a root-cause
-  re-plan. Check the amended plan with `check_run.py --plan`, then judge, staff and seal it as the Gate describes, add any new
+  re-plan. Check the amended plan with `<python> <plugin>/scripts/check_run.py --plan <run>`, then judge, staff and seal it as the Gate describes, add any new
   tasks to the ledger, and build them.
 - **If the re-planned work also fails**, give it one fix. If it still
   fails, set the task `blocked`, stop, and report to the user with the
@@ -602,7 +622,7 @@ is lost; the user reads `decisions.md` in the final report.
    time on a final check:
 
    ```bash
-   python3 <plugin>/scripts/swd-test.py <run> final
+   <python> <plugin>/scripts/swd-test.py <run> final
    ```
 
    A failure goes to the Fix loop with `Fix: evidence/final-<k>.txt`; run
@@ -625,7 +645,7 @@ is lost; the user reads `decisions.md` in the final report.
 3. Copy the run's findings to the project's backlog, `.swd/findings.md`:
 
    ```bash
-   python3 <plugin>/scripts/swd-findings.py <run>
+   <python> <plugin>/scripts/swd-findings.py <run>
    ```
 
    If this run fixed an item that was open in the backlog, tick it off
@@ -633,7 +653,7 @@ is lost; the user reads `decisions.md` in the final report.
 4. Append the `done` line to `activity.md`, then check the run:
 
    ```bash
-   python3 <plugin>/scripts/check_run.py <run>
+   <python> <plugin>/scripts/check_run.py <run>
    ```
 
    Fix whatever it reports and run it again until it prints nothing. If
@@ -686,7 +706,7 @@ the run's worktree is still at `<work>` until the clean-up step removes it.
    worktree still exists:
 
    ```bash
-   python3 <plugin>/scripts/swd-pr.py --wait 600 <run>
+   <python> <plugin>/scripts/swd-pr.py --wait 600 <run>
    ```
 
    Exit code 0 means green, or no checks. Exit code 10 means a check
@@ -724,7 +744,7 @@ the run's worktree is still at `<work>` until the clean-up step removes it.
 **Then check the finish**, whichever it was:
 
 ```bash
-python3 <plugin>/scripts/check_run.py --finish <run>
+<python> <plugin>/scripts/check_run.py --finish <run>
 ```
 
 Fix whatever it reports and run it again until it prints nothing.
@@ -745,6 +765,8 @@ merging and pushing a branch that was left for them.
 
 ## Resume
 
+0. If `check` has not run in this session, run Preflight step 0 now:
+   `<python>` is not kept across sessions.
 1. Read `ledger.md`, `plan.md`, `staffing.md` and `decisions.md` in the unfinished run.
    Its `Worktree:` line is `<work>`. If that folder is missing, recreate it
    from the run's branch: `git worktree add <work> swd/<short-name>`. Then

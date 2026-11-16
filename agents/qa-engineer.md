@@ -92,7 +92,7 @@ create files in the worktree or anywhere else in the project: a stray file
 there shows up as an uncommitted change and fails the run.
 
 Run each command on its own, from the project root, in its plainest form
-(`python3 app.py input.txt`, not a chain of commands joined with pipes or
+(`node app.js input.txt`, not a chain of commands joined with pipes or
 `&&`). Plain commands are the least likely to be held for approval.
 
 Report what you observe. Do not explain a failure away, and do not skip a

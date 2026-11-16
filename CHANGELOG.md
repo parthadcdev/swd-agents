@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.9.0
+
+- The plugin runs on native Windows, with Git for Windows (Claude Code
+  started from PowerShell or CMD, not WSL): Claude Code runs the hooks
+  and the team's commands in Git Bash. The test suite is set to run on
+  Windows in CI; nobody on the team has run it on a Windows machine yet, so a real
+  Claude Code session there is still to be tried.
+- The hooks start Python through `scripts/swd-python.sh`, run as
+  `sh <path>`. It tries `python3`, `python`, then `py -3`, and skips
+  the Microsoft Store stub and any Python older than 3.9. It looks only
+  in absolute folders on the PATH: empty and relative `PATH` entries
+  are ignored, so a `python` in a cloned project is never run as the
+  hook's Python (a Python reachable only through an entry starting with
+  a literal `~` is no longer found). On Windows it also looks in the
+  per-user folders winget's Python installs to. With no Python, every
+  prompt gets a one-line notice naming `/swd:setup`, and no prompt,
+  command or model switch is blocked.
+- Looking for Python never installs it: the launcher starts every
+  Python it tries with `PYTHON_MANAGER_AUTOMATIC_INSTALL=false` and
+  without `PYLAUNCHER_ALLOW_INSTALL` or `PYLAUNCHER_ALWAYS_INSTALL`, so
+  the Python install manager on Windows does not install a runtime on
+  its own.
+- Python is installed only after you say yes. `/swd:setup`,
+  `/swd:build`, `/swd:follow` and `/swd:queue` first run
+  `sh <plugin>/scripts/swd-python.sh check`. When Python is missing on
+  Windows with winget, `/swd:setup` asks, naming the winget command and
+  that it accepts the package's license agreements, and installs Python
+  3.13 only on your own yes typed in the conversation, then checks that
+  Python runs. An unattended run stops instead. On macOS and Linux it
+  prints the command for your package manager and installs nothing.
+  `/swd:on` says when Python is missing.
+- The playbooks run every script as `<python> <plugin>/scripts/...`,
+  with the Python `check` found, and tell the principal to use the Bash
+  tool, never PowerShell, with forward slashes in paths.
+  `scripts/swd-log.py` replaces `swd-log.sh`, which is removed. The
+  watch script is run as `sh <plugin>/scripts/swd-watch.sh <run>`.
+- `/swd:setup` writes rules for `python3`, `python` and `py -3`, and two
+  exact `sh` rules, for the Python check and the watch script, that
+  name the installed version's folder. So run `/swd:setup` again after
+  each plugin update. `sh` rules for older versions can stay in the
+  settings file. `/swd:queue` counts a rule only when it is in the settings file
+  exactly as printed, so after an update it sends you to `/swd:setup`.
+  On Windows the rules use forward slashes and the `//c/...` form.
+- `/swd:setup` no longer writes the 0.8.x rule `Bash(<plugin folder>/*)`
+  (on macOS, for example,
+  `Bash(/Users/you/.claude/plugins/cache/swd-agents/swd/*)`), but a
+  settings file that already has it keeps it. It allows any command that
+  starts with the plugin's folder, as broad as the Python rules: delete it
+  from `.claude/settings.local.json`.
+- Every script reads and writes text as UTF-8, whatever the system's
+  code page. The test runner runs commands with Git's `sh` on Windows,
+  the checker accepts `\` in file lists and CRLF line endings, and the
+  dashboard keeps watching when Windows briefly locks the page.
+  `.gitattributes` keeps every file LF on checkout.
+- GitHub Actions (`.github/workflows/test.yml`) runs the suite on
+  Windows, macOS and Linux, on Python 3.9 and 3.13, on every push and
+  pull request.
+- Not supported on Windows: the herdr watch panes, the end-to-end pilots
+  (`tests/run_pilot.sh`), and `/swd:queue` with Claude Code installed by
+  npm (`claude.cmd`); install Claude Code with the native installer for
+  the queue.
+
 ## 0.8.3
 
 - The principal runs on Fable 5.2, always. `/swd:build` and

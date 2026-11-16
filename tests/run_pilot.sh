@@ -16,6 +16,9 @@
 # and nothing is ever force-pushed.
 #
 # This is a real multi-agent run. It costs tokens and takes several minutes.
+#
+# macOS and Linux only: the pilots' sample repos hold symlinks, which a Windows checkout turns
+# into text files, and this script needs bash, mktemp and pkill.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -53,8 +56,10 @@ ALLOWED=(
   "Bash(head *)" "Bash(tail *)" "Bash(grep *)" "Bash(find *)" "Bash(printf *)" "Bash(sort *)"
   "Bash(test *)" "Bash(touch *)" "Bash(cp *)" "Bash(mv *)" "Bash(chmod *)" "Bash(which *)"
   "Bash(gh pr create *)" "Bash(gh pr view *)" "Bash(gh pr list *)" "Bash(gh auth status)"
-  "Bash($ROOT/scripts/swd-watch.sh *)" "Bash($ROOT/scripts/swd-log.sh *)"
+  "Bash(sh $ROOT/scripts/swd-watch.sh *)" "Bash(sh $ROOT/scripts/swd-python.sh check)"
 )
+# A checkout, so the two sh rules have no version folder. Bash(python3 *) covers <python>, which
+# is python3 on the macOS and Linux machines the pilots run on.
 
 if [ -n "${SWD_PILOT_SETUP:-}" ]; then
   # python3 as well as the test command: QA runs the software itself to check each acceptance criterion.

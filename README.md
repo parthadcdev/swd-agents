@@ -8,8 +8,39 @@ chose: merged and pushed, in a pull request, or left on a branch.
 ## Requirements
 
 - Claude Code 2.1.321 or later (Fable 5.2 needs it)
-- Python 3 (standard library only), for the run checker
-- git
+- Python 3.9 or later (standard library only), for the hooks and the
+  run's scripts. `/swd:setup` offers to install it on Windows.
+- git, and on Windows Git for Windows (see below)
+
+## Windows
+
+swd runs on native Windows (Claude Code started from PowerShell or
+CMD, not WSL) when Git for Windows is installed: Claude Code runs the
+plugin's hooks and the team's commands in Git Bash. Without Git for
+Windows Claude Code runs the hooks in PowerShell, where they fail.
+
+Python 3.9 or later is needed. When it is missing, every prompt gets a
+one-line notice, and `/swd:setup` offers to install Python 3.13 with
+winget. It installs only after you say yes, then checks that Python
+runs. On macOS and Linux it prints the command to run instead.
+
+Looking for Python never installs it: the plugin starts Python with
+`PYTHON_MANAGER_AUTOMATIC_INSTALL=false`, so the Python install
+manager does not install a runtime on its own when none is installed.
+
+If Claude runs commands in PowerShell instead of Bash, set
+`CLAUDE_CODE_USE_POWERSHELL_TOOL=0`.
+
+Not supported on Windows: the herdr watch panes, the end-to-end
+pilots (`tests/run_pilot.sh`), and `/swd:queue` with Claude Code
+installed by npm (`claude.cmd`); install Claude Code with the native
+installer for the queue.
+
+The test suite is set to run on Windows in CI
+(`.github/workflows/test.yml`), with stubs for winget and Python. How a
+real Claude Code session on Windows behaves, and the install manager
+setting above, come from Claude Code's and Python's documentation;
+nobody on the team has run it on a Windows machine yet.
 
 ## Install
 
@@ -32,10 +63,27 @@ In the project you want work done in:
 
 Run `/swd:setup` once. Agents work in the background, where nobody can
 answer a permission prompt, so the project has to allow what they need
-before a run starts. Setup shows you the rules (the plugin's scripts, git,
-`gh pr`, your test command, the command that runs your code, and edits
-inside `.swd/`) and adds them to `.claude/settings.local.json` when you
-agree.
+before a run starts. Setup first checks that Python 3.9 or later is
+there. Then it shows you the rules (Python started on the plugin's
+folder, git, `gh pr`, your test command, the command that runs your
+code, and edits inside `.swd/`) and adds them to
+`.claude/settings.local.json` when you agree. The Python rules are
+broad: they allow any command that starts with the Python name and the
+plugin's folder, which is not limited to the plugin's own scripts.
+
+Run `/swd:setup` again after each plugin update: two of its rules name
+the installed version's folder, so they stop matching after an update
+and a run asks permission for those commands (`/swd:queue` stops and
+sends you here). `sh` rules for older versions can stay in the settings
+file, and each still matches the `check` or watch command in that old
+version's folder.
+
+`/swd:setup` no longer writes the 0.8.x rule `Bash(<plugin folder>/*)`
+(on macOS, for example,
+`Bash(/Users/you/.claude/plugins/cache/swd-agents/swd/*)`), but a
+settings file that already has it keeps it. It allows any command that
+starts with the plugin's folder, as broad as the Python rules: delete it
+from `.claude/settings.local.json`.
 
 ## swd mode
 
@@ -186,8 +234,9 @@ the spec, the plan, a task ledger and a live activity timeline.
   `dashboard.html` from the run folder. It shows the tasks in columns by
   wave, coloured by status, with the timeline below, and refreshes every two
   seconds until the run is done. You can also build it for any run with
-  `python3 scripts/swd-dashboard.py <run folder>`.
-- **In the terminal:** if you run Claude Code inside
+  `python3 scripts/swd-dashboard.py <run folder>` on macOS and Linux,
+  with `python` or `py -3` on Windows.
+- **In the terminal (macOS and Linux):** if you run Claude Code inside
   [herdr](https://herdr.dev), the principal also opens two extra panes
   showing the ledger and the timeline. In the Herdr desktop app it opens two
   separate terminals instead of panes.
@@ -203,15 +252,21 @@ To run a local checkout without installing it:
 claude --plugin-dir /path/to/swd-agents
 ```
 
-To validate and test:
+To validate and test (`python3` on macOS and Linux; `python` or `py -3`
+on Windows, in Git Bash):
 
 ```bash
 python3 -m unittest discover -s tests -v
 claude plugin validate .
 ```
 
+GitHub Actions (`.github/workflows/test.yml`) runs the suite on Windows,
+macOS and Linux, on Python 3.9 and 3.13, on every push and pull request.
+Tests that cannot run on Windows are skipped there with the reason.
+
 Two end-to-end pilots run a real team in a temporary project and grade the
-result. They cost tokens and take several minutes each:
+result. They cost tokens, take several minutes each, and run on macOS and
+Linux only:
 
 ```bash
 tests/run_pilot.sh existing-repo   # production mode, sample repo with a planted bug
