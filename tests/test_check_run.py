@@ -1,4 +1,5 @@
 """Tests for scripts/check_run.py. Run from the repo root: python3 -m unittest tests.test_check_run"""
+import re
 import subprocess
 import sys
 import tempfile
@@ -64,7 +65,7 @@ STAFFING = """# Staffing
 | T1 | generalist-engineer | opus | medium | Multistep |
 | T2 | backend-engineer | opus | low | Specified |
 | review | code-reviewer, security-reviewer | opus | medium | Review |
-| final | qa-engineer | sonnet | medium | Runs commands |
+| final | qa-engineer | opus | low | Runs commands |
 """
 
 CHECKER_REPORT = "Verdict: pass\n\n## Findings\nNone.\n"
@@ -582,7 +583,7 @@ class CheckRunTest(unittest.TestCase):
             ("| T2 | backend-engineer | opus | low | Specified |\n", "", ["staffing.md: no row for T2"]),
             ("| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | max |",
              ["staffing.md line 6: Effort must be one of low, medium, high, xhigh, got 'max'"]),
-            ("| sonnet | medium |", "| gpt | medium |", ["staffing.md line 9: Model must be one of haiku, sonnet, opus, fable, got 'gpt'"]),
+            ("| opus | low | Runs", "| gpt | low | Runs", ["staffing.md line 9: Model must be one of haiku, sonnet, opus, fable, got 'gpt'"]),
             ("| T1 | generalist-engineer | opus | medium | Multistep |", "| T1 | generalist-engineer | opus | medium |",
              ["staffing.md line 6: expected 5 columns, got 4", "staffing.md: no row for T1"]),
             ("| T2 | backend-engineer |", "| T2 | docs-writer |",
@@ -595,6 +596,223 @@ class CheckRunTest(unittest.TestCase):
                 assert old in text, old
                 (run / "staffing.md").write_text(text.replace(old, new, 1))
                 self.assertEqual(self.cr.check_staffing(run), expected)
+
+    # --- required checker rows, the floor, and the staffing seal ------------------------------
+
+    def staffing(self, run, review="opus", final="opus", extra=""):
+        rows = ["| T1 | generalist-engineer | sonnet | medium | Multistep |",
+                "| T2 | backend-engineer | haiku | low | Mechanical |"]
+        if review:
+            rows.append(f"| review | code-reviewer, security-reviewer | {review} | medium | Review |")
+        if final:
+            rows.append(f"| final | qa-engineer | {final} | medium | Runs commands |")
+        (run / "staffing.md").write_text(
+            "# Staffing\n\n| For | Agent | Model | Effort | Why |\n|---|---|---|---|---|\n" + "\n".join(rows) + "\n" + extra)
+
+    def test_seal_requires_the_checkers_rows(self):
+        cases = [("production", False, ["staffing.md: no row for review", "staffing.md: no row for final"]),
+                 ("prototype", False, ["staffing.md: no row for review", "staffing.md: no row for final"]),
+                 ("quick", True, ["staffing.md: no row for final"])]
+        for mode, single, expected in cases:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp, mode=mode if mode != "quick" else "prototype", single=single)
+                if mode == "quick":
+                    replace(run / "spec.md", "Mode: prototype", "Mode: quick")
+                self.staffing(run, review=None, final=None)
+                if single:
+                    replace(run / "staffing.md", "| T2 | backend-engineer | haiku | low | Mechanical |\n", "")
+                refused = self.cli("--seal", str(run))
+                self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, expected))
+                self.assertNotIn("Plan checksum: ", (run / "decisions.md").read_text())
+
+    def test_a_checker_may_not_rank_below_a_builder(self):
+        repo, run = make_run(self.tmp)
+        self.staffing(run, review="haiku", final="haiku")
+        refused = self.cli("--seal", str(run))
+        self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, [
+            "staffing.md line 7: the review row is on haiku, below T1 on sonnet; a checker's model may not rank below any builder's",
+            "staffing.md line 8: the final row is on haiku, below T1 on sonnet; a checker's model may not rank below any builder's"]))
+        for review, final in (("sonnet", "sonnet"), ("fable", "opus")):
+            self.staffing(run, review=review, final=final)
+            self.assertEqual(self.cr.check_staffing(run), [])
+
+    def test_a_second_low_review_row_is_still_caught(self):
+        repo, run = make_run(self.tmp)
+        self.staffing(run, review="opus", extra="| review | code-reviewer | haiku | low | Again |\n")
+        self.assertEqual(self.cr.check_staffing(run), [
+            "staffing.md line 9: the review row is on haiku, below T1 on sonnet; a checker's model may not rank below any builder's"])
+
+    def test_the_highest_builder_row_counts_even_when_duplicated_low(self):
+        repo, run = make_run(self.tmp)
+        self.staffing(run, review="sonnet", final="opus", extra="| T1 | generalist-engineer | haiku | low | Again |\n")
+        self.assertEqual(self.cr.check_staffing(run), [])
+
+    def test_a_checker_row_with_an_unknown_model_gets_only_the_model_problem(self):
+        repo, run = make_run(self.tmp)
+        self.staffing(run, review="gpt", final="opus")
+        self.assertEqual(self.cr.check_staffing(run), [
+            "staffing.md line 7: Model must be one of haiku, sonnet, opus, fable, got 'gpt'"])
+
+    def test_a_staffing_change_after_the_seal_is_reported_until_sealed_again(self):
+        repo, run = make_run(self.tmp)
+        sealed = self.cli("--seal", str(run))
+        self.assertEqual(sealed.returncode, 0, sealed.stdout)
+        lines = sealed.stdout.splitlines()
+        self.assertEqual([l.split(":")[0] for l in lines], ["sealed plan.md", "sealed staffing.md"])
+        tail = (run / "decisions.md").read_text().splitlines()[-2:]
+        self.assertEqual([l.split(":")[0] for l in tail], ["Plan checksum", "Staffing checksum"])
+        message = "staffing.md: changed since it was sealed; only the principal changes it, and seals the run again"
+        replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
+        for args in (("--task", "T1", str(run)), (str(run),)):
+            changed = self.cli(*args)
+            self.assertEqual((changed.returncode, changed.stdout.splitlines()), (1, [message]))
+        again = self.cli("--seal", str(run))  # no new 'Plan judged:' line needed: plan.md is unchanged
+        self.assertEqual(again.returncode, 0, again.stdout)
+        for args in (("--task", "T1", str(run)), (str(run),)):
+            self.assertEqual((self.cli(*args).returncode, self.cli(*args).stdout), (0, ""))
+
+    def test_a_deleted_staffing_file_is_reported_after_the_seal(self):
+        repo, run = make_run(self.tmp)
+        self.cr.seal_plan(run)
+        (run / "staffing.md").unlink()
+        self.assertProblem(self.cr.check_seal(run), "staffing.md", "changed since it was sealed")
+
+    def test_an_amended_plan_is_still_refused_without_a_new_judgement(self):
+        repo, run = make_run(self.tmp)
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        replace(run / "plan.md", "First thing", "First thing, amended")
+        replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
+        refused = self.cli("--seal", str(run))
+        self.assertEqual(refused.returncode, 1)
+        self.assertEqual(len(refused.stdout.splitlines()), 1)
+        self.assertIn("the 'Plan judged:' line is older than the last 'Plan checksum:'", refused.stdout)
+
+    def test_a_run_sealed_before_the_staffing_checksum_compares_nothing(self):
+        repo, run = make_run(self.tmp)
+        with open(run / "decisions.md", "a") as f:
+            f.write(f"Plan checksum: {self.cr.plan_checksum(run)}\n")
+        replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
+        self.assertEqual(self.problems(repo, run), [])
+        (run / "staffing.md").unlink()
+        self.assertEqual(self.problems(repo, run), [])
+
+    def test_a_row_whose_for_cell_is_not_understood_is_reported(self):
+        for label in ("Review", "review (security)", "qa", "T1 (fix)", "T9", ""):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.staffing(run, extra=f"| {label} | code-reviewer | haiku | low | Odd |\n")
+                self.assertEqual(self.cr.check_staffing(run), [
+                    f"staffing.md line 9: For must be a task id, plan, review or final, got '{label}'"])
+        repo, run = make_run(self.tmp)
+        self.staffing(run, extra="| plan | architect | opus | low | Plans |\n")
+        self.assertEqual(self.cr.check_staffing(run), [])
+
+    def test_a_row_that_only_starts_like_a_header_or_a_separator_is_reported(self):
+        for label in ("-", "--", "---", ":", ":-:", "- -", "For"):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.staffing(run, extra=f"| {label} | code-reviewer | haiku | low | Odd |\n")
+                self.assertEqual(self.cr.check_staffing(run), [
+                    f"staffing.md line 9: For must be a task id, plan, review or final, got '{label}'"])
+        # the builder side: a dash for "as above" on fable over sonnet checkers
+        repo, run = make_run(self.tmp)
+        self.staffing(run, review="sonnet", final="sonnet", extra="| --- | generalist-engineer | fable | high | T1 again |\n")
+        self.assertEqual(self.cr.check_staffing(run), [
+            "staffing.md line 9: For must be a task id, plan, review or final, got '---'"])
+
+    def test_a_row_without_a_leading_pipe_is_read_as_a_row(self):
+        floor = "; a checker's model may not rank below any builder's"
+        cases = [
+            ("final review | code-reviewer | haiku | low | x |",
+             ["staffing.md line 9: For must be a task id, plan, review or final, got 'final review'"]),
+            ("review | code-reviewer, security-reviewer | haiku | low | x",
+             ["staffing.md line 9: the review row is on haiku, below T1 on sonnet" + floor]),
+            ("T1 | generalist-engineer | fable | high | moved up",
+             ["staffing.md line 7: the review row is on opus, below T1 on fable" + floor,
+              "staffing.md line 8: the final row is on opus, below T1 on fable" + floor]),
+            ("> | review | code-reviewer | haiku | low | x |", ["staffing.md line 9: expected 5 columns, got 6"]),
+            ("﻿| review | code-reviewer | haiku | low | x |", ["staffing.md line 9: expected 5 columns, got 6"]),
+            ("Use a | b here.", ["staffing.md line 9: expected 5 columns, got 2"]),
+        ]
+        for row, want in cases:
+            with self.subTest(row=row), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.staffing(run, extra=row + "\n")
+                self.assertEqual(self.cr.check_staffing(run), want)
+                self.assertEqual(self.cli("--seal", str(run)).returncode, 1)
+                self.assertNotIn("checksum", (run / "decisions.md").read_text())
+
+    def test_real_headers_separators_and_prose_are_still_skipped(self):
+        header, sep = "| For | Agent | Model | Effort | Why |", "|---|---|---|---|---|"
+        headers = [header, "|For|Agent|Model|Effort|Why|", "|  For  |  Agent  |  Model  |  Effort  |  Why  |",
+                   header + "   ", "|\tFor\t| Agent | Model | Effort | Why |", "   " + header,
+                   "| For | Agent | Model | Effort | Reason |"]
+        seps = [sep, "| --- | --- | --- | --- | --- |", "|:---|:---:|---:|---|---|", "| :--- | :---: | ---: | --- | --- |",
+                "|-----|---------------------|-------|--------|-----|", "|-|-|-|-|-|", "|:-:|:-:|:-:|:-:|:-:|",
+                "   " + sep, sep + "  ", "| - - - | --- | --- | --- | --- |", "|---|---|---|---|"]
+        rows = STAFFING.split(sep + "\n")[1]
+        tables = [(h, sep) for h in headers] + [(header, s) for s in seps]
+        repo, run = make_run(self.tmp)
+        for h, s in tables:
+            with self.subTest(header=h, separator=s):
+                (run / "staffing.md").write_text(f"# Staffing\n\n{h}\n{s}\n{rows}")
+                self.assertEqual(self.cr.check_staffing(run), [])
+        # a title, blank lines, a sentence without a pipe, and a second header and separator further down
+        (run / "staffing.md").write_text(
+            f"# Staffing\n\nWho runs what, and on which model.\n\n{header}\n{sep}\n{rows}\n\n{header}\n{sep}\n\nRaise effort first.\n")
+        self.assertEqual(self.cr.check_staffing(run), [])
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+
+    def test_the_documented_staffing_tables_seal(self):
+        for path in ("standards/run-folder.md", "skills/build/SKILL.md"):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                block = re.search(r"```markdown\n(\s*# Staffing\n.*?)```", (ROOT / path).read_text(), re.S).group(1)
+                replace(run / "plan.md", "- Role: backend-engineer", "- Role: docs-writer")
+                (run / "staffing.md").write_text(block)
+                self.assertEqual(self.cr.check_staffing(run), [])
+
+    def test_a_tie_for_the_top_builder_names_the_first_in_file_order(self):
+        repo, run = make_run(self.tmp)
+        self.staffing(run, review="sonnet", final="opus")
+        replace(run / "staffing.md", "| T1 | generalist-engineer | sonnet", "| T1 | generalist-engineer | opus")
+        replace(run / "staffing.md", "| T2 | backend-engineer | haiku", "| T2 | backend-engineer | opus")
+        self.assertEqual(self.cr.check_staffing(run), [
+            "staffing.md line 7: the review row is on sonnet, below T1 on opus; a checker's model may not rank below any builder's"])
+
+    def test_the_staffing_checksum_follows_on_its_own_line_without_a_trailing_newline(self):
+        repo, run = make_run(self.tmp)
+        decisions = run / "decisions.md"
+        decisions.write_text(decisions.read_text().rstrip("\n"))
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        tail = decisions.read_text().splitlines()[-2:]
+        self.assertEqual([l.split(":")[0] for l in tail], ["Plan checksum", "Staffing checksum"])
+        self.assertEqual(self.cr.check_seal(run), [])
+
+    def test_a_run_sealed_before_the_staffing_checksum_compares_nothing_for_task(self):
+        repo, run = make_run(self.tmp)
+        with open(run / "decisions.md", "a") as f:
+            f.write(f"Plan checksum: {self.cr.plan_checksum(run)}\n")
+        replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
+        self.assertEqual(self.cli("--task", "T1", str(run)).stdout, "")
+
+    def test_sealing_and_checking_without_files_do_not_raise(self):
+        repo, run = make_run(self.tmp)
+        (run / "staffing.md").unlink()
+        self.cr.seal_plan(run)
+        self.assertNotIn("Staffing checksum", (run / "decisions.md").read_text())
+        (run / "plan.md").unlink()
+        self.assertProblem(self.cr.check_seal(run), "missing plan.md")
+        self.staffing(run)
+        (run / "plan.md").write_text(PLAN)
+        self.cr.seal_plan(run)
+        (run / "plan.md").unlink()
+        self.staffing(run, final="fable")
+        self.assertEqual(self.cr.check_seal(run), ["missing plan.md",
+            "staffing.md: changed since it was sealed; only the principal changes it, and seals the run again"])
+        self.cr.check_staffing(run)
+        replace(run / "decisions.md", "Plan judged: the outcome meets the criteria.\n", "")
+        self.assertProblem(self.cr.check_staffing(run), "Plan judged")
 
     def test_seal_succeeds_with_judgement_and_full_staffing(self):
         repo, run = make_run(self.tmp)
