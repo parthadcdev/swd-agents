@@ -1,28 +1,42 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook: keeps a session in swd mode once it has been turned on.
+"""UserPromptSubmit and PreModelSwitch hook: swd mode, and keeping the principal on Fable 5.2.
 
-Reads the hook's JSON from stdin. `/swd:build` or `/swd:on` turns the mode on for that session,
-`/swd:off` or the words "stop swd" turn it off. While it is on, every prompt gets a short
-reminder added to the session's context: route code changes through the swd team.
+Reads the hook's JSON from stdin and dispatches on `hook_event_name`.
 
-A hook must never break a prompt, so every failure path prints nothing and exits 0.
+UserPromptSubmit (and any other event): a prompt starting `/swd:build`, `/swd:follow` or `/swd:on`
+turns swd mode on for that session; `/swd:off` or "stop swd" turn it off only as the whole prompt,
+because this event also fires for text the user did not type, such as an agent's report. The flag
+counts only as a regular file. While it is on, every prompt gets a short reminder added to the
+session's context: route code changes through the swd team, and the principal runs on Fable 5.2.
+This path never exits non-zero.
+
+PreModelSwitch: cancels a switch from Fable 5.2 to another model (exit 2, the reason on stderr)
+only while swd mode is on for the session. It reads no file in the project, only the session's
+swd-mode flag. Anything else, bad input, any error, or no decision within LIMIT_SECONDS lets the
+switch through silently.
 """
 import json
+import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
 STATE = Path.home() / ".claude" / "swd-mode"
 STALE_SECONDS = 7 * 24 * 60 * 60
+MODEL_NAME = "Fable 5.2"
+MODEL_ID = "claude-fable-5-2"
+LIMIT_SECONDS = 3  # at most half the PreModelSwitch timeout in hooks.json
 
-ON = """swd mode: on
+ON = f"""swd mode: on
 This session is in swd mode. Any request that creates or changes this project's code, tests,
 configuration or documentation goes through the swd team: invoke the `swd:build` skill with
 the request as the requirement, and do not make the change yourself. Answer questions,
 explanations, reviews and status or git requests directly. If an swd run is already in
-progress, carry on under its playbook. The user leaves swd mode by saying "stop swd" or
-running /swd:off."""
+progress, carry on under its playbook. The user leaves swd mode by sending "stop swd" or
+/swd:off as a message on its own.
+The principal of an swd run runs on {MODEL_NAME}. Check which model you are running on, only from your own system and session information, at the start of every turn and again before every action that changes anything outside your own reply, such as a dispatch, ruling, commit, merge, push, reply on a pull request or write to the run folder; if you cannot tell, it is not {MODEL_NAME}; if it is not {MODEL_NAME}, do no principal work and change nothing for the run outside your own reply: say which model you are on and that the run continues once the user runs /model fable and sends a message, and stop."""
 
 OFF = """swd mode: off
 swd mode has been turned off for this session. Handle requests normally from here on; the
@@ -32,29 +46,79 @@ swd team is used only when the user runs /swd:build again."""
 def main():
     try:
         event = json.load(sys.stdin)
-    except ValueError:
+    except (ValueError, RecursionError):
         return
     if not isinstance(event, dict):
         return
-    session = str(event.get("session_id") or "")
-    prompt = str(event.get("prompt") or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session):
-        return  # no usable session id, and never a path
-    flag = STATE / session
+    if event.get("hook_event_name") == "PreModelSwitch":
+        model_switch(event)
+    else:
+        prompt(event)
 
-    if re.match(r"/swd:off\b", prompt) or re.search(r"\bstop swd\b", prompt, re.I):
-        if flag.exists():
+
+def flag_for(event):
+    """The session's swd-mode flag file, or None when the session id is unusable."""
+    session = str(event.get("session_id") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session):
+        return None  # no usable session id, and never a path
+    return STATE / session
+
+
+def prompt(event):
+    flag = flag_for(event)
+    if flag is None:
+        return
+    text = str(event.get("prompt") or "").strip()
+    if text.lower() in ("stop swd", "/swd:off"):  # whole prompt only: quoted words must not turn it off
+        if flag.is_file():
             flag.unlink()
             print(OFF)
         return
-    if re.match(r"/swd:(build|on)\b", prompt):
+    if re.match(r"/swd:(build|follow|on)\b", text):
         STATE.mkdir(parents=True, exist_ok=True)
-        flag.write_text("")
+        flag.unlink(missing_ok=True)  # removes a link itself, never its target
+        os.close(os.open(flag, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
         for old in STATE.iterdir():  # sessions that ended without turning it off
             if time.time() - old.stat().st_mtime > STALE_SECONDS:
                 old.unlink()
-    if flag.exists():
+    if flag.is_file():
         print(ON)
+
+
+def model_switch(event):
+    # Claude Code cancels a switch whose hook outlives its timeout, so give up first and allow it.
+    # shortcut: the limit cannot end a process stuck in an uninterruptible kernel wait or one whose interpreter has not started, upgrade if a hung home folder is reported locking switches
+    watchdog = threading.Timer(LIMIT_SECONDS, os._exit, (0,))
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        message = switch_refusal(event)
+    except Exception:
+        return  # fail open
+    if message:
+        watchdog.cancel()
+        print(message, file=sys.stderr)
+        sys.exit(2)
+
+
+def is_principal_model(model_id):
+    return re.search(re.escape(MODEL_ID) + r"(?!\d)", model_id.lower()) is not None
+
+
+def switch_refusal(event):
+    """The message that cancels this switch, or None to allow it."""
+    from_model, to_model = event.get("from_model"), event.get("to_model")
+    if not isinstance(from_model, str) or not isinstance(to_model, str):
+        return None
+    if not from_model.strip() or not to_model.strip():
+        return None  # a blank model id is bad input, not a model the user chose
+    if not is_principal_model(from_model) or is_principal_model(to_model):
+        return None
+    flag = flag_for(event)
+    if flag is None or not flag.is_file():
+        return None
+    return (f"swd: this session stays on {MODEL_NAME}, because the principal runs on it and swd mode is on "
+            "in this session. To switch anyway, run /swd:off.")
 
 
 if __name__ == "__main__":
