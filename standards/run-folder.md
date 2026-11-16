@@ -14,8 +14,9 @@ report in `reports/` must say `Verdict: pass`.
 |---|---|---|
 | `requirement.md` | Principal | The requirement verbatim, plus the user's answers to clarifying questions |
 | `spec.md` | Principal | What will be built, acceptance criteria, assumptions, delivery mode and why |
-| `standards.md` | Principal | The engineering bar for this run, followed by this document |
-| `plan.md` | Architect | Design, contracts, test command, task list in waves |
+| `standards.md` | Principal | The engineering bar for this run, the model guidance, then this document |
+| `plan.md` | Architect | Outcome, design, contracts, test command, task list in waves |
+| `staffing.md` | Principal | The agent, model and effort for each task |
 | `ledger.md` | Principal only | One row per task: status, role, attempt count |
 | `activity.md` | Principal only | A timeline of the run, one line per event |
 | `decisions.md` | Principal | Every ruling and assumption made after the gate |
@@ -94,6 +95,10 @@ Must contain a test command line and at least one task:
 
 Test command: `python3 -m unittest`
 
+## Outcome
+$ python3 -c "from shop.cart import total; print(total([(100, 2)], discount_percent=10))"
+180.0
+
 ## Design
 `total()` composes `subtotal()` and `apply_discount()`.
 
@@ -108,13 +113,20 @@ Test command: `python3 -m unittest`
 - Files: shop/cart.py, tests/test_cart.py
 - Depends: none
 - Check: `python3 -m unittest tests.test_cart`
+- Outcome: `total([(100, 2)], discount_percent=10)` returns `180.0`
 ```
+
+The `## Outcome` section is required. It shows the finished result as it
+will really appear: the command and what it prints, the screen, or the text
+of the file. It does not describe the result. Quoted text that contains
+headings or task fields is indented four spaces, because the checker does
+not know code fences.
 
 Rules for tasks:
 
 - The heading is `### T<n>: <title>`. Ids are unique.
-- All five fields are required, written exactly as `- Role:`, `- Wave:`,
-  `- Files:`, `- Depends:`, `- Check:`.
+- All six fields are required, written exactly as `- Role:`, `- Wave:`,
+  `- Files:`, `- Depends:`, `- Check:`, `- Outcome:`.
 - `Role` is a builder: `generalist-engineer`, `backend-engineer`,
   `frontend-engineer`, `database-engineer`, `devops-engineer` or
   `docs-writer`.
@@ -124,6 +136,8 @@ Rules for tasks:
 - `Depends` is `none` or a comma-separated list of task ids, each in an
   earlier wave.
 - `Check` is the command that proves the task is done.
+- `Outcome` is one line saying what observably exists or happens once the
+  task is done.
 
 ## ledger.md
 
@@ -142,7 +156,7 @@ Status is one of `todo`, `in-progress`, `in-review`, `done`, `blocked`.
 One line per event, oldest first:
 
 ```markdown
-- 10:00:00 dispatch T1 generalist-engineer (sonnet)
+- 10:00:00 dispatch T1 generalist-engineer (opus medium)
 - 10:04:12 return T1 report written
 - 10:04:30 dispatch T1 code-reviewer
 - 10:06:02 verdict T1 code-reviewer pass
@@ -165,8 +179,36 @@ kept <m>`. At the gate it gains `Finish: merge-push`, `Finish: pr`
 or `Finish: branch`. Below those, a list: each entry says what was decided,
 why, and what it costs if wrong.
 
+Before the seal the principal adds one line, `Plan judged: <one sentence>`,
+saying the plan was judged against the spec.
+
 `check_run.py --seal` adds lines of the form `Plan checksum: <sha256>`. The
 last one must match `plan.md`; nobody writes these by hand.
+
+## staffing.md
+
+The principal writes it before the seal. A row per plan task is required;
+the `plan`, `review` and `final` rows are written in the modes that have
+those dispatches.
+
+```markdown
+# Staffing
+
+| For | Agent | Model | Effort | Why |
+|---|---|---|---|---|
+| plan | architect | opus | medium | Design in an existing codebase |
+| T1 | generalist-engineer | opus | medium | Multistep change to the checker and its tests |
+| T2 | docs-writer | opus | low | Well-specified wording change |
+| review | code-reviewer, security-reviewer | opus | medium | Review is where Opus 5.5 gains most |
+| final | qa-engineer | sonnet | medium | Runs commands and compares output |
+```
+
+`For` is a task id, or `plan`, `review` or `final`. `Agent` is the bare role
+name as in the ledger, with no `swd:` prefix; agents sharing a row are
+comma-separated. A task's `Agent` is the `Role` its plan names. `Model` is
+`haiku`, `sonnet`, `opus` or `fable`; `Effort` is `low`, `medium`, `high` or
+`xhigh`. When a task is moved up after a failed fix, its row is changed and
+the ruling goes in `decisions.md`.
 
 ## Builder reports
 

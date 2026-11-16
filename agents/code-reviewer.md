@@ -58,10 +58,18 @@ Read:
 5. **In a quick run you are the only checker.** When `standards.md` is the
    quick standard, also do QA's job: run the plan's test command for the
    whole project, then exercise each acceptance criterion in `spec.md`
-   against the real software, and record the command and output for each
-   under `## Acceptance criteria` in your report. Say in `## Findings` if
-   the change touches a trust boundary or is bigger than one small task;
-   that moves the run out of quick mode.
+   against the real software, also compare the result with the plan's
+   `## Outcome`, and record the command and output for each
+   under `## Acceptance criteria` in your report. Of the commands the
+   `## Outcome` shows, do not run one that commits, pushes, publishes,
+   deploys, or changes anything outside the worktree and `scratch/` (the
+   run folder's own records included). Where such a command can be run
+   against a copy in `scratch/`, do that; otherwise list it as not run,
+   with the reason, and compare what you can read instead. Tests and builds
+   in the worktree are run. This limit is for the commands the `## Outcome`
+   shows; run the test command and the acceptance criteria as before. Say
+   in `## Findings` if the change touches a trust boundary or is bigger
+   than one small task; that moves the run out of quick mode.
 6. Decide. Fail for anything that is wrong, unsafe, untested or below the
    standard. Do not fail for style preferences the project does not share.
 

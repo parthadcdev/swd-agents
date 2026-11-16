@@ -32,6 +32,7 @@ REQUIRED_FILES = [
     "skills/on/SKILL.md",
     "skills/off/SKILL.md",
     "standards/prototype.md",
+    "standards/models.md",
 ]
 REQUIRED_AGENTS = [
     "architect", "generalist-engineer", "backend-engineer", "frontend-engineer",
@@ -336,6 +337,77 @@ class StructureTest(unittest.TestCase):
         for name in ("follow", "queue"):
             with self.subTest(skill=name):
                 self.assertEqual(frontmatter(ROOT / "skills" / name / "SKILL.md").get("name"), name)
+
+    def test_model_guidance_and_outcome_are_pinned(self):
+        def words(*parts: str) -> str:
+            return " ".join((ROOT.joinpath(*parts)).read_text().split())
+
+        models = words("standards", "models.md")
+        for needle in (
+            "Fable 5.2", "Opus 5.5", "Taken: 2026-11-15",
+            "until Anthropic publishes newer guidance",
+            "explicitly on every dispatch",
+            "Opus 5.5 at `medium`",
+            "Lower effort before a cheaper model",
+            "cost per completed task",
+            "Finish the whole task",
+        ):
+            with self.subTest(file="models.md", needle=needle):
+                self.assertIn(needle, models)
+        for section in STANDARD_SECTIONS:
+            with self.subTest(file="models.md", heading=section):
+                self.assertNotIn(section, models)
+        shared = words("standards", "run-folder.md")
+        for needle in ("## Outcome", "- Outcome:", "six fields", "staffing.md", "Plan judged:"):
+            with self.subTest(file="run-folder.md", needle=needle):
+                self.assertIn(needle, shared)
+        architect = words("agents", "architect.md")
+        for needle in ("## Outcome", "- Outcome:", "six fields", "as it will really appear"):
+            with self.subTest(file="architect.md", needle=needle):
+                self.assertIn(needle, architect)
+        for name in ("qa-engineer", "code-reviewer"):
+            with self.subTest(file=f"{name}.md"):
+                text = words("agents", f"{name}.md")
+                self.assertIn("## Outcome", text)
+                # The limit is on the Outcome's dangerous commands only: a test suite or a
+                # build writes caches in the worktree and must still be run.
+                self.assertNotIn("Run only the commands that read", text)
+                for needle in (
+                    "Of the commands the `## Outcome` shows, do not run one that commits, pushes, "
+                    "publishes, deploys, or changes anything outside the worktree and `scratch/`",
+                    "the run folder's own records included",
+                    "can be run against a copy in `scratch/`",
+                    "list it as not run, with the reason",
+                    "Tests and builds in the worktree are run",
+                ):
+                    with self.subTest(file=f"{name}.md", needle=needle):
+                        self.assertIn(needle, text)
+        self.assertIn(
+            "This limit is for the commands the `## Outcome` shows; "
+            "run the test command and the acceptance criteria as before",
+            words("agents", "code-reviewer.md"),
+        )
+
+    def test_t2_review_fixes_are_pinned(self):
+        def words(*parts: str) -> str:
+            return " ".join((ROOT.joinpath(*parts)).read_text().split())
+
+        architect = words("agents", "architect.md")
+        for needle in ("3. **Show the outcome.**", "4. **Write the contracts.**", "9. **Keep it small.**"):
+            with self.subTest(file="architect.md", needle=needle):
+                self.assertIn(needle, architect)
+        shared = words("standards", "run-folder.md")
+        for needle in (
+            "A row per plan task is required",
+            "the `plan`, `review` and `final` rows are written in the modes that have those dispatches",
+            "its row is changed and the ruling goes in `decisions.md`",
+        ):
+            with self.subTest(file="run-folder.md", needle=needle):
+                self.assertIn(needle, shared)
+        self.assertIn(
+            "A part that needs a file you do not own, or an action your role forbids",
+            words("standards", "models.md"),
+        )
 
 
 if __name__ == "__main__":
