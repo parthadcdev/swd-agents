@@ -6,9 +6,12 @@ Every subprocess gets an environment built from scratch and temporary folders fo
 working directory: this suite runs inside a project whose own .swd/runs holds real runs, which the
 hook must never read.
 """
+import ast
 import importlib.util
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +22,44 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "hooks" / "swd-mode.py"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
+SH = shutil.which("sh")  # found before any test replaces PATH
+
+HOOK_COMMAND = 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/swd-python.sh" run "${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py"'
+NOTICE = ("swd: the swd plugin needs Python 3.9 or later and found none (tried python3, python and py -3). "
+          "Run /swd:setup: it can install Python on Windows, or tell you the command for this system.\n")
+
+
+def clean_env(home, path=os.pathsep.join(["/usr/bin", "/bin"]), **extra):
+    """An environment built from scratch: Path.home() reads USERPROFILE on Windows, HOME elsewhere."""
+    env = {"HOME": str(home), "USERPROFILE": str(home), "PATH": path}
+    if "SYSTEMROOT" in os.environ:  # Python on Windows cannot start without it
+        env["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+    env.update(extra)
+    return env
+
+
+def unencoded_text_io(source):
+    """Lines of calls that read or write text in the platform's encoding instead of UTF-8."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        keywords = {k.arg: k.value for k in node.keywords}
+        if "encoding" in keywords:
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else ""
+        if isinstance(func, ast.Attribute) and name in ("read_text", "write_text"):
+            found.append(node.lineno)
+        elif isinstance(func, ast.Name) and name == "open":  # the builtin; os.open is an Attribute
+            mode = node.args[1] if len(node.args) > 1 else keywords.get("mode")
+            if not (isinstance(mode, ast.Constant) and "b" in str(mode.value)):
+                found.append(node.lineno)
+        elif name in ("run", "Popen", "check_output", "call") and any(
+                isinstance(keywords.get(k), ast.Constant) and keywords[k].value
+                for k in ("text", "universal_newlines")):
+            found.append(node.lineno)
+    return found
 
 FABLE = "claude-fable-5-2"
 SONNET = "claude-sonnet-5-5"
@@ -71,7 +112,7 @@ try:
 finally:
     if how == "audit":
         seen = {"paths": list(paths), "check_run": "check_run" in sys.modules}
-        with open(sys.argv[4], "w") as out:
+        with open(sys.argv[4], "w", encoding="utf-8") as out:
             json.dump(seen, out)
 """
 
@@ -85,11 +126,11 @@ class ModeTest(unittest.TestCase):
         self.elsewhere.mkdir()
 
     def env(self):
-        return {"HOME": self.home, "PATH": "/usr/bin:/bin"}
+        return clean_env(self.home)
 
     def run_hook(self, payload):
         result = subprocess.run([sys.executable, str(HOOK)], input=payload, capture_output=True, text=True,
-                                env=self.env(), cwd=self.elsewhere)
+                                encoding="utf-8", env=self.env(), cwd=self.elsewhere)
         self.assertEqual(result.returncode, 0, result.stderr)  # exit 2 would block the user's command
         self.assertNotIn("Traceback", result.stderr)
         return result.stdout
@@ -201,6 +242,8 @@ class ModeTest(unittest.TestCase):
         self.assertEqual(out, OFF)
         self.assertIn("/swd:build, /swd:follow or /swd:on", out)
 
+    @unittest.skipIf(os.name == "nt", "Windows has no os.geteuid, and a read-only folder does not stop a "
+                                      "file in it being deleted")
     def test_off_says_so_when_it_cannot_delete_the_flag(self):
         if os.geteuid() == 0:
             self.skipTest("root can delete the flag from a read-only folder")
@@ -216,7 +259,7 @@ class ModeTest(unittest.TestCase):
                 switch = json.dumps({"hook_event_name": "PreModelSwitch", "session_id": "s1",
                                      "from_model": FABLE, "to_model": SONNET})
                 result = subprocess.run([sys.executable, str(HOOK)], input=switch, capture_output=True,
-                                        text=True, env=self.env(), cwd=self.elsewhere)
+                                        text=True, encoding="utf-8", env=self.env(), cwd=self.elsewhere)
                 self.assertEqual((result.returncode, result.stdout, result.stderr.strip()), (2, "", MESSAGE))
                 folder.chmod(0o700)
 
@@ -247,17 +290,19 @@ class ModeTest(unittest.TestCase):
         self.assertEqual(self.expand("swd:on"), "")  # its unlink raises into except OSError: stays off
         self.assertTrue(self.flag().is_dir())
 
+    @unittest.skipIf(os.name == "nt", "creating a symlink on Windows needs Developer Mode or admin rights")
     def test_on_replaces_a_link_and_leaves_its_target_alone(self):
         target = Path(self.home) / "precious.txt"
-        target.write_text("precious data")
+        target.write_text("precious data", encoding="utf-8")
         self.flag().parent.mkdir(parents=True)
         self.flag().symlink_to(target)
         self.expand("swd:on")  # the link counts as on, so the text is not repeated here
-        self.assertEqual(target.read_text(), "precious data")
+        self.assertEqual(target.read_text(encoding="utf-8"), "precious data")
         self.assertTrue(self.flag().is_file())
         self.assertFalse(self.flag().is_symlink())
         self.assertTrue(self.prompt("hello").startswith("swd mode: on"))
 
+    @unittest.skipIf(os.name == "nt", "creating a symlink on Windows needs Developer Mode or admin rights")
     def test_on_replaces_a_dangling_link_without_creating_its_target(self):
         target = Path(self.home) / "nothing-here"
         self.flag().parent.mkdir(parents=True)
@@ -278,7 +323,7 @@ class ModeTest(unittest.TestCase):
     def test_on_sweeps_other_sessions_stale_flags(self):
         self.flag().parent.mkdir(parents=True)
         for session in ("s2", "s3"):
-            self.flag(session).write_text("")
+            self.flag(session).write_text("", encoding="utf-8")
         eight_days_ago = time.time() - 8 * 24 * 60 * 60
         os.utime(self.flag("s2"), (eight_days_ago, eight_days_ago))
         self.expand("swd:on")
@@ -286,10 +331,29 @@ class ModeTest(unittest.TestCase):
         self.assertTrue(self.flag("s3").is_file())
 
     def test_the_source_checks_the_flag_as_a_regular_file_and_never_writes_through_it(self):
-        source = HOOK.read_text()
+        source = HOOK.read_text(encoding="utf-8")
         for needle in (".exists()", "write_text"):
             with self.subTest(needle=needle):
                 self.assertNotIn(needle, source)
+
+    def test_a_prompt_in_utf8_is_read_whatever_the_platform_encoding(self):
+        # On Windows Python reads stdin as cp1252, where the UTF-8 bytes of a curly quote do not decode.
+        self.expand("swd:on")
+        payload = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1",
+                              "prompt": "rename the “foo” button"}, ensure_ascii=False)
+        result = subprocess.run([sys.executable, str(HOOK)], input=payload.encode("utf-8"), capture_output=True,
+                                env=clean_env(self.home, PYTHONIOENCODING="cp1252"), cwd=self.elsewhere)
+        self.assertEqual((result.returncode, result.stderr), (0, b""))
+        self.assertTrue(result.stdout.decode("utf-8").startswith("swd mode: on"), result.stdout)
+
+    def test_the_hook_reads_and_writes_text_only_as_utf8(self):
+        self.assertEqual(unencoded_text_io(HOOK.read_text(encoding="utf-8")), [])
+        bad = ("open('a')\nopen('a', 'w')\nopen('a', mode='r')\np.read_text()\np.write_text('x')\n"
+               "subprocess.run(c, text=True)\nsubprocess.check_output(c, universal_newlines=True)\n"
+               "subprocess.Popen(c, text=True)\nsubprocess.call(c, text=True)\n"
+               "open('a', 'rb')\nos.open('a', 0)\np.read_text(encoding='utf-8')\n"
+               "subprocess.run(c, text=True, encoding='utf-8')\nsubprocess.run(c)\n")
+        self.assertEqual(unencoded_text_io(bad), list(range(1, 10)))  # the guard catches each kind
 
     def test_session_id_cannot_escape_the_state_folder(self):
         self.expand("swd:on", session="../../escaped")
@@ -319,15 +383,15 @@ class SwitchTest(unittest.TestCase):
     def mode_on(self, session="s1"):
         flags = self.home / ".claude" / "swd-mode"
         flags.mkdir(parents=True, exist_ok=True)
-        (flags / session).write_text("")
+        (flags / session).write_text("", encoding="utf-8")
 
     def unfinished_run(self):
         """A run the build playbook's Preflight counts as unfinished: a todo row, no Abandoned: line."""
         run = self.project / ".swd" / "runs" / "2026-11-15-x"
         run.mkdir(parents=True)
         (run / "ledger.md").write_text("| Task | Role | Status | Attempts |\n|---|---|---|---|\n"
-                                       "| T1 | generalist-engineer | todo | 1 |\n")
-        (run / "decisions.md").write_text("Base commit: abc123\nBase branch: main\n")
+                                       "| T1 | generalist-engineer | todo | 1 |\n", encoding="utf-8")
+        (run / "decisions.md").write_text("Base commit: abc123\nBase branch: main\n", encoding="utf-8")
 
     def event(self, from_model=FABLE, to_model=SONNET, session="s1", **extra):
         event = {"session_id": session, "hook_event_name": "PreModelSwitch", "cwd": str(self.elsewhere),
@@ -337,7 +401,7 @@ class SwitchTest(unittest.TestCase):
         return json.dumps(event)
 
     def env(self, project=None):
-        env = {"HOME": str(self.home), "PATH": "/usr/bin:/bin"}
+        env = clean_env(self.home)
         if project is not None:
             env["CLAUDE_PROJECT_DIR"] = str(project)
         return env
@@ -345,7 +409,7 @@ class SwitchTest(unittest.TestCase):
     def switch(self, payload=None, project=None, command=None, timeout=10):
         payload = self.event() if payload is None else payload
         command = command or [sys.executable, str(HOOK)]
-        return subprocess.run(command, input=payload, capture_output=True, text=True,
+        return subprocess.run(command, input=payload, capture_output=True, text=True, encoding="utf-8",
                               env=self.env(project), cwd=self.elsewhere, timeout=timeout)
 
     def assertAllowed(self, result):
@@ -430,7 +494,7 @@ class SwitchTest(unittest.TestCase):
         record = self.elsewhere / "audit.json"
         result = self.switch(self.event(cwd=str(self.project)), project=self.project,
                              command=self.wrapped(3, "audit", str(record)))
-        seen = json.loads(record.read_text())
+        seen = json.loads(record.read_text(encoding="utf-8"))
         project = self.project.resolve()
         inside = [p for p in seen["paths"] if Path(p).resolve() == project or project in Path(p).resolve().parents]
         self.assertEqual(inside, [])
@@ -438,7 +502,7 @@ class SwitchTest(unittest.TestCase):
         self.assertBlocked(result)
 
     def test_the_source_names_no_project_file(self):
-        source = HOOK.read_text()
+        source = HOOK.read_text(encoding="utf-8")
         for needle in ("check_run", "CLAUDE_PROJECT_DIR", ".swd", '"cwd"'):
             with self.subTest(needle=needle):
                 self.assertNotIn(needle, source)
@@ -469,7 +533,7 @@ class SwitchTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("swd_mode_limit", HOOK)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        hooks = json.loads(HOOKS_JSON.read_text())["hooks"]["PreModelSwitch"]
+        hooks = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]["PreModelSwitch"]
         timeouts = [h["timeout"] for group in hooks for h in group["hooks"]]
         self.assertEqual(len(timeouts), 1)
         self.assertEqual(module.LIMIT_SECONDS, 3)
@@ -477,18 +541,75 @@ class SwitchTest(unittest.TestCase):
 
 
 class HooksJsonTest(unittest.TestCase):
+    """The command hooks.json registers, run as Claude Code runs it: `sh -c`, which is Git Bash on Windows."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = Path(tmp.name) / "home"
+        self.bin = Path(tmp.name) / "bin"  # the whole PATH: no Python but the stubs written here
+        for folder in (self.home, self.bin):
+            folder.mkdir()
+        if SH is None:
+            self.fail("no sh on PATH: the plugin's hooks need it")
+        self.stub("sh", f'exec {shlex.quote(SH.replace(os.sep, "/"))} "$@"')
+        self.stub("uname", "echo Linux")
+        if os.name == "nt":
+            self.stub("cygpath", f'exec {shlex.quote(shutil.which("cygpath").replace(os.sep, "/"))} "$@"')
+
+    def stub(self, name, body):
+        path = self.bin / name
+        path.write_bytes(f"#!/bin/sh\n{body}\n".encode("utf-8"))  # LF, also on Windows
+        path.chmod(0o755)
+
+    def store_stub(self, name):
+        self.stub(name, "echo 'Python was not found; run without arguments to install from the Microsoft "
+                        "Store' >&2\nexit 49")
+
+    def hook(self, event):
+        hooks = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]
+        command = hooks[event["hook_event_name"]][0]["hooks"][0]["command"]
+        command = command.replace("${CLAUDE_PLUGIN_ROOT}", ROOT.as_posix())
+        return subprocess.run([SH, "-c", command], input=json.dumps(event).encode("utf-8"), capture_output=True,
+                              env=clean_env(self.home, path=str(self.bin)), cwd=self.home, timeout=30)
+
     def test_the_hook_is_registered_for_all_three_events(self):
-        hooks = json.loads(HOOKS_JSON.read_text())["hooks"]
+        hooks = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]
         self.assertEqual(set(hooks), {"UserPromptSubmit", "UserPromptExpansion", "PreModelSwitch"})
         for event in hooks:
             with self.subTest(event=event):
                 commands = [h for group in hooks[event] for h in group["hooks"]]
                 self.assertEqual(len(commands), 1)
                 self.assertEqual(commands[0]["type"], "command")
-                self.assertIn("swd-mode.py", commands[0]["command"])
-                self.assertIn("CLAUDE_PLUGIN_ROOT", commands[0]["command"])
+                self.assertEqual(commands[0]["command"], HOOK_COMMAND)
                 self.assertEqual(commands[0]["timeout"], 10)
                 self.assertNotIn("matcher", hooks[event][0])
+
+    def test_the_hook_command_runs_with_only_python_on_path(self):
+        self.store_stub("python3")
+        self.stub("python", f'exec {shlex.quote(sys.executable.replace(os.sep, "/"))} "$@"')
+        on = self.hook({"hook_event_name": "UserPromptExpansion", "session_id": "s1", "command_name": "swd:on",
+                        "expansion_type": "slash_command", "command_args": "", "prompt": "/swd:on"})
+        self.assertEqual((on.returncode, on.stderr), (0, b""))
+        self.assertTrue(on.stdout.decode("utf-8").startswith("swd mode: on"), on.stdout)
+        switch = self.hook({"hook_event_name": "PreModelSwitch", "session_id": "s1", "from_model": FABLE,
+                            "to_model": SONNET})
+        self.assertEqual((switch.returncode, switch.stdout, switch.stderr.decode("utf-8").strip()), (2, b"", MESSAGE))
+
+    def test_the_hook_command_without_python_blocks_nothing(self):
+        for name in ("python3", "python"):
+            self.store_stub(name)
+        (self.home / ".claude" / "swd-mode").mkdir(parents=True)
+        (self.home / ".claude" / "swd-mode" / "s1").write_bytes(b"")  # mode on: a hook that ran would cancel
+        for event in ({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "/swd:off"},
+                      {"hook_event_name": "UserPromptExpansion", "session_id": "s1", "command_name": "swd:on"},
+                      {"hook_event_name": "PreModelSwitch", "session_id": "s1", "from_model": FABLE,
+                       "to_model": SONNET}):
+            with self.subTest(event=event["hook_event_name"]):
+                result = self.hook(event)
+                self.assertEqual((result.returncode, result.stdout.decode("utf-8"), result.stderr),
+                                 (0, NOTICE, b""))
+        self.assertTrue((self.home / ".claude" / "swd-mode" / "s1").is_file())  # the off prompt never reached it
 
 
 if __name__ == "__main__":

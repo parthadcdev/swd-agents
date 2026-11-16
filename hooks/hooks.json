@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/swd-python.sh\" run \"${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py\"",
             "timeout": 10
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/swd-python.sh\" run \"${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py\"",
             "timeout": 10
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/swd-python.sh\" run \"${CLAUDE_PLUGIN_ROOT}/hooks/swd-mode.py\"",
             "timeout": 10
           }
         ]

@@ -54,6 +54,10 @@ ON_COMMANDS = ("swd:build", "swd:follow", "swd:on")
 
 
 def main():
+    # Claude Code sends UTF-8; on Windows Python would read cp1252 and print a non-ASCII path in cp1252.
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     try:
         event = json.load(sys.stdin)
     except (ValueError, RecursionError):
