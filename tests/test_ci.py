@@ -8,7 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github" / "workflows" / "test.yml"
 
 # The record of the workflow: plan C6 plus the T3 ruling in decisions.md
-# (job timeout, no persisted credentials). Any edit to the file must be made
+# (job timeout, no persisted credentials), with Python 3.9 on Ubuntu moved to
+# ubuntu-24.04 (run 2026-11-16-windows-ci-green). Any edit to the file must be made
 # here too, so a change that stops it testing Windows cannot pass silently.
 EXPECTED = """\
 name: tests
@@ -27,6 +28,13 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
         python: ["3.9", "3.13"]
+        exclude:
+          # ubuntu-latest is Ubuntu 26.04, which has no Python 3.9 build.
+          - os: ubuntu-latest
+            python: "3.9"
+        include:
+          - os: ubuntu-24.04
+            python: "3.9"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     defaults:
@@ -59,6 +67,8 @@ class WorkflowTest(unittest.TestCase):
     def test_matrix_has_three_systems_and_two_pythons(self):
         self.assertIn("os: [windows-latest, macos-latest, ubuntu-latest]", self.text)
         self.assertIn('python: ["3.9", "3.13"]', self.text)
+        # ubuntu-latest has no Python 3.9, so that one job runs on the previous Ubuntu
+        self.assertIn('include:\n          - os: ubuntu-24.04\n            python: "3.9"\n', self.text)
         self.assertIn("fail-fast: false", self.text)
         self.assertIn("runs-on: ${{ matrix.os }}", self.text)
         self.assertIn("python-version: ${{ matrix.python }}", self.text)

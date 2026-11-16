@@ -173,7 +173,19 @@ class RunTest(LauncherTest):
         self.stubs.python("python3")
         args = ["a b", "", "$HOME", "it's", "*", "--yes"]
         stdin = json.dumps({"prompt": "caf\u00e9 \u201dquoted\u201d"}, ensure_ascii=False).encode("utf-8")
-        self.assertEqual(self.run_echo(*args, stdin=stdin), {"args": args, "stdin": stdin.decode("utf-8")})
+        if WINDOWS:
+            # Python sends one command line that Git's sh splits again: ' opens a quote, a bare * is globbed.
+            args.remove("it's")
+            self.assertFalse([arg for arg in args if '"' in arg or "\\" in arg])  # each fits in double quotes
+            command = (subprocess.list2cmdline([SH, posix(LAUNCHER), "run", self.script(ECHO)])
+                       + "".join(f' "{arg}"' for arg in args))
+            result = subprocess.run(command, input=stdin, capture_output=True, env=self.stubs.env(), cwd=self.tmp,
+                                    timeout=60)
+            out, err = (result.stdout.decode("utf-8"), result.stderr.decode("utf-8"))
+            self.assertEqual((result.returncode, err), (0, ""), out)
+            self.assertEqual(json.loads(out), {"args": args, "stdin": stdin.decode("utf-8")})
+        else:
+            self.assertEqual(self.run_echo(*args, stdin=stdin), {"args": args, "stdin": stdin.decode("utf-8")})
         failing = self.script('import sys\nprint("out")\nprint("err", file=sys.stderr)\nsys.exit(7)\n')
         self.assertEqual(self.launch("run", failing), (7, "out\n", "err\n"))
 
