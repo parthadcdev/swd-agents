@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up a project's permission rules so swd runs are not held for approval, by adding allow rules to the project's local Claude Code settings. Use when the user runs /swd:setup, or after a run was blocked by refused writes or commands.
+description: Set up a project's permission rules so swd runs are not held for approval, by adding allow rules, and three deny rules that refuse running the plugin's hook by name, to the project's local Claude Code settings. Use when the user runs /swd:setup, or after a run was blocked by refused writes or commands.
 ---
 
 # swd setup
@@ -67,7 +67,31 @@ paths with forward slashes.
    - `Edit(/.swd/**)` and `Read(/.swd/**)`: edits inside `.swd/`, which
      is where the run folder and the run's worktree live;
    - a few read-only commands, and the project's commands from step 1,
-     the test command from `.swd/project.md` included.
+     the test command from `.swd/project.md` included;
+   - three deny rules, `Bash(<name> *swd-mode.*)` for each of the three
+     names (`py` for `py -3`), listed under the line
+     `Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:`.
+     With them Claude Code refuses the plain ways of running the plugin's hook,
+     `hooks/swd-mode.py`, by name, even under the broad Python rules
+     above, because a deny rule beats an allow rule. Without them an
+     agent could pipe a forged event into the hook and turn swd mode off
+     or set the conductor to `opus`. A deny rule refuses the command; it
+     does not ask. They match the hook's file name up to its dot,
+     `swd-mode.`, so the hook's compiled copy in `hooks/__pycache__/` is
+     refused too, and a run folder whose name contains `swd-mode` is not
+     caught; they name no folder at all, so they hold after an update,
+     and a command that starts with one of the three names and contains
+     `swd-mode.` is refused, also as one part of a pipe or a chain, while
+     one that runs Python under another name, such as the interpreter's
+     full path or a name with its version, is not.
+     They match command text, so they are not a hard boundary: they do
+     not stop the name in another letter case on a file system that
+     ignores case, the name written another way, such as part of it
+     quoted or given through a shell variable, a shell wildcard, or code
+     a run executes by design, such as its tests, and a session in a
+     mode that skips permission checks is protected by no rule. Whether
+     another allowed command can run the hook, such as `find -exec` or a
+     git alias, has not been checked.
 
    The two `sh` rules name the installed plugin's version folder, so run
    `/swd:setup` again after each plugin update; `sh` rules for older
@@ -81,7 +105,7 @@ paths with forward slashes.
    starts with the plugin's folder, as broad as the Python rules: delete it
    from `.claude/settings.local.json`. Say that the rules go in `.claude/settings.local.json`, the
    user's own settings for this project, and that existing settings are
-   kept.
+   kept. Setup never removes a rule.
 4. Ask whether to add them. Changing permission settings is the user's
    decision, so do not continue without a yes in this conversation.
 5. On yes, run it again without `--print`, with the same `--command`

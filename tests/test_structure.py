@@ -634,7 +634,11 @@ class StructureTest(unittest.TestCase):
         with self.subTest(file="queue", absent="It sets the model"):
             self.assertNotIn("It sets the model each run's session starts on", queue)
         with self.subTest(file="queue", needle="is ignored"):
-            self.assertIn("is ignored: every run starts with `--model fable`", queue)
+            self.assertIn(
+                "is ignored. Every run starts with the model the project's conductor setting "
+                "(`/swd:conductor`) gives: `--model fable`, the default, or `--model opus`.",
+                queue,
+            )
         readme = words("README.md")
         for needle in (
             "/swd:off", "2.1.321", "3 seconds",
@@ -648,7 +652,8 @@ class StructureTest(unittest.TestCase):
             # `/model` is a local command and starts no turn, so a message is needed too.
             "run `/model fable` and send a message",
             "automatic fallback",
-            "`/swd:queue` starts every run on Fable 5.2 and ignores a `Model:` line.",
+            "`/swd:queue` starts every run with the model the project's conductor setting gives: "
+            "`--model fable`, or `--model opus` under `opus`, and prints it before each run.",
         ):
             with self.subTest(file="README.md", needle=needle):
                 self.assertIn(needle, readme)
@@ -676,13 +681,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.9.0"):
-            self.assertEqual(manifest["version"], "0.9.0")
+        with self.subTest(file="plugin.json", version="0.10.0"):
+            self.assertEqual(manifest["version"], "0.10.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.9.0"):
-            self.assertEqual(first, "## 0.9.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.10.0"):
+            self.assertEqual(first, "## 0.10.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the
@@ -1079,6 +1084,132 @@ class StructureTest(unittest.TestCase):
                 self.assertIn(needle, text)
         # The specific first lines are taken before the bare read.
         self.assertLess(text.find("`swd conductor: set to`"), text.find("is `swd conductor: fable`"))
+
+    # 0.10.0, user docs: what the conductor setting, the judge and setup's deny rules do, and what
+    # the deny rules do not stop. The reviews turned on claims wider than the code, so the limits are pinned.
+    DENY_LIMITS = (
+        "the name in another letter case on a file system that ignores case",
+        "a shell wildcard",
+        "code a run executes by design, such as its tests",
+        "a session in a mode that skips permission checks",
+        "the name written another way, such as part of it quoted or given through a shell variable",
+        "another allowed command can run the hook, such as `find -exec` or a git alias, has not been checked",
+    )
+
+    def test_readme_0_10_0(self):
+        readme = words("README.md")
+        for needle in (
+            "/swd:conductor opus",
+            "Any value other than `fable` or `opus` is refused and stores nothing",
+            "The setting is kept per project in `~/.claude/swd-conductor/`",
+            "one file per project, named by a hash of the project's folder",
+            "a command that starts with `python3`, `python` or `py` and contains `swd-mode.` is refused, also as "
+            "one part of a pipe or a chain, while one that runs Python under another name, such as "
+            "`/usr/bin/python3` or `python3.12`, is not",
+            "without a `Judge plan:` or `Judge unreachable:` line since the last seal; a seal with `plan.md` "
+            "unchanged since the last one, such as after a change to `staffing.md` or `spec.md` alone, needs none",
+            "It applies in that folder and in the run worktrees under its `.swd/worktrees/`.",
+            "A session started in another folder, a subfolder of the project included, has its own setting, "
+            "which is `fable` until you set it",
+            "Code that runs as you can still change it",
+            "Setup's deny rules refuse the plain ways of running the hook by name, but they are not a hard "
+            "boundary, and no rule covers writing the file",
+            "swd conductor: refused, still <current setting>",
+            "swd: this session stays on Fable 5.2 or Opus 5.5, because the principal of this project runs on "
+            "them and swd mode is on in this session. To switch anyway, run /swd:off.",
+            "Its brief holds the question, never the principal's answer",
+            "`/swd:build` and `/swd:follow` no longer ask for a model: the session's model conducts",
+            "Under `opus` a switch between Fable 5.2 and Opus 5.5 is allowed either way, and a switch from "
+            "either to any other model is cancelled",
+            "| Judge | Checks |",
+            "Judge unreachable:",
+            "That check is a reminder, not proof",
+            "because `--fallback-model` does not switch on a rate-limit or usage-limit error",
+            "`Bash(python3 *swd-mode.*)`, `Bash(python *swd-mode.*)` and `Bash(py *swd-mode.*)`",
+            "A deny rule refuses the command; it does not ask.",
+            "so the hook's compiled copy in `hooks/__pycache__/` is refused too",
+            "They are not a hard boundary",
+            *self.DENY_LIMITS,
+            "permission rules apply to Claude's tool calls, not to hooks",
+            "each with the model and effort it is staffed at",
+        ):
+            with self.subTest(file="README.md", needle=needle):
+                self.assertIn(needle, readme)
+        for needle in (
+            "ask for it at high effort", "starts every run on Fable 5.2", "Nothing in the project can change it",
+            "a repository you clone cannot set it", "The judge gets the question",
+            "named by a hash of the folder the session is in", "any Python command whose text contains",
+            "one that starts another way", "a seal after a change to `staffing.md` alone needs none",
+        ):
+            with self.subTest(file="README.md", absent=needle):
+                self.assertNotIn(needle, readme)
+
+    def test_setup_and_queue_skills_0_10_0(self):
+        setup = words("skills", "setup", "SKILL.md")
+        self.assertIn("deny rules", frontmatter(ROOT / "skills" / "setup" / "SKILL.md").get("description", ""))
+        for needle in (
+            "`Bash(<name> *swd-mode.*)`",
+            "Claude Code refuses the plain ways of running the plugin's hook, `hooks/swd-mode.py`, by name",
+            "A deny rule refuses the command; it does not ask.",
+            "`swd-mode.`, so the hook's compiled copy in `hooks/__pycache__/` is refused too",
+            "`Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:`",
+            "they name no folder at all, so they hold after an update",
+            "they are not a hard boundary",
+            *self.DENY_LIMITS,
+            "Setup never removes a rule.",
+            "a command that starts with one of the three names and contains `swd-mode.` is refused, also as one "
+            "part of a pipe or a chain, while one that runs Python under another name, such as the interpreter's "
+            "full path or a name with its version, is not",
+        ):
+            with self.subTest(file="setup", needle=needle):
+                self.assertIn(needle, setup)
+        for needle in ("any Python command whose text contains", "one that starts another way"):
+            with self.subTest(file="setup", absent=needle):
+                self.assertNotIn(needle, setup)
+        queue = words("skills", "queue", "SKILL.md")
+        for needle in (
+            "because `--fallback-model` does not switch on a rate-limit or usage-limit error",
+            "`starting with --model <model>: <item>`",
+            "each allow rule in `permissions.allow` and each rule under the `Deny rules` line in "
+            "`permissions.deny`",
+            "A project set up before 0.10.0 has no deny rules, so this check sends the user to `/swd:setup`.",
+            # A `Model:` line in queue.md puts the ignored notice first, so the model is read from the count line.
+            "The line with the number of open items ends with `model: <model>`, the model every run will start "
+            "with; tell the user which.",
+        ):
+            with self.subTest(file="queue", needle=needle):
+                self.assertIn(needle, queue)
+        with self.subTest(file="queue", absent="Its first line ends with"):
+            self.assertNotIn("Its first line ends with", queue)
+        pilot = words("tests", "run_pilot.sh")
+        with self.subTest(file="run_pilot.sh", needle="no model of its own"):
+            self.assertIn("the build skill no longer asks for a model", pilot)
+            self.assertNotIn("`model: fable`", pilot)
+
+    def test_changelog_0_10_0(self):
+        entry = changelog_entry("0.10.0")
+        for needle in (
+            "`/swd:conductor`", "`~/.claude/swd-conductor/`", "Any other value is refused and stores nothing",
+            "Under `opus` a switch between Fable 5.2 and Opus 5.5 is allowed either way",
+            "no longer have `model: fable`", "stopped on the first turn",
+            "`Conductor: Fable 5.2` or `Conductor: Opus 5.5`", "`check_run.py --plan`",
+            "`swd:judge`", "`Judge plan:`", "`Judge unreachable:`", "`Judge overruled:`",
+            "`check_run.py --seal` refuses", "a reminder, not proof",
+            "`--model opus`", "`--fallback-model`", "`starting with --model <model>: <item>`",
+            "`Bash(python3 *swd-mode.*)`", "A deny rule refuses the command; it does not ask.",
+            "not a hard boundary", *self.DENY_LIMITS,
+            "Run `/swd:setup` again", "until you do, `/swd:queue` sends you there",
+            "`dashboard.html`", "model and effort", "one file per project named by a hash of the project's folder",
+            "a seal with `plan.md` unchanged since the last one, such as after a change to `staffing.md` or "
+            "`spec.md` alone, needs none",
+        ):
+            with self.subTest(file="CHANGELOG.md 0.10.0", needle=needle):
+                self.assertIn(needle, entry)
+        for needle in ("a hash of the session's folder", "a seal after a change to `staffing.md` alone needs none"):
+            with self.subTest(file="CHANGELOG.md 0.10.0", absent=needle):
+                self.assertNotIn(needle, entry)
+        with self.subTest(file="CHANGELOG.md 0.10.0", absent="prompt"):
+            self.assertNotRegex(entry, r"deny rules?[^.]*\b(asks? for approval|prompts?)\b")
 
     def test_unattended_run_safeguards_are_pinned(self):
         def words(*parts: str) -> str:

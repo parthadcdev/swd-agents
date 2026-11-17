@@ -32,9 +32,16 @@ Finish: pr
 - `- [ ] #42` means GitHub issue 42: its title and body become the
   requirement, and the pull request says `Closes #42`.
 - `Finish:` is `pr` (the default), `merge-push` or `branch`, for every item.
-- A `Model:` line, which earlier versions read, is ignored: every run
-  starts with `--model fable`, because the principal does no work off
-  Fable 5.2. The script prints one line when it ignores one.
+- A `Model:` line, which earlier versions read, is ignored. Every run
+  starts with the model the project's conductor setting
+  (`/swd:conductor`) gives: `--model fable`, the default, or
+  `--model opus`. The principal does no work on a model the setting
+  does not accept. Under `opus` a run starts on Opus 5.5, not on
+  Fable 5.2 with a fallback, because `--fallback-model` does not switch
+  on a rate-limit or usage-limit error, so a run out of Fable quota
+  would not fall back. The script prints
+  `starting with --model <model>: <item>` before each run, and one line
+  when it ignores a `Model:` line.
 - When an item's run finishes it becomes `- [x] <item> — <link or branch>`.
   When it does not, `- [!] <item> — blocked: <run folder>`.
 
@@ -68,15 +75,23 @@ Finish: pr
    ```
 
    Every rule it printed must be in `.claude/settings.local.json` exactly
-   as printed, character for character. A rule that names another version
-   folder of the plugin does not count, so after a plugin update this
-   check sends the user to `/swd:setup`. If any printed rule is missing,
-   tell the user to run `/swd:setup` first, and stop.
+   as printed, character for character: each allow rule in
+   `permissions.allow` and each rule under the `Deny rules` line in
+   `permissions.deny`. The deny rules make Claude Code refuse the plain
+   ways of running the plugin's hook by name. A rule that names another
+   version folder of the plugin does not count, so after a plugin update
+   this check sends the user to `/swd:setup`. A project set up before
+   0.10.0 has no deny rules, so this check sends the user to
+   `/swd:setup`. If any printed rule is missing, tell the user to run
+   `/swd:setup` first, and stop.
 3. Show what will run, starting nothing:
 
    ```bash
    <python> <plugin>/scripts/swd-queue.py --dry-run <project>
    ```
+
+   The line with the number of open items ends with `model: <model>`,
+   the model every run will start with; tell the user which.
 
 4. Ask the user to confirm. Say plainly what they are agreeing to: each
    item is a full run that spends tokens with nobody watching; the finish

@@ -71,10 +71,37 @@ code, and edits inside `.swd/`) and adds them to
 broad: they allow any command that starts with the Python name and the
 plugin's folder, which is not limited to the plugin's own scripts.
 
+The one exception is the plugin's hook, `hooks/swd-mode.py`. Setup also
+adds three deny rules, `Bash(python3 *swd-mode.*)`,
+`Bash(python *swd-mode.*)` and `Bash(py *swd-mode.*)`, so Claude Code
+refuses the plain ways of running the hook by name, even under the
+broad Python rules: without them an agent could pipe a forged event
+into the hook and turn swd mode off or set the conductor to `opus`. A
+deny rule refuses the command; it does not ask. The rules name the
+file up to its dot, `swd-mode.`, so the hook's compiled copy in
+`hooks/__pycache__/` is refused too, while a run folder whose name
+contains `swd-mode` is not caught. They name no folder at all, so they
+hold after an update, and in a project with them a command that starts
+with `python3`, `python` or `py` and contains `swd-mode.` is refused,
+also as one part of a pipe or a chain, while one that runs Python under
+another name, such as `/usr/bin/python3` or `python3.12`, is not.
+Claude Code still runs the hook itself on its
+events: permission rules apply to Claude's tool calls, not to hooks.
+They are not a hard boundary: they match command text, so they do not
+stop the name in another letter case on a file system that ignores
+case (macOS, Windows), the name written another way, such as part of
+it quoted or given through a shell variable, a shell wildcard, or code
+a run executes by design, such as its tests, and a session in a mode
+that skips permission checks is protected by no rule. Whether
+another allowed command can run the hook, such as `find -exec` or a
+git alias, has not been checked. Setup only adds rules; it never
+removes one.
+
 Run `/swd:setup` again after each plugin update: two of its rules name
 the installed version's folder, so they stop matching after an update
 and a run asks permission for those commands (`/swd:queue` stops and
-sends you here). `sh` rules for older versions can stay in the settings
+sends you here). After updating to 0.10.0, run it again to add the
+deny rules; until you do, `/swd:queue` sends you here. `sh` rules for older versions can stay in the settings
 file, and each still matches the `check` or watch command in that old
 version's folder.
 
@@ -101,6 +128,47 @@ session, use swd mode:
   Inside a longer message the words do nothing, so a message or an
   agent's report that quotes them cannot turn swd mode off. New
   sessions always start with it off.
+
+## Which model conducts
+
+The principal, the conductor of every run, runs on Fable 5.2 by
+default. `/swd:conductor` lets Opus 5.5 conduct too, project by
+project, for example when your Fable 5.2 quota is low:
+
+```
+/swd:conductor opus
+/swd:conductor fable
+/swd:conductor
+```
+
+The first lets Fable 5.2 or Opus 5.5 conduct runs in this project, the
+second lets only Fable 5.2 (the default), and the third shows the
+current setting. Type it yourself in a session in the project. The
+reply's first line says what the hook did, such as
+`swd conductor: set to opus`, and its second line which models may
+conduct and in which folder:
+`Fable 5.2 or Opus 5.5 may conduct swd runs in /work/p, its .swd/worktrees included.`
+Any value other than `fable` or `opus` is refused and stores nothing:
+the reply starts `swd conductor: refused, still <current setting>`.
+
+- The setting is kept per project in `~/.claude/swd-conductor/`, one
+  file per project, named by a hash of the project's folder.
+  It applies in that folder and in the run worktrees under its
+  `.swd/worktrees/`. A session started in another folder, a subfolder
+  of the project included, has its own setting, which is `fable` until
+  you set it there, so type the command in the folder you start Claude
+  Code in for the project. It is kept until you change it.
+- The hook stores it only for a command you type, and reads no file in
+  your project to decide it, so no file in a repository you clone
+  changes it by what it says. An entry the hook cannot read counts as
+  `fable`. Code that runs as you can still change it, such as an
+  agent's command or the project's own tests run by the team: it can
+  run the hook or write the file directly. Setup's deny rules refuse
+  the plain ways of running the hook by name, but they are not a hard
+  boundary, and no rule covers writing the file (see First time in a
+  project).
+- Each run records the model it is conducted on in its `decisions.md`,
+  as `Conductor: Fable 5.2` or `Conductor: Opus 5.5`.
 
 ## Hand it a backlog
 
@@ -130,6 +198,7 @@ session, use swd mode:
 | Code reviewer | Checks | Correctness, quality, performance |
 | Security reviewer | Checks | Security of the change |
 | QA engineer | Checks | Full test suite, the acceptance criteria and the plan's outcome |
+| Judge | Checks | On Fable 5.2, a verdict on the plan and on disputed or trust-boundary rulings, when the principal conducts on Opus 5.5 |
 
 Builders work test first and own the files the plan gives them. Checkers
 report findings and never edit code. A run uses only the roles its plan
@@ -137,22 +206,36 @@ needs.
 
 ## Models
 
-- The principal runs on Fable 5.2. `/swd:build` and `/swd:follow` ask
-  for it at high effort, but only for the turn that runs them, and not
-  when an allowlist blocks it, so start the session on it
-  (`/model fable`). On any other model the principal does no work: it
-  checks its model at the start of every turn and before every action
-  that changes anything outside its reply (a commit, a merge or a
-  push, for example), says which model it is on, and waits for you to
-  run `/model fable` and send a message. The hook below covers only a
-  switch you or a client ask for. Every automatic way off Fable 5.2
-  (an automatic fallback after a flagged request, a fallback model
-  chain such as `--fallback-model`, or Fable served under a gateway
-  model id the hook does not recognise) is covered by the principal's
-  own check, not by the hook.
+- The principal runs on Fable 5.2, or on Fable 5.2 or Opus 5.5 in a
+  project set to `opus` (see Which model conducts).
+  `/swd:build` and `/swd:follow` no longer ask for a model: the
+  session's model conducts, at high effort, so start the session on an
+  accepted model (`/model fable`, or `/model opus` where the setting
+  allows it). While swd mode is on, the hook's reminder on every
+  message tells the principal which models the setting accepts; with
+  no reminder it accepts only Fable 5.2. On any other model the
+  principal does no work: it checks its model at the start of every
+  turn and before every action that changes anything outside its reply
+  (a commit, a merge or a push, for example), says which model it is
+  on, and waits for you to run `/model fable` and send a message (or
+  `/model opus`, where the setting is `opus`). So with the default
+  setting a session on another model is stopped on the first turn;
+  in 0.9.0 the skill's own `model: fable` ran that turn on Fable 5.2.
+  The hook below covers only a switch you or a client ask for. Every
+  automatic way off Fable 5.2, or off Opus 5.5 under `opus` (an
+  automatic fallback after a flagged request, a fallback model chain
+  such as `--fallback-model`, or a model served under a gateway model
+  id the hook does not recognise), is covered by the principal's own
+  check, not by the hook.
 - While swd mode is on in the session, a hook cancels a `/model`
-  switch away from Fable 5.2 and says why; run `/swd:off` to switch
-  anyway. The hook reads no file in your project, so a repository you
+  switch away from the models the project's setting accepts, and says
+  why; run `/swd:off` to switch anyway. Under `fable` that is any
+  switch away from Fable 5.2, as in 0.9.0. Under `opus` a switch
+  between Fable 5.2 and Opus 5.5 is allowed either way, and a switch
+  from either to any other model is cancelled with
+  `swd: this session stays on Fable 5.2 or Opus 5.5, because the principal of this project runs on them and swd mode is on in this session. To switch anyway, run /swd:off.`
+  The hook reads no file
+  in your project, so a repository you
   clone cannot lock your model. If it cannot read its input, or
   cannot decide within 3 seconds, it lets the switch through; if it
   cannot start, or cannot finish, within Claude Code's 10-second
@@ -161,8 +244,32 @@ needs.
   delete its flag file, and names the file), delete
   `~/.claude/swd-mode/<session id>` or start a new session with
   `claude --model <name>`; resuming this session keeps swd mode on.
-- `/swd:queue` starts every run on Fable 5.2 and ignores a `Model:`
-  line.
+- **The Fable judge.** When the principal conducts on Opus 5.5, it
+  asks a Fable 5.2 subagent, the judge (`swd:judge`), for a verdict at
+  three points: the plan, before the seal and after each amendment; a
+  ruling that touches a trust boundary (permissions, secrets, or input
+  that reaches a shell); and a ruling a builder or a checker disputes.
+  Its brief holds the question, never the principal's answer; it reads
+  the run folder, runs nothing, and writes `reports/judge-<n>.md`. The
+  principal records each verdict in `decisions.md` and follows it, or
+  records why it overrules it (`Judge overruled:`). When the judge
+  cannot be reached (the dispatch fails or is cut off, for example
+  because the Fable quota has run out, or it returns no verdict, which
+  includes a judge that finds it is not on Fable 5.2), the principal
+  judges alone, records `Judge unreachable:`, and the run goes on.
+  `check_run.py --seal` refuses to seal a plan conducted on Opus 5.5
+  without a `Judge plan:` or `Judge unreachable:` line since the last
+  seal; a seal with `plan.md` unchanged since the last one, such as
+  after a change to `staffing.md` or `spec.md` alone, needs none. That
+  check is a reminder, not proof: it reads only lines the
+  principal writes, so it cannot show that the judge was dispatched.
+  On Fable 5.2 there is no judge.
+- `/swd:queue` starts every run with the model the project's conductor
+  setting gives: `--model fable`, or `--model opus` under `opus`, and
+  prints it before each run. Under `opus` it starts on Opus 5.5 rather
+  than on Fable 5.2 with a fallback, because `--fallback-model` does
+  not switch on a rate-limit or usage-limit error. It ignores a
+  `Model:` line.
 - The model and effort for each task, review and check follow
   `standards/models.md`, the team's standing rule. It is replaced when
   Anthropic publishes newer guidance.
@@ -232,8 +339,12 @@ the spec, the plan, a task ledger and a live activity timeline.
 
 - **In the browser:** when the build starts, the principal opens
   `dashboard.html` from the run folder. It shows the tasks in columns by
-  wave, coloured by status, with the timeline below, and refreshes every two
-  seconds until the run is done. You can also build it for any run with
+  wave, coloured by status, each with the model and effort it is staffed
+  at, with the timeline below, and refreshes every two seconds until the
+  run is done. Above the tasks it shows the conductor's model (from the
+  last `Conductor:` line in `decisions.md`) and the model and effort of
+  the reviews and the final check (from `staffing.md`); what a run has no
+  record of is left out. You can also build it for any run with
   `python3 scripts/swd-dashboard.py <run folder>` on macOS and Linux,
   with `python` or `py -3` on Windows.
 - **In the terminal (macOS and Linux):** if you run Claude Code inside

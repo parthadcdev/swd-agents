@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.10.0
+
+- A conductor setting per project. Type `/swd:conductor opus` in a
+  project to let Fable 5.2 or Opus 5.5 conduct its runs, and
+  `/swd:conductor fable` (the default) for Fable 5.2 alone;
+  `/swd:conductor` with no value shows the setting. Any other value is
+  refused and stores nothing. The hook stores it only for a command
+  you type, in `~/.claude/swd-conductor/`, one file per project named
+  by a hash of the project's folder, and reads no file in your project
+  to decide it. It applies in that folder and its `.swd/worktrees/`; a
+  session started in a subfolder of the project has its own setting,
+  `fable` until set. An entry the hook cannot read counts as `fable`.
+- With nothing stored, or `fable`, the hook's reminder and its switch
+  rule are as in 0.9.0. Under `opus` the reminder names both models and
+  tells an Opus 5.5 principal to dispatch the Fable judge. Under `opus`
+  a switch between Fable 5.2 and Opus 5.5 is allowed either way while
+  swd mode is on, and a switch from either to any other model is
+  cancelled, with its own message.
+- `/swd:build` and `/swd:follow` no longer have `model: fable` and keep
+  `effort: high`: the session's model conducts. The principal checks it
+  against the models the reminder accepts, as before, and stops on any
+  other, naming `/model fable` (or `/model opus` under `opus`). So with
+  the default setting a session on another model is now stopped on the
+  first turn, where 0.9.0 ran that turn on Fable 5.2.
+- Preflight writes `Conductor: Fable 5.2` or `Conductor: Opus 5.5` in
+  `decisions.md` after the first four lines, and the principal appends
+  a new one whenever it finds itself on the other accepted model.
+  `check_run.py --plan` and `--seal` report a run without one. Runs
+  from before 0.10.0 have none and still check clean once finished.
+- The Fable judge, a new agent (`swd:judge`). A principal on Opus 5.5
+  dispatches it with `model: fable` and `effort: high`, before writing
+  its own answer, on the plan (before the seal and after each
+  amendment), on a ruling that touches a trust boundary, and on a
+  ruling a builder or a checker disputes. The judge reads the run
+  folder, runs nothing, and writes `reports/judge-<n>.md`, whose first
+  line is its verdict. The principal records it as `Judge plan:` or
+  `Judge ruling:` and follows it, records `Judge overruled:` with its
+  reason when it does not, and records `Judge unreachable:` and judges
+  alone when the dispatch fails or returns no verdict (a Fable quota
+  that has run out among the reasons). `check_run.py --seal` refuses a
+  plan whose last `Conductor:` line is not Fable 5.2 without a
+  `Judge plan:` or `Judge unreachable:` line since the last seal; a
+  seal with `plan.md` unchanged since the last one, such as after a
+  change to `staffing.md` or `spec.md` alone, needs none. That check is
+  a reminder, not proof: it reads lines the principal writes and cannot
+  show the judge was dispatched.
+- `/swd:queue` starts every run with the project's setting:
+  `--model fable` as before, or `--model opus` under `opus`. It does not
+  start on Fable 5.2 and fall back, because `--fallback-model` does not
+  switch on a rate-limit or usage-limit error. It prints
+  `starting with --model <model>: <item>` before each run, and its dry
+  run shows `model: <model>`.
+- `/swd:setup` also adds three deny rules, `Bash(python3 *swd-mode.*)`,
+  `Bash(python *swd-mode.*)` and `Bash(py *swd-mode.*)`, so Claude Code
+  refuses the plain ways of running the plugin's hook by name, even
+  under the broad Python rules; in 0.9.0 an agent could pipe a forged
+  event into the hook unprompted. A deny rule refuses the command; it
+  does not ask. The rules name the file up to its dot, so the hook's
+  compiled copy is refused too and a run folder named with `swd-mode`
+  is not caught. They are not a hard boundary: they match command
+  text, so they do not stop the name in another letter case on a file
+  system that ignores case, the name written another way, such as part
+  of it quoted or given through a shell variable, a shell wildcard, or
+  code a run executes by design, such as its tests, and a session in a
+  mode that skips permission checks is protected by no rule. Whether
+  another allowed command can run the hook, such as `find -exec` or a
+  git alias, has not been checked. Setup keeps every rule
+  already there and removes none. Run `/swd:setup` again after
+  updating; until you do, `/swd:queue` sends you there.
+- `dashboard.html` shows each task's model and effort from
+  `staffing.md`, the model and effort of the reviews and the final
+  check, and the conductor's model from the last `Conductor:` line.
+  A run without them still gets its page, with that model left out.
+
 ## 0.9.0
 
 - The plugin runs on native Windows, with Git for Windows (Claude Code

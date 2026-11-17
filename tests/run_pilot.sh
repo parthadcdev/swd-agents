@@ -70,9 +70,9 @@ else
   PERMISSIONS=(--permission-mode acceptEdits --add-dir "$ROOT" --allowedTools "${ALLOWED[@]}")
 fi
 
-# Every pilot starts on Fable 5.2: the principal does no work on any other model
-# (skills/build/SKILL.md, **Your model.**), and a pilot loads the skill from a plain message
-# partway through its turn, where the skill's own `model: fable` may not apply.
+# Every pilot starts on Fable 5.2 with --model fable: the build skill no longer asks for a model,
+# and with no conductor setting stored for the pilot's folder
+# the principal does no work on any other model (skills/build/SKILL.md, **Your model.**).
 # User-level settings are left out so the run sees only this plugin: a user hook that rewrites
 # shell commands would stop them matching the allowlist above.
 run_team() {  # run_team <requirement file>
