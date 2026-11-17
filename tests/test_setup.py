@@ -1,39 +1,92 @@
 """Tests for scripts/swd-setup.py: the permission rules a project needs so swd runs are not held for approval."""
+import contextlib
 import importlib.util
+import io
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "swd-setup.py"
 sys.path.insert(0, str(ROOT / "scripts"))
-DENY = ["Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)", "Bash(py *swd-mode.*)"]   # contract C6
+DENY = ["Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)", "Bash(py *swd-mode.*)"]   # unchanged since 0.10.0
+ASK = ["Bash(python3 *swd-setup.*)", "Bash(python *swd-setup.*)", "Bash(py *swd-setup.*)",
+       "Bash(python3 *swd-queue.*)", "Bash(python *swd-queue.*)", "Bash(py *swd-queue.*)",
+       "Bash(*SWD_UNATTENDED*)"]   # contract C1
+PYTHONS = ("python3", "python", "py -3")
+RUN_SCRIPTS = ("check_run.py", "swd-clean.py", "swd-dashboard.py", "swd-findings.py", "swd-log.py", "swd-pr.py", "swd-test.py")
+ASK_HEADING = "Ask rules, so Claude Code asks you before a command runs the setup or queue script, or names SWD_UNATTENDED:"
+DENY_HEADING = "Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:"
+OLD_HEADING = "Rules an earlier version of the plugin wrote, which setup removes:"
+REFUSAL = ("a rule's first word must be the command's own name, with no '*' in it, and the command may hold no control "
+           "character; '*' there would let the rule match every command")
+RUNNER = ("a rule's first word must name the program that runs, not an assignment or a program that runs another command "
+          "it is given (env, sh, bash, zsh, dash, ksh, fish, xargs, sudo, doas, eval, exec, npx), or the rule would match "
+          'every command; give the command itself, such as "npm test" or "bash scripts/test.sh"')
+NOT_PLAIN = ("a rule's first word must be a plain program name or path, made only of letters, digits and . _ - + @ / : and not "
+             "starting with -; quotes, backslashes, =, [, $, backticks, redirections and other shell syntax are refused, "
+             "because the rule would then not name the program that runs")
+NOTES = "the test command in .swd/project.md"
+INSTALLED = "/Users/you/.claude/plugins/cache/swd-agents/swd"   # path text only; never exists
+RUN = "/work/project/.swd/runs/2026-11-17-demo"
+PROJECT = "/work/project"
+
+
+def module():
+    spec = importlib.util.spec_from_file_location("swd_setup", SCRIPT)
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
 
 
 class SetupTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.project = Path(self._tmp.name)
+        self.tmp = Path(self._tmp.name)
+        self.home = self.tmp / "home"   # setup must never see the real ~/.claude
+        self.home.mkdir()
+        self.project = self.tmp / "project"
+        self.project.mkdir()
         self.settings = self.project / ".claude" / "settings.local.json"
 
-    def setup(self, *args):
-        result = subprocess.run([sys.executable, str(SCRIPT), *args, str(self.project)], capture_output=True, text=True, encoding="utf-8")
+    def run_script(self, script, *args):
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)}
+        result = subprocess.run([sys.executable, str(script), *args, str(self.project)],
+                                capture_output=True, text=True, encoding="utf-8", env=env)
         self.assertNotIn("Traceback", result.stderr)
         return result
 
+    def setup(self, *args):
+        return self.run_script(SCRIPT, *args)
+
+    def write_settings(self, text):
+        self.settings.parent.mkdir(exist_ok=True)
+        self.settings.write_bytes(text if isinstance(text, bytes) else text.encode("utf-8"))
+
+    def data(self):
+        return json.loads(self.settings.read_text(encoding="utf-8"))
+
     def allow(self):
-        return json.loads(self.settings.read_text(encoding="utf-8"))["permissions"]["allow"]
+        return self.data()["permissions"]["allow"]
+
+    def module(self):
+        return module()
+
+    # --- what is written --------------------------------------------------------------------------------------
 
     def test_print_shows_the_rules_and_writes_nothing(self):
         result = self.setup("--print")
         self.assertEqual(result.returncode, 0)
         self.assertIn("Bash(git *)", result.stdout)
-        self.assertFalse(self.settings.exists())
+        self.assertFalse(self.settings.parent.exists())
 
     def test_writes_rules_for_the_plugin_git_the_run_folder_and_the_test_command(self):
         (self.project / ".swd").mkdir()
@@ -44,7 +97,10 @@ class SetupTest(unittest.TestCase):
                      "Bash(echo *)", "Bash(cat *)", "Bash(mkdir *)", "Bash(touch *)"):   # the principal's own chained commands use these
             with self.subTest(rule=rule):
                 self.assertIn(rule, allow)
-        self.assertTrue(any(r.startswith("Bash(python3 ") and "swd" in r for r in allow))  # the plugin's scripts
+        plugin = Path(os.path.abspath(SCRIPT)).parent.parent.as_posix()
+        self.assertIn(f"Bash(python3 {plugin}/scripts/check_run.py *)", allow)
+        self.assertEqual(self.data()["permissions"]["ask"], ASK)
+        self.assertEqual(self.data()["permissions"]["deny"], DENY)
 
     def test_commands_can_be_named_before_the_project_notes_exist(self):
         # On a first run nothing has recorded the test command yet.
@@ -55,74 +111,68 @@ class SetupTest(unittest.TestCase):
                 self.assertIn(rule, allow)
 
     def test_existing_settings_are_kept_and_rules_are_not_duplicated(self):
-        self.settings.parent.mkdir()
-        self.settings.write_text(json.dumps({"permissions": {"allow": ["Bash(make *)", "Bash(git *)"], "deny": ["Bash(rm *)"]},
-                                             "env": {"X": "1"}}), encoding="utf-8")
+        self.write_settings(json.dumps({"permissions": {"allow": ["Bash(make *)", "Bash(git *)"], "deny": ["Bash(rm *)"]},
+                                        "env": {"X": "1"}}))
         self.setup()
+        before = self.settings.read_bytes()
         self.assertEqual(self.setup().stdout.strip(), "setup: nothing to add")
-        data = json.loads(self.settings.read_text(encoding="utf-8"))
+        self.assertEqual(self.settings.read_bytes(), before)
+        data = self.data()
         self.assertEqual(data["env"], {"X": "1"})
         self.assertEqual(data["permissions"]["deny"], ["Bash(rm *)", *DENY])
+        self.assertEqual(data["permissions"]["ask"], ASK)
+        self.assertEqual(list(data["permissions"]), ["allow", "deny", "ask"])   # ask is created after the existing keys
         allow = data["permissions"]["allow"]
         self.assertEqual(allow[:2], ["Bash(make *)", "Bash(git *)"])
         self.assertEqual(len(allow), len(set(allow)))
 
-    def test_deny_rules_already_there_are_kept_in_order_and_not_added_twice(self):
-        self.settings.parent.mkdir()
-        self.settings.write_text(json.dumps({"permissions": {"deny": ["Bash(py *swd-mode.*)", "Bash(rm *)"]}}), encoding="utf-8")
+    def test_deny_and_ask_rules_already_there_are_kept_in_order_and_not_added_twice(self):
+        self.write_settings(json.dumps({"permissions": {"deny": ["Bash(py *swd-mode.*)", "Bash(rm *)"],
+                                                        "ask": ["Bash(*SWD_UNATTENDED*)", "Bash(rm *)"]}}))
         self.setup()
-        deny = json.loads(self.settings.read_text(encoding="utf-8"))["permissions"]["deny"]
-        self.assertEqual(deny, ["Bash(py *swd-mode.*)", "Bash(rm *)", "Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)"])
+        permissions = self.data()["permissions"]
+        self.assertEqual(permissions["deny"], ["Bash(py *swd-mode.*)", "Bash(rm *)", "Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)"])
+        self.assertEqual(permissions["ask"], ["Bash(*SWD_UNATTENDED*)", "Bash(rm *)", *ASK[:6]])
 
-    def test_the_count_includes_the_deny_rules(self):
-        allow_count = len(self.module().rules(self.project.resolve(), Path("/work/swd-agents")))
+    def test_the_count_includes_the_ask_and_deny_rules(self):
+        allow_count = len(self.module().rules(self.project.resolve(), [Path("/work/swd-agents")]))
+        self.assertEqual(allow_count, 42)
         result = self.setup("--plugin-root", "/work/swd-agents")
-        self.assertEqual(result.stdout.strip(),
-                         f"setup: {allow_count + 3} rules added to {self.settings.resolve()}")
-        self.assertEqual(json.loads(self.settings.read_text(encoding="utf-8"))["permissions"]["deny"], DENY)
+        self.assertEqual(result.stdout.strip(), f"setup: 52 rules added to {self.settings.resolve()}")
+        self.assertEqual(self.data()["permissions"]["deny"], DENY)
+        self.assertEqual(self.data()["permissions"]["ask"], ASK)
 
-    def test_settings_of_the_wrong_shape_are_not_overwritten(self):
-        for text in ('{"permissions": {"deny": "Bash(rm *)"}}', '{"permissions": {"allow": {}}}', '{"permissions": []}'):
-            with self.subTest(settings=text):
-                self.settings.parent.mkdir(exist_ok=True)
-                self.settings.write_text(text, encoding="utf-8")
-                result = self.setup()
-                self.assertEqual(result.returncode, 1)
-                self.assertIn("is not valid JSON; fix or remove it, then run setup again", result.stderr)
-                self.assertEqual(self.settings.read_text(encoding="utf-8"), text)
-
-    def test_unreadable_settings_are_not_overwritten(self):
-        self.settings.parent.mkdir()
-        self.settings.write_text("{ not json", encoding="utf-8")
-        result = self.setup()
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(self.settings.read_text(encoding="utf-8"), "{ not json")
-
-    def module(self):
-        spec = importlib.util.spec_from_file_location("swd_setup", SCRIPT)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    def test_an_installed_plugin_gets_a_rule_that_survives_updates(self):
-        module = self.module()
+    def test_an_installed_plugin_gets_a_read_rule_that_survives_updates(self):
         installed = Path.home() / ".claude" / "plugins" / "cache" / "swd-agents" / "swd" / "0.5.0"
-        self.assertEqual(module.plugin_prefix(installed), installed.parent.as_posix() + "/")   # no version in it
-        self.assertEqual(module.plugin_prefix(Path("/work/swd-agents")), "/work/swd-agents/")
+        self.assertEqual(self.module().plugin_prefix(installed), installed.parent.as_posix() + "/")   # no version in it
+        self.assertEqual(self.module().plugin_prefix(Path("/work/swd-agents")), "/work/swd-agents/")
 
     def test_print_lists_the_rules_for_a_posix_plugin_root(self):
         result = self.setup("--print", "--plugin-root", "/work/swd-agents")
         self.assertEqual(result.returncode, 0, result.stderr)
         lines = result.stdout.splitlines()
-        self.assertEqual(lines[-4:], ["Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:",
-                                      "  Bash(python3 *swd-mode.*)", "  Bash(python *swd-mode.*)", "  Bash(py *swd-mode.*)"])
-        self.assertFalse(self.settings.exists())
-        listed = [line.strip() for line in lines[1:-4]]
-        self.assertFalse([rule for rule in listed if "swd-mode" in rule])
+        settings = self.settings.resolve()
+        self.assertEqual(lines[0], f"Rules for {settings}:")
+        self.assertEqual(lines[-13:], [ASK_HEADING, *["  " + rule for rule in ASK], DENY_HEADING, *["  " + rule for rule in DENY],
+                                       f"Not in place: {settings} is missing 52 of the rules above and still holds 0 rules"
+                                       " an earlier version wrote; run /swd:setup."])
+        self.assertFalse(self.settings.parent.exists())
+        listed = [line.strip() for line in lines[1:-13]]
+        self.assertEqual(len(listed), 42)
+        self.assertFalse([rule for rule in listed if "swd-mode" in rule or "swd-setup" in rule or "swd-queue" in rule])
         self.assertEqual(listed[:10], [
-            "Bash(python3 /work/swd-agents/*)",
-            "Bash(python /work/swd-agents/*)",
-            "Bash(py -3 /work/swd-agents/*)",
+            "Bash(python3 /work/swd-agents/scripts/check_run.py *)",
+            "Bash(python /work/swd-agents/scripts/check_run.py *)",
+            "Bash(py -3 /work/swd-agents/scripts/check_run.py *)",
+            "Bash(python3 /work/swd-agents/scripts/swd-clean.py *)",
+            "Bash(python /work/swd-agents/scripts/swd-clean.py *)",
+            "Bash(py -3 /work/swd-agents/scripts/swd-clean.py *)",
+            "Bash(python3 /work/swd-agents/scripts/swd-dashboard.py *)",
+            "Bash(python /work/swd-agents/scripts/swd-dashboard.py *)",
+            "Bash(py -3 /work/swd-agents/scripts/swd-dashboard.py *)",
+            "Bash(python3 /work/swd-agents/scripts/swd-findings.py *)",
+        ])
+        self.assertEqual(listed[21:28], [
             "Bash(sh /work/swd-agents/scripts/swd-python.sh check)",
             "Bash(sh /work/swd-agents/scripts/swd-watch.sh *)",
             "Read(//work/swd-agents/**)",
@@ -135,41 +185,156 @@ class SetupTest(unittest.TestCase):
         self.assertNotIn("Bash(/work/swd-agents/*)", listed)   # nothing runs a plugin file directly
         self.assertFalse([rule for rule in listed if "swd-python.sh run" in rule or "install" in rule])
 
+    def test_no_rule_lets_a_python_name_run_anything_under_the_plugin(self):
+        # Criterion 1: no Bash(<python name> <prefix>*); one rule per run script per Python name, by its full path.
+        for root in (PurePosixPath(f"{INSTALLED}/0.11.0"), PurePosixPath("/work/swd-agents"),
+                     PureWindowsPath(r"C:\Users\you\.claude\plugins\cache\swd-agents\swd\0.11.0")):
+            rules = self.module().rules(self.project, [root])
+            prefix = self.module().plugin_prefix(root)
+            with self.subTest(root=str(root)):
+                self.assertFalse([rule for rule in rules if rule.startswith(tuple(f"Bash({p} {prefix}" for p in PYTHONS))
+                                  and not re.fullmatch(r"Bash\(\S+(?: -3)? \S+/scripts/[\w-]+\.py \*\)", rule)])
+                for script in RUN_SCRIPTS:
+                    for python in PYTHONS:
+                        self.assertIn(f"Bash({python} {root.as_posix()}/scripts/{script} *)", rules)
+
     def test_rules_for_a_windows_plugin_root_use_forward_slashes_and_the_c_drive_form(self):
-        module = self.module()
-        rules = module.rules(self.project, PureWindowsPath(r"C:\work\swd-agents"))
-        self.assertEqual(rules[:10], [
-            "Bash(python3 C:/work/swd-agents/*)",
-            "Bash(python C:/work/swd-agents/*)",
-            "Bash(py -3 C:/work/swd-agents/*)",
+        rules = self.module().rules(self.project, [PureWindowsPath(r"C:\work\swd-agents")])
+        self.assertEqual(rules[:3], [
+            "Bash(python3 C:/work/swd-agents/scripts/check_run.py *)",
+            "Bash(python C:/work/swd-agents/scripts/check_run.py *)",
+            "Bash(py -3 C:/work/swd-agents/scripts/check_run.py *)",
+        ])
+        self.assertEqual(rules[21:24], [
             "Bash(sh C:/work/swd-agents/scripts/swd-python.sh check)",
             "Bash(sh C:/work/swd-agents/scripts/swd-watch.sh *)",
             "Read(//c/work/swd-agents/**)",
-            "Bash(git *)",
-            "Bash(gh pr *)",
-            "Edit(/.swd/**)",
-            "Read(/.swd/**)",
         ])
         self.assertFalse([rule for rule in rules if "\\" in rule])
 
     def test_an_installed_windows_plugin_is_read_through_its_version_free_folder(self):
-        module = self.module()
         installed = PureWindowsPath(r"C:\Users\you\.claude\plugins\cache\swd-agents\swd\0.9.0")
-        self.assertEqual(module.plugin_prefix(installed), "C:/Users/you/.claude/plugins/cache/swd-agents/swd/")
-        self.assertIn("Read(//c/Users/you/.claude/plugins/cache/swd-agents/swd/**)", module.rules(self.project, installed))
+        self.assertEqual(self.module().plugin_prefix(installed), "C:/Users/you/.claude/plugins/cache/swd-agents/swd/")
+        self.assertIn("Read(//c/Users/you/.claude/plugins/cache/swd-agents/swd/**)", self.module().rules(self.project, [installed]))
+
+    def test_the_outcome_for_a_fresh_project(self):
+        # The plan's Outcome, criteria 1 and 4: 56 rules, then In place.
+        args = ("--plugin-root", f"{INSTALLED}/0.11.0", "--command", "python3 -m unittest", "--command", "python3")
+        settings = self.settings.resolve()
+        shown = self.setup("--print", *args)
+        self.assertEqual(shown.stdout.splitlines()[-1], f"Not in place: {settings} is missing 56 of the rules above and still holds"
+                                                        " 0 rules an earlier version wrote; run /swd:setup.")
+        listed = shown.stdout.splitlines()[1:47]
+        self.assertEqual(listed[-4:], ["  Bash(python3 -m unittest)", "  Bash(python3 -m unittest *)", "  Bash(python3)", "  Bash(python3 *)"])
+        self.assertEqual(self.setup(*args).stdout, f"setup: 56 rules added to {settings}\n")
+        again = self.setup("--print", *args)
+        self.assertEqual(again.stdout.splitlines()[-1],
+                         f"In place: {settings} holds every rule above and none an earlier version wrote.")
+        self.assertEqual(again.stdout.splitlines()[:-1], shown.stdout.splitlines()[:-1])
+
+    # --- the typed and the resolved path ----------------------------------------------------------------------
+
+    @unittest.skipIf(os.name == "nt", "symlinks need extra rights on Windows")
+    def test_rules_are_written_for_the_path_as_typed_and_as_resolved(self):
+        real = self.tmp / "real" / "plugin" / "scripts"
+        real.mkdir(parents=True)
+        shutil.copy(SCRIPT, real / "swd-setup.py")
+        (self.tmp / "link").symlink_to(self.tmp / "real", target_is_directory=True)
+        typed = (self.tmp / "link" / "plugin").as_posix()
+        resolved = (self.tmp / "link" / "plugin").resolve().as_posix()
+        self.assertNotEqual(typed, resolved)
+        for args in ((), ("--plugin-root", typed)):
+            with self.subTest(args=args):
+                result = self.run_script(self.tmp / "link" / "plugin" / "scripts" / "swd-setup.py", "--print", *args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                listed = [line.strip() for line in result.stdout.splitlines()]
+                for folder in (typed, resolved):
+                    self.assertIn(f"Bash(python3 {folder}/scripts/check_run.py *)", listed)
+                    self.assertIn(f"Bash(sh {folder}/scripts/swd-python.sh check)", listed)
+                    self.assertIn(f"Read(/{folder}/**)", listed)
+                self.assertLess(listed.index(f"Bash(python3 {typed}/scripts/check_run.py *)"),
+                                listed.index(f"Bash(python3 {resolved}/scripts/check_run.py *)"))   # the typed one first
+        # A root that is already its resolved form, or that does not exist, gives each rule once.
+        for root in (resolved, (self.tmp / "nowhere" / "plugin").as_posix()):
+            with self.subTest(root=root):
+                listed = [line.strip() for line in self.setup("--print", "--plugin-root", root).stdout.splitlines()]
+                self.assertEqual(len([rule for rule in listed if rule.startswith("Bash(python3 ") and "check_run.py" in rule]), 1)
+                self.assertIn(f"Bash(python3 {root}/scripts/check_run.py *)", listed)
+
+    def test_rules_for_two_windows_spellings_name_both(self):
+        rules = self.module().rules(self.project, [PureWindowsPath(r"c:\work\swd-agents"), PureWindowsPath(r"C:\work\swd-agents")])
+        self.assertIn("Bash(python3 c:/work/swd-agents/scripts/check_run.py *)", rules)
+        self.assertIn("Bash(python3 C:/work/swd-agents/scripts/check_run.py *)", rules)
+        self.assertIn("Bash(sh c:/work/swd-agents/scripts/swd-watch.sh *)", rules)
+        self.assertIn("Bash(sh C:/work/swd-agents/scripts/swd-watch.sh *)", rules)
+        self.assertEqual(rules.count("Read(//c/work/swd-agents/**)"), 1)
+        self.assertEqual(len(rules), 42 + 24 - 1)
+        self.assertFalse([rule for rule in rules if "\\" in rule])
+
+    # --- the matcher: criteria 2, 3 and 4 ---------------------------------------------------------------------
 
     ROOTS = {
-        "installed": PurePosixPath("/Users/you/.claude/plugins/cache/swd-agents/swd/0.9.0"),
-        "installed on Windows": PureWindowsPath(r"C:\Users\you\.claude\plugins\cache\swd-agents\swd\0.9.0"),
+        "installed": PurePosixPath(f"{INSTALLED}/0.11.0"),
+        "installed on Windows": PureWindowsPath(r"C:\Users\you\.claude\plugins\cache\swd-agents\swd\0.11.0"),
         "checkout": PurePosixPath("/work/swd-agents"),
     }
 
-    def test_each_sh_rule_matches_the_command_the_skills_run(self):
+    def playbook_commands(self, plugin, run):
+        """Every command the build, follow and queue playbooks and the agents run with the plugin's scripts (Design 2)."""
+        commands = [f"sh {plugin}/scripts/swd-python.sh check", f"sh {plugin}/scripts/swd-watch.sh {run}"]
+        for python in PYTHONS:
+            commands += [f"{python} {plugin}/scripts/{tail}" for tail in (
+                f"swd-clean.py {run}",
+                f"check_run.py --plan {run}", f"check_run.py --seal {run}", f"check_run.py --task T2 {run}",
+                f"check_run.py --finish {run}", f"check_run.py {run}",
+                f"swd-dashboard.py --watch --open {run}",
+                f"swd-log.py {run} dispatch T1 generalist-engineer", f"swd-log.py {run} verdict T1 code-reviewer pass",
+                f"swd-log.py {run} blocked the Fable judge could not be reached for the plan",
+                f"swd-test.py {run} T2", f"swd-test.py {run} wave-1", f"swd-test.py {run} final",
+                f"swd-findings.py {run}",
+                f"swd-pr.py --wait 600 {run}", f"swd-pr.py --wait 300 {run}", f"swd-pr.py --mark-handled {run}")]
+        return commands
+
+    def test_every_command_a_run_needs_is_allowed_and_neither_asks_nor_is_denied(self):
+        # Criterion 2, with the printed allow rules alone.
+        for name, root in self.ROOTS.items():
+            allow = self.module().rules(self.project, [root])
+            plugin = root.as_posix()
+            for run in (RUN, RUN + "-swd-setup-fix", RUN + "-swd-queue-fix", RUN + "-swd-mode-fix"):
+                for command in self.playbook_commands(plugin, run):
+                    with self.subTest(root=name, command=command):
+                        self.assertTrue(allowed(command, allow))
+                        self.assertFalse(stopped(command, ASK + DENY))
+
+    def test_no_allow_rule_matches_the_setup_or_queue_script_the_hook_or_a_stretched_path(self):
+        # Criterion 3.
+        for name, root in self.ROOTS.items():
+            allow = self.module().rules(self.project, [root])
+            plugin = root.as_posix()
+            tails = [f"scripts/swd-setup.py --print {PROJECT}", f"scripts/swd-setup.py --command * {PROJECT}",
+                     f"scripts/swd-queue.py --dry-run {PROJECT}", f"scripts/swd-queue.py {PROJECT}",
+                     "hooks/swd-mode.py", "hooks/__pycache__/swd-mode.cpython-310.pyc", "scripts/../hooks/swd-mode.py",
+                     "scripts/check_run.py/../../hooks/swd-mode.py", "../../../../payload.py",
+                     f"scripts/CHECK_RUN.py {RUN}", f"scripts/SWD-SETUP.py --print {PROJECT}", "hooks/SWD-MODE.py",
+                     f"scripts/check_ru?.py {RUN}", f"scripts/swd-setu*.py --print {PROJECT}", "hooks/swd-mod?.py",
+                     "scripts/*.py", f"scripts/'check_run'.py {RUN}", "hooks/swd-'mode'.py",
+                     f"scripts/swd-'setup'.py --print {PROJECT}"]
+            commands = [f"{python} {plugin}/{tail}" for python in PYTHONS for tail in tails]
+            commands += [f'{python} "{plugin}/scripts/check_run.py" {RUN}' for python in PYTHONS]
+            if name.startswith("installed"):   # another version folder's script needs setup run again
+                newer = root.parent.as_posix() + "/0.11.1"
+                commands += [f"{python} {newer}/scripts/check_run.py {RUN}" for python in PYTHONS]
+                commands += [f"sh {newer}/scripts/swd-python.sh check", f"sh {newer}/scripts/swd-watch.sh {RUN}"]
+            for command in commands:
+                with self.subTest(root=name, command=command):
+                    self.assertEqual([rule for rule in allow if matches(rule, command)], [])
+                    self.assertFalse(allowed(command, allow))
+
+    def test_each_sh_rule_matches_the_command_the_skills_run_and_nothing_stretched(self):
         # The skills run `sh <plugin>/scripts/...`, where <plugin> is ${CLAUDE_PLUGIN_ROOT}: for an installed
         # plugin that is the folder named for its version, and the two sh rules name that folder exactly.
-        module = self.module()
         for name, root in self.ROOTS.items():
-            rules = module.rules(self.project, root)
+            rules = self.module().rules(self.project, [root])
             plugin = root.as_posix()
             with self.subTest(root=name, rules="sh rules have no wildcard in the path"):
                 check, watch = [r for r in rules if r.startswith("Bash(sh ")]
@@ -177,15 +342,11 @@ class SetupTest(unittest.TestCase):
                 self.assertEqual(watch, f"Bash(sh {plugin}/scripts/swd-watch.sh *)")
                 self.assertFalse(set("*?[") & set(check), check)
                 self.assertEqual((watch.count("*"), watch[:-1].endswith(" *")), (1, True), watch)
-            for command in (f"sh {plugin}/scripts/swd-python.sh check",
-                            f"sh {plugin}/scripts/swd-watch.sh .swd/runs/2026-11-16-demo"):
-                with self.subTest(root=name, command=command):
-                    self.assertTrue([rule for rule in rules if allows(rule, command)], rules)
-            prefix = module.plugin_prefix(root)
+            prefix = self.module().plugin_prefix(root)
             launcher = f"sh {plugin}/scripts/swd-python.sh"
             for command in (f"{launcher} run {plugin}/scripts/check_run.py",
                             f"{launcher} install --yes",
-                            # stretched to end in a rule's tail (found by the T2 security review)
+                            # stretched to end in a rule's tail (found by the 0.9.0 T2 security review)
                             f"{launcher} run payload.py scripts/swd-python.sh check",
                             f"{launcher} run payload.py #scripts/swd-python.sh check",
                             f"{launcher} install --yes scripts/swd-python.sh check",
@@ -195,90 +356,443 @@ class SetupTest(unittest.TestCase):
                             f"sh {prefix}../../../elsewhere/scripts/swd-python.sh check",
                             f"sh {prefix}../../../payload.sh scripts/swd-watch.sh y"):
                 with self.subTest(root=name, command=command):
-                    self.assertEqual([rule for rule in rules if allows(rule, command)], [])
-        # Another version's commands are not allowed by the rules built for 0.9.0; setup must be run again.
-        rules = module.rules(self.project, self.ROOTS["installed"])
-        newer = self.ROOTS["installed"].parent / "0.9.1"
-        for command in (f"sh {newer}/scripts/swd-python.sh check", f"sh {newer}/scripts/swd-watch.sh .swd/runs/x"):
-            with self.subTest(command=command):
-                self.assertEqual([rule for rule in rules if allows(rule, command)], [])
+                    self.assertEqual([rule for rule in rules if matches(rule, command)], [])
 
-    def test_deny_rules_match_every_way_of_running_the_hook_and_no_playbook_command(self):
-        module = self.module()
-        self.assertEqual(module.DENY, DENY)
+    def test_with_an_interpreter_rule_the_setup_and_queue_scripts_ask_and_the_hook_is_denied(self):
+        # Criterion 4: an interpreter rule allows any Python command, so only the ask and deny rules stand in the way.
         for name, root in self.ROOTS.items():
-            allow = module.rules(self.project, root)
+            allow = self.module().rules(self.project, [root], ["python3"])
+            self.assertIn("Bash(python3)", allow)
+            self.assertIn("Bash(python3 *)", allow)
             plugin = root.as_posix()
-            prefix = module.plugin_prefix(root)
+            for command in (f"python3 {plugin}/scripts/swd-setup.py --command * {PROJECT}",
+                            f"python3 {plugin}/scripts/swd-queue.py {PROJECT}",
+                            f"HOME=/x python3 {plugin}/scripts/swd-queue.py {PROJECT}",
+                            f"echo x | python3 {plugin}/scripts/swd-setup.py --print {PROJECT}",
+                            f"unset SWD_UNATTENDED && python3 {plugin}/scripts/check_run.py --seal {RUN}"):
+                with self.subTest(root=name, command=command):
+                    self.assertTrue(stopped(command, self.module().ASK))
+            for command in self.hook_commands(root):
+                with self.subTest(root=name, hook=command):
+                    self.assertTrue(stopped(command, self.module().DENY))
+
+    def hook_commands(self, root):
+        plugin = root.as_posix()
+        prefix = self.module().plugin_prefix(root)
+        return [f"python3 {plugin}/hooks/swd-mode.py",
+                f"python {plugin}/hooks/swd-mode.py",
+                f"py -3 {plugin}/hooks/swd-mode.py",
+                f"python3 {prefix}scripts/../hooks/swd-mode.py",
+                f"py -3 {root}\\hooks\\swd-mode.py".replace("/", "\\"),
+                f"python {root}\\hooks\\swd-mode.py".replace("/", "\\"),
+                f"echo '{{}}' | python3 {plugin}/hooks/swd-mode.py",
+                *[f"{python} {plugin}/hooks/__pycache__/swd-mode.cpython-310.pyc" for python in PYTHONS]]
+
+    def test_deny_rules_match_every_way_of_running_the_hook_and_no_allow_rule_does(self):
+        self.assertEqual(self.module().DENY, DENY)
+        self.assertEqual(self.module().ASK, ASK)
+        for name, root in self.ROOTS.items():
+            allow = self.module().rules(self.project, [root])
+            plugin = root.as_posix()
             event = '{"hook_event_name":"UserPromptExpansion","command_name":"swd:conductor","command_args":"opus"}'
             piped = f"echo '{event}' | python3 {plugin}/hooks/swd-mode.py"
-            hook_commands = [f"python3 {plugin}/hooks/swd-mode.py",
-                             f"python {plugin}/hooks/swd-mode.py",
-                             f"py -3 {plugin}/hooks/swd-mode.py",
-                             f"python3 {prefix}scripts/../hooks/swd-mode.py",
-                             f"py -3 {root}\\hooks\\swd-mode.py".replace("/", "\\"),
-                             f"python {root}\\hooks\\swd-mode.py".replace("/", "\\"),
-                             piped.split("|")[1].strip()]
-            for command in hook_commands:
+            for command in self.hook_commands(root):
                 with self.subTest(root=name, hook=command):
-                    self.assertTrue([rule for rule in module.DENY if allows(rule, command)])
-            # Every subcommand of the 0.9.0 forgery is allowed without a deny rule: that is the gap they close.
-            self.assertTrue(all(any(allows(rule, part.strip()) for rule in allow) for part in piped.split("|")))
-            run = ".swd/runs/2026-11-16-demo"
-            # The playbooks run ${CLAUDE_PLUGIN_ROOT}/scripts/..., the version folder included.
-            playbook_commands = [f"{python} {plugin}/scripts/{tail}" for python in ("python3", "python", "py -3") for tail in (
-                f"check_run.py --plan {run}", f"check_run.py --seal {run}", f"check_run.py --task T1 {run}",
-                f"check_run.py --finish {run}", f"check_run.py {run}",
-                f"swd-log.py {run} dispatch T1 generalist-engineer", f"swd-test.py {run} T1",
-                f"swd-dashboard.py --watch --open {run}", "swd-clean.py .", "swd-findings.py .",
-                f"swd-pr.py {run}", "swd-queue.py --dry-run .", "swd-setup.py --print .")]
-            for command in playbook_commands:
-                with self.subTest(root=name, playbook=command):
-                    self.assertTrue([rule for rule in allow if allows(rule, command)])
-                    self.assertEqual([rule for rule in module.DENY if allows(rule, command)], [])
+                    self.assertTrue(stopped(command, DENY))
+            # Under the per-script rules the hook part of the 0.9.0 forgery is allowed by no rule at all.
+            self.assertTrue(allowed("echo x", allow))
+            self.assertEqual([rule for rule in allow if matches(rule, f"python3 {plugin}/hooks/swd-mode.py")], [])
+            self.assertFalse(allowed(piped, allow))
 
-    def test_deny_rules_match_the_hooks_compiled_copy(self):
-        # Python runs a .pyc given as the script, and importing the hook writes one beside it.
-        module = self.module()
-        for name, root in self.ROOTS.items():
-            for python in ("python3", "python", "py -3"):
-                command = f"{python} {root.as_posix()}/hooks/__pycache__/swd-mode.cpython-310.pyc"
-                with self.subTest(root=name, command=command):
-                    self.assertTrue([rule for rule in module.DENY if allows(rule, command)])
+    def test_the_matcher_model_splits_commands_and_strips_assignments_only_for_ask_and_deny(self):
+        self.assertTrue(allowed("ls a && ls b; ls c | ls d || ls e & ls f\nls g", ["Bash(ls *)"]))
+        self.assertFalse(allowed("ls a && rm b", ["Bash(ls *)"]))
+        self.assertFalse(allowed("X=1 ls a", ["Bash(ls *)"]))
+        self.assertTrue(stopped("X=1 Y=2 rm a", ["Bash(rm *)"]))
+        self.assertTrue(allowed("git", ["Bash(git *)"]))   # a trailing ` *` also matches the bare command
 
-    def test_deny_rules_match_no_command_on_a_run_folder_named_for_swd_mode(self):
-        # A deny rule refuses outright, so a run whose short name holds `swd-mode` must keep its checker calls.
-        module = self.module()
-        run = ".swd/runs/2026-11-16-swd-mode-fix"
-        for name, root in self.ROOTS.items():
-            plugin = root.as_posix()
-            for python in ("python3", "python", "py -3"):
-                for tail in (f"check_run.py --seal {run}", f"swd-log.py {run} dispatch T1 generalist-engineer",
-                             f"swd-test.py {run} T1"):
-                    command = f"{python} {plugin}/scripts/{tail}"
-                    with self.subTest(root=name, command=command):
-                        self.assertEqual([rule for rule in module.DENY if allows(rule, command)], [])
+    # --- earlier versions' rules: criterion 6 ------------------------------------------------------------------
 
-    def test_rules_for_an_older_version_count_as_missing(self):
-        # After a plugin update, setup adds the new version's sh rules and keeps the old ones (it never removes).
-        old = "/Users/you/.claude/plugins/cache/swd-agents/swd/0.8.0"
-        new = "/Users/you/.claude/plugins/cache/swd-agents/swd/0.9.0"
+    OLD_10 = [f"Bash(python3 {INSTALLED}/*)", f"Bash(python {INSTALLED}/*)", f"Bash(py -3 {INSTALLED}/*)",
+              f"Bash(sh {INSTALLED}/0.10.0/scripts/swd-python.sh check)", f"Bash(sh {INSTALLED}/0.10.0/scripts/swd-watch.sh *)"]
+
+    def test_the_outcome_for_a_file_with_old_rules(self):
+        # The plan's Outcome for <p2>, as written there.
+        allow = ["Bash(make *)", *self.OLD_10, f"Bash({INSTALLED}/*)",
+                 f"Bash(sh {INSTALLED}/0.9.0/scripts/swd-python.sh check)", "Bash(python3 *)",
+                 f"Bash(python3 {INSTALLED}/0.10.0/scripts/check_run.py --plan *)", f"Read(/{INSTALLED}/**)", "Bash(git *)"]
+        text = json.dumps({"permissions": {"allow": allow, "deny": ["Bash(rm *)"]}, "env": {"X": "1"}})
+        self.write_settings(text)
+        settings = self.settings.resolve()
+        args = ("--plugin-root", f"{INSTALLED}/0.11.0")
+        old = [*self.OLD_10, f"Bash({INSTALLED}/*)", f"Bash(sh {INSTALLED}/0.9.0/scripts/swd-python.sh check)"]
+        shown = self.setup("--print", *args)
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        lines = shown.stdout.splitlines()
+        self.assertEqual(lines[-9:], [OLD_HEADING, *["  " + rule for rule in old],
+                                      f"Not in place: {settings} is missing 50 of the rules above and still holds 7 rules"
+                                      " an earlier version wrote; run /swd:setup."])
+        self.assertEqual(self.settings.read_bytes(), text.encode("utf-8"))
+        result = self.setup(*args)
+        self.assertEqual(result.stdout, f"setup: 50 rules added to {settings}; 7 rules an earlier version of the plugin wrote removed\n")
+        self.assertEqual(self.setup(*args).stdout, "setup: nothing to add\n")
+        data = self.data()
+        wanted = self.module().rules(self.project.resolve(), [PurePosixPath(f"{INSTALLED}/0.11.0")])
+        kept = ["Bash(make *)", "Bash(python3 *)", f"Bash(python3 {INSTALLED}/0.10.0/scripts/check_run.py --plan *)",
+                f"Read(/{INSTALLED}/**)", "Bash(git *)"]
+        self.assertEqual(data["permissions"]["allow"], kept + [rule for rule in wanted if rule not in kept])
+        self.assertEqual(data["permissions"]["allow"][5], f"Bash(python3 {INSTALLED}/0.11.0/scripts/check_run.py *)")
+        self.assertEqual(len(data["permissions"]["allow"]), 45)
+        self.assertEqual(data["permissions"]["deny"], ["Bash(rm *)", *DENY])
+        self.assertEqual(data["permissions"]["ask"], ASK)
+        self.assertEqual(data["env"], {"X": "1"})
+        self.assertTrue(self.setup("--print", *args).stdout.splitlines()[-1].startswith("In place: "))
+
+    def test_only_the_plugins_own_old_rules_are_removed(self):
+        user = ["Bash(make *)", "Bash(python3 *)", f"Bash(python3 {INSTALLED}/0.10.0/scripts/check_run.py --plan *)",
+                f"Bash(python3 {INSTALLED}/*) ", f"Bash(sh {INSTALLED}/0.9.0/../0.10.0/scripts/swd-python.sh check)",
+                "Bash(python3 /other/plugin/*)", f"Bash(PYTHON3 {INSTALLED}/*)", f"Bash(sh {INSTALLED}/0.11.0/scripts/swd-watch.sh *)",
+                5, None, {"a": 1}, [1]]
+        allow = [*self.OLD_10, f"Read(/{INSTALLED}/**)", "Bash(git *)", "Bash(pwd)", user[0], f"Bash({INSTALLED}/*)",
+                 user[1], f"Bash(sh {INSTALLED}/0.9.0/scripts/swd-python.sh check)", user[2],
+                 f"Bash(sh {INSTALLED}/0.9.0/scripts/swd-watch.sh *)", *user[3:], self.OLD_10[0]]
+        text = json.dumps({"permissions": {"allow": allow, "deny": [*DENY, "Bash(python3 /other/plugin/*)"],
+                                           "ask": [f"Bash(python3 {INSTALLED}/*)"], "defaultMode": "default"},
+                           "env": {"X": "1"}, "model": "opus"}, indent=4)
+        self.write_settings(text)
+        args = ("--plugin-root", f"{INSTALLED}/0.11.0")
+        old = [*self.OLD_10, f"Bash({INSTALLED}/*)", f"Bash(sh {INSTALLED}/0.9.0/scripts/swd-python.sh check)",
+               f"Bash(sh {INSTALLED}/0.9.0/scripts/swd-watch.sh *)", self.OLD_10[0]]
+        shown = self.setup("--print", *args).stdout.splitlines()
+        start = shown.index(OLD_HEADING)
+        self.assertEqual(shown[start + 1:-1], ["  " + rule for rule in old])   # in file order, the duplicate twice
+        self.assertIn("still holds 9 rules an earlier version wrote", shown[-1])
+        self.assertEqual(self.settings.read_text(encoding="utf-8"), text)
+        result = self.setup(*args)
+        self.assertRegex(result.stdout, r"^setup: \d+ rules added to .*; 9 rules an earlier version of the plugin wrote removed\n$")
+        data = self.data()
+        self.assertEqual(data["permissions"]["allow"][:15], [f"Read(/{INSTALLED}/**)", "Bash(git *)", "Bash(pwd)", *user])
+        self.assertFalse(set(old) & {rule for rule in data["permissions"]["allow"] if isinstance(rule, str)})
+        self.assertEqual(data["permissions"]["deny"], [*DENY, "Bash(python3 /other/plugin/*)"])
+        self.assertEqual(data["permissions"]["ask"], [f"Bash(python3 {INSTALLED}/*)", *ASK])
+        self.assertEqual(list(data["permissions"]), ["allow", "deny", "ask", "defaultMode"])
+        self.assertEqual((data["env"], data["model"], data["permissions"]["defaultMode"]), ({"X": "1"}, "opus", "default"))
+        before = self.settings.read_bytes()
+        self.assertEqual(self.setup(*args).stdout, "setup: nothing to add\n")
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_removal_with_nothing_to_add_still_reports_the_count(self):
+        self.setup("--plugin-root", f"{INSTALLED}/0.11.0")
+        data = self.data()
+        data["permissions"]["allow"].append(self.OLD_10[1])
+        self.write_settings(json.dumps(data))
+        result = self.setup("--plugin-root", f"{INSTALLED}/0.11.0")
+        self.assertEqual(result.stdout, f"setup: 0 rules added to {self.settings.resolve()};"
+                                        " 1 rules an earlier version of the plugin wrote removed\n")
+        self.assertNotIn(self.OLD_10[1], self.allow())
+
+    def test_rules_for_an_older_version_are_replaced_after_an_update(self):
+        old = f"{INSTALLED}/0.8.0"
+        new = f"{INSTALLED}/0.9.0"
         self.assertEqual(self.setup("--plugin-root", old).returncode, 0)
         result = self.setup("--plugin-root", new)
-        self.assertIn("setup: 2 rules added", result.stdout)
+        self.assertEqual(result.stdout, f"setup: 23 rules added to {self.settings.resolve()};"
+                                        " 23 rules an earlier version of the plugin wrote removed\n")
         allow = self.allow()
-        for version in (old, new):
-            for rule in (f"Bash(sh {version}/scripts/swd-python.sh check)", f"Bash(sh {version}/scripts/swd-watch.sh *)"):
-                with self.subTest(rule=rule):
-                    self.assertIn(rule, allow)
+        for rule in (f"Bash(sh {new}/scripts/swd-python.sh check)", f"Bash(sh {new}/scripts/swd-watch.sh *)",
+                     f"Bash(py -3 {new}/scripts/swd-test.py *)"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, allow)
+        self.assertFalse([rule for rule in allow if "/0.8.0/" in rule])
+
+    def test_the_current_versions_rules_go_when_run_as_the_next(self):
+        self.setup("--plugin-root", f"{INSTALLED}/0.11.0")
+        result = self.setup("--plugin-root", f"{INSTALLED}/0.11.1")
+        self.assertIn("; 23 rules an earlier version of the plugin wrote removed", result.stdout)
+        self.assertFalse([rule for rule in self.allow() if "/0.11.0/" in rule])
+
+    def test_a_checkout_recognises_the_broad_rules_and_keeps_its_own_sh_rules(self):
+        checkout = "/work/swd-agents"
+        broad = [f"Bash(python3 {checkout}/*)", f"Bash(python {checkout}/*)", f"Bash(py -3 {checkout}/*)", f"Bash({checkout}/*)"]
+        own = [f"Bash(sh {checkout}/scripts/swd-python.sh check)", f"Bash(sh {checkout}/scripts/swd-watch.sh *)"]
+        # A folder under the checkout that looks like a version folder is not one: these are the user's rules.
+        versioned = [f"Bash(python3 {checkout}/0.10.0/scripts/check_run.py *)", f"Bash(sh {checkout}/0.10.0/scripts/swd-python.sh check)"]
+        self.write_settings(json.dumps({"permissions": {"allow": [*broad, *own, *versioned]}}))
+        result = self.setup("--plugin-root", checkout)
+        self.assertIn("; 4 rules an earlier version of the plugin wrote removed", result.stdout)
+        self.assertEqual(self.allow()[:4], [*own, *versioned])
+        self.assertFalse(set(broad) & set(self.allow()))
+        self.assertEqual(self.module().earlier_rules([*broad, *own], [PurePosixPath(checkout)]), broad)
+        self.assertEqual(self.module().earlier_rules(versioned, [PurePosixPath(checkout)]), [])
+
+    def test_a_windows_root_recognises_the_c_drive_forms(self):
+        root = PureWindowsPath(r"C:\Users\you\.claude\plugins\cache\swd-agents\swd\0.11.0")
+        prefix = "C:/Users/you/.claude/plugins/cache/swd-agents/swd/"
+        old = [f"Bash(python3 {prefix}*)", f"Bash(python {prefix}*)", f"Bash(py -3 {prefix}*)", f"Bash({prefix}*)",
+               f"Bash(sh {prefix}0.10.0/scripts/swd-python.sh check)", f"Bash(sh {prefix}0.10.0/scripts/swd-watch.sh *)",
+               f"Bash(python {prefix}0.10.1-rc1/scripts/check_run.py *)"]
+        kept = [f"Bash(sh {prefix}0.11.0/scripts/swd-python.sh check)", f"Bash(python3 {prefix.lower()}*)",
+                f"Bash(python3 {prefix}0.11.0/scripts/check_run.py *)", f"Bash(python3 {prefix}x/scripts/check_run.py *)",
+                f"Bash(python3 {prefix}0.10.0/scripts/swd-setup.py *)"]
+        self.assertEqual(self.module().earlier_rules([*kept, *old], [root]), old)
+
+    @unittest.skipIf(os.name == "nt", "symlinks need extra rights on Windows")
+    def test_a_rule_that_is_wanted_is_never_counted_as_old(self):
+        # A version folder reached through a link with another name: each spelling's per-script and sh rules have the
+        # other's "earlier version" form. Setup does not remove a rule it is about to add, so it reaches In place.
+        swd = self.tmp.resolve() / "plugins" / "cache" / "swd-agents" / "swd"   # resolved: the version folder is the only link
+        (swd / "0.11.0-x").mkdir(parents=True)
+        (swd / "0.11.0").symlink_to(swd / "0.11.0-x", target_is_directory=True)
+        args = ("--plugin-root", (swd / "0.11.0").as_posix())
+        self.assertNotIn(";", self.setup(*args).stdout)
+        for version in ("0.11.0", "0.11.0-x"):
+            self.assertIn(f"Bash(python3 {swd.as_posix()}/{version}/scripts/check_run.py *)", self.allow())
+        self.assertEqual(self.setup(*args).stdout, "setup: nothing to add\n")
+        self.assertTrue(self.setup("--print", *args).stdout.splitlines()[-1].startswith("In place: "))
+
+    def test_a_file_that_needs_nothing_is_not_rewritten(self):
+        # The user's own layout is kept: a rewrite would give json.dumps(indent=2) bytes, not these.
+        self.setup()
+        compact = json.dumps(self.data(), separators=(",", ":"))
+        self.write_settings(compact)
+        self.assertEqual(self.setup().stdout, "setup: nothing to add\n")
+        self.assertEqual(self.settings.read_text(encoding="utf-8"), compact)
+
+    # --- the status line and damaged files ---------------------------------------------------------------------
+
+    def test_the_status_line_says_how_much_is_missing(self):
+        settings = self.settings.resolve()
+        args = ("--plugin-root", "/work/swd-agents")
+        self.write_settings(json.dumps({"permissions": {"allow": ["Bash(git *)", "Bash(pwd)"], "deny": DENY[:1]}}))
+        self.assertEqual(self.setup("--print", *args).stdout.splitlines()[-1],
+                         f"Not in place: {settings} is missing 49 of the rules above and still holds 0 rules"
+                         " an earlier version wrote; run /swd:setup.")
+        self.setup(*args)
+        last = self.setup("--print", *args).stdout.splitlines()
+        self.assertEqual(last[-1], f"In place: {settings} holds every rule above and none an earlier version wrote.")
+        self.assertNotIn(OLD_HEADING, last)
+
+    DAMAGED = ["{ not json", "[]", "null", '{"permissions": []}', '{"permissions": null}', '{"permissions": {"allow": {}}}',
+               '{"permissions": {"ask": "Bash(rm *)"}}', '{"permissions": {"deny": "Bash(rm *)"}}', b'{"x": "\xff"}',
+               # Not strict JSON: Python reads these, and writing them back would change or drop what the file holds.
+               '{"permissions": {"allow": []}, "x": NaN}', '{"permissions": {"allow": []}, "x": Infinity}',
+               '{"permissions": {"allow": []}, "x": -Infinity}', '{"permissions": {"allow": []}, "x": 1e400}',
+               '{"permissions": {"allow": ["Bash(a)"]}, "permissions": {"allow": ["Bash(b)"]}}',
+               '{"permissions": {"allow": ["Bash(a)"], "allow": ["Bash(b)"]}}',
+               '{"permissions": {"allow": []}, "env": {"X": "1", "X": "2"}}']
+
+    def test_a_damaged_file_is_listed_as_not_valid_under_print(self):
+        settings = self.settings.resolve()
+        for text in self.DAMAGED:
+            with self.subTest(settings=text):
+                self.write_settings(text)
+                before = self.settings.read_bytes()
+                result = self.setup("--print", "--plugin-root", "/work/swd-agents")
+                self.assertEqual(result.returncode, 0)
+                lines = result.stdout.splitlines()
+                self.assertIn("  Bash(git *)", lines)
+                self.assertIn(DENY_HEADING, lines)
+                self.assertNotIn(OLD_HEADING, lines)
+                self.assertEqual(lines[-1], f"Not in place: {settings} is not valid JSON; fix or remove it, then run setup again.")
+                self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_damaged_file_is_not_overwritten(self):
+        for text in self.DAMAGED:
+            with self.subTest(settings=text):
+                self.write_settings(text)
+                before = self.settings.read_bytes()
+                result = self.setup()
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(result.stderr, f"{self.settings.resolve()} is not valid JSON; fix or remove it, then run setup again\n")
+                self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_setup_never_writes_a_file_that_is_not_json(self):
+        # Strict reading leaves nothing json.dumps would refuse, so a float that is not JSON goes into the data to write.
+        setup = self.module()
+        text = json.dumps({"permissions": {"allow": ["Bash(make *)"]}})
+        for existing in (True, False):
+            with self.subTest(existing=existing):
+                shutil.rmtree(self.settings.parent, ignore_errors=True)
+                if existing:
+                    self.write_settings(text)
+                out, err = io.StringIO(), io.StringIO()
+                with mock.patch.object(setup, "ASK", [*setup.ASK, float("inf")]), \
+                        mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}), \
+                        contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = setup.main(["--plugin-root", "/work/swd-agents", str(self.project)])
+                self.assertEqual((code, out.getvalue()), (1, ""))
+                self.assertEqual(err.getvalue(), f"{self.settings.resolve()} is not valid JSON; fix or remove it, then run setup again\n")
+                if existing:
+                    self.assertEqual(self.settings.read_text(encoding="utf-8"), text)
+                else:
+                    self.assertFalse(self.settings.parent.exists())
+
+    # --- the --command refusal: criterion 5 --------------------------------------------------------------------
+
+    REFUSED = ["*", "", "  ", "*test", "py* -3", ":*", "npm test\n", "npm\x1btest"]
+    SHOWN = {"*": "*", "": "", "  ": "  ", "*test": "*test", "py* -3": "py* -3", ":*": ":*", "npm test\n": "npm test\\n",
+             "npm\x1btest": "npm\\x1btest"}
+
+    def test_a_command_that_would_allow_everything_is_refused(self):
+        for value in self.REFUSED:
+            for show in ((), ("--print",)):
+                with self.subTest(value=value, args=show):
+                    result = self.setup(*show, "--command", "npm test", "--command", value)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(result.stderr, f'setup: refused --command "{self.SHOWN[value]}": {REFUSAL}\n')
+                    self.assertFalse(self.settings.parent.exists())
+
+    def test_a_test_command_in_the_project_notes_that_would_allow_everything_is_refused(self):
+        # A newline cannot reach the test command from the notes: the line ends there. \x1b stands in for it.
+        notes = self.project / ".swd" / "project.md"
+        notes.parent.mkdir()
+        for value in self.REFUSED:
+            if "\n" in value:
+                continue
+            for show in ((), ("--print",)):
+                with self.subTest(value=value, args=show):
+                    notes.write_text(f"## Commands\nTest command: `{value}`\n", encoding="utf-8")
+                    result = self.setup(*show)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertEqual(result.stdout, "")
+                    shown = self.SHOWN[value].strip()   # the notes' value is read trimmed
+                    self.assertEqual(result.stderr, f'setup: refused {NOTES} "{shown}": {REFUSAL}\n')
+                    self.assertFalse(self.settings.parent.exists())
+
+    def test_a_test_command_split_over_two_lines_writes_no_rule_with_a_newline(self):
+        notes = self.project / ".swd" / "project.md"
+        notes.parent.mkdir()
+        notes.write_text("Test command: `npm test\nrm -rf /`\n", encoding="utf-8")
+        self.setup()
+        self.assertFalse([rule for rule in self.allow() if "\n" in rule or "rm -rf" in rule])
+
+    ACCEPTED = ["npm test", "npx jest", "python3", "node", "go run .", "make test", "./gradlew test", "bash scripts/test.sh",
+                "C:/tools/x.exe test", "g++ -o t t.cpp", "python3.12 -m pytest", "pytest tests/test_*.py",
+                "./run_tests.sh", "golangci-lint run", "/opt/homebrew/opt/node@20/bin/npm test"]   # _ - @ in a first word
+
+    def test_normal_commands_are_accepted(self):
+        notes = self.project / ".swd" / "project.md"
+        notes.parent.mkdir()
+        for source in (NOTES, "--command"):
+            for value in self.ACCEPTED:
+                with self.subTest(value=value, source=source):
+                    shutil.rmtree(self.settings.parent, ignore_errors=True)   # so an earlier run's rules cannot stand in
+                    notes.write_text(f"Test command: `{value if source == NOTES else 'npm test'}`\n", encoding="utf-8")
+                    result = self.setup(*(("--command", value) if source == "--command" else ()))
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn(f"Bash({value})", self.allow())
+                    self.assertIn(f"Bash({value} *)", self.allow())
+
+    def refused_from_both_sources(self, values, why):
+        notes = self.project / ".swd" / "project.md"
+        notes.parent.mkdir(exist_ok=True)
+        for value in values:
+            for source, args in (("--command", ("--command", value)), (NOTES, ())):
+                notes.write_text(f"Test command: `{value if source == NOTES else 'npm test'}`\n", encoding="utf-8")
+                for show in ((), ("--print",)):
+                    with self.subTest(value=value, source=source, args=show):
+                        result = self.setup(*show, *args)
+                        self.assertEqual((result.returncode, result.stdout), (2, ""))
+                        self.assertEqual(result.stderr, f'setup: refused {source} "{value}": {why}\n')
+                        self.assertFalse(self.settings.parent.exists())
+
+    # A first word with shell syntax in it does not name the program that runs: an assignment in any form, a quoted or
+    # escaped name, a value made only of syntax, a back-slashed path, `~`, or a leading `-`.
+    NOT_PLAIN = ["X+=1", "X=1", "NODE_ENV=test npm test", "X[0]=1", '"env"', "e''nv", "(x)", r"C:\tools\x.exe test",
+                 "~/bin/t", "-c x", r"\sh", "$x", "a;b", "a|b", ">out", "{x}", "!x", "x\\",
+                 r"C:\Windows\System32\bash.exe -c x"]
+
+    def test_a_first_word_that_is_not_a_plain_name_or_path_is_refused(self):
+        self.refused_from_both_sources(self.NOT_PLAIN, NOT_PLAIN)
+
+    # These programs run the command they are given, which no ask or deny rule sees.
+    RUNS_ANOTHER = ["sh", "bash -c x", "/usr/bin/env python3", "xargs", "sudo make test", "eval", "exec", "npx", "env",
+                    "/bin/sh", "bash.exe", "zsh -lc x", "npx --yes x", "doas make",
+                    "BASH.EXE", "Env", "C:/Windows/System32/Bash.exe -c x"]   # case ignored: these file systems find them
+
+    def test_a_command_that_runs_another_is_refused(self):
+        self.refused_from_both_sources(self.RUNS_ANOTHER, RUNNER)
+
+    def test_a_command_that_names_the_plugins_own_folder_is_refused(self):
+        # It would keep, or bring back, the broad rule Bash(python3 <prefix>*), which setup could then not remove.
+        notes = self.project / ".swd" / "project.md"
+        notes.parent.mkdir()
+        broad = f"python3 {INSTALLED}/*"
+        text = json.dumps({"permissions": {"allow": [f"Bash({broad})"]}})
+        self.write_settings(text)
+        checkout = "python3 /work/swd-agents/scripts/check_run.py"
+        for source, value, root, prefix in ((NOTES, broad, f"{INSTALLED}/0.11.0", f"{INSTALLED}/"),
+                                            ("--command", checkout, "/work/swd-agents", "/work/swd-agents/")):
+            notes.write_text(f"Test command: `{broad if source == NOTES else 'npm test'}`\n", encoding="utf-8")
+            args = ("--command", value) if source == "--command" else ()
+            for show in ((), ("--print",)):
+                with self.subTest(source=source, args=show):
+                    result = self.setup(*show, "--plugin-root", root, *args)
+                    self.assertEqual((result.returncode, result.stdout), (2, ""))
+                    self.assertEqual(result.stderr, f'setup: refused {source} "{value}": it names the plugin\'s own folder,'
+                                                    f" {prefix}, whose scripts setup allows one by one; give the project's own"
+                                                    " command\n")
+                    self.assertEqual(self.settings.read_text(encoding="utf-8"), text)
+        # With an accepted test command in the notes, the broad rule goes.
+        result = self.setup("--plugin-root", f"{INSTALLED}/0.11.0")
+        self.assertIn("; 1 rules an earlier version of the plugin wrote removed", result.stdout)
+        self.assertNotIn(f"Bash({broad})", self.allow())
+        self.assertIn("Bash(npm test)", self.allow())
+
+    @unittest.skipIf(os.name == "nt", "symlinks need extra rights on Windows")
+    def test_a_command_that_names_the_plugins_folder_as_typed_or_as_resolved_is_refused(self):
+        real = self.tmp / "real" / "plugin" / "scripts"
+        real.mkdir(parents=True)
+        shutil.copy(SCRIPT, real / "swd-setup.py")
+        (self.tmp / "link").symlink_to(self.tmp / "real", target_is_directory=True)
+        typed = (self.tmp / "link" / "plugin").as_posix()
+        resolved = (self.tmp / "link" / "plugin").resolve().as_posix()
+        self.assertNotEqual(typed, resolved)
+        for folder in (resolved, typed):
+            with self.subTest(folder=folder):
+                value = f"python3 {folder}/x.py"
+                result = self.run_script(self.tmp / "link" / "plugin" / "scripts" / "swd-setup.py", "--print", "--command", value)
+                self.assertEqual((result.returncode, result.stdout), (2, ""))
+                self.assertEqual(result.stderr, f'setup: refused --command "{value}": it names the plugin\'s own folder, {folder}/,'
+                                                " whose scripts setup allows one by one; give the project's own command\n")
+
+    def test_a_value_that_fails_two_tests_gets_the_first_tests_line_only(self):
+        for value, why in (("X=* npm test", REFUSAL), ('"env"', NOT_PLAIN), ("~/bin/env", NOT_PLAIN),
+                           (f"X=1 python3 {INSTALLED}/x.py", NOT_PLAIN), (f"env python3 {INSTALLED}/*", RUNNER)):
+            with self.subTest(value=value):
+                result = self.setup("--plugin-root", f"{INSTALLED}/0.11.0", "--command", value)
+                self.assertEqual((result.returncode, result.stdout), (2, ""))
+                self.assertEqual(result.stderr, f'setup: refused --command "{value}": {why}\n')
 
 
-def allows(rule, command):
-    """Whether a Bash(...) rule covers the whole command, `*` standing for any text, spaces included.
-    This approximates Claude Code's matcher; it is not the matcher itself."""
+def matches(rule, command):
+    """Whether a Bash(...) rule covers the whole of one simple command, `*` standing for any text, spaces included,
+    and a trailing ` *` also matching the bare command. This approximates Claude Code's matcher; it is not the matcher."""
     match = re.fullmatch(r"Bash\((.*)\)", rule, re.S)
-    pattern = ".*".join(re.escape(part) for part in match.group(1).split("*")) if match else None
-    return bool(pattern) and re.fullmatch(pattern, command, re.S) is not None
+    if not match:
+        return False
+    body = match.group(1)
+    pattern = ".*".join(re.escape(part) for part in body.split("*"))
+    bare = body.endswith(" *") and command == body[:-2]
+    return bare or re.fullmatch(pattern, command, re.S) is not None
+
+
+def parts(command):
+    """The subcommands of a command line, split at &&, ||, ;, |, & and newlines."""
+    return [part.strip() for part in re.split(r"&&|\|\||;|\||&|\n", command) if part.strip()]
+
+
+def allowed(command, allow):
+    """Every subcommand matches an allow rule, as written: an allow rule does not match past an assignment."""
+    return all(any(matches(rule, part) for rule in allow) for part in parts(command))
+
+
+def stopped(command, rules):
+    """Some subcommand, also with its leading NAME=value assignments stripped, matches an ask or deny rule."""
+    return any(matches(rule, form) for part in parts(command)
+               for form in (part, re.sub(r"^(?:\w+=\S*\s+)+", "", part)) for rule in rules)
 
 
 if __name__ == "__main__":
