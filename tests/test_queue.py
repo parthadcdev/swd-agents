@@ -1,8 +1,12 @@
 """Tests for scripts/swd-queue.py: work through .swd/queue.md, one headless run per item.
 
 `claude` and `gh` are stubs. The stub claude plays a finished run that left its branch.
+HOME and USERPROFILE are a temporary folder in every run, so no test reads or writes the real
+~/.claude; the conductor setting is stored there by the real hook, as a typed /swd:conductor would.
 """
+import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "swd-queue.py"
+HOOK = ROOT / "hooks" / "swd-mode.py"
 
 # Records its prompt; unless told to fail, creates a branch and a finished run folder for it.
 CLAUDE_STUB = r"""#!/bin/sh
@@ -65,8 +70,19 @@ class QueueTest(unittest.TestCase):
         for name, body in (("claude", CLAUDE_STUB), ("gh", GH_STUB)):
             (tmp / "bin" / name).write_text(body, encoding="utf-8")
             (tmp / "bin" / name).chmod(0o755)
+        self.home = tmp / "home"
+        self.home.mkdir()
         self.env = {**os.environ, "PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}", "STUB_DIR": str(self.stub),
-                    "STUB_FAIL_ON": ""}
+                    "STUB_FAIL_ON": "", "HOME": str(self.home), "USERPROFILE": str(self.home)}
+
+    def set_conductor(self, value, project=None):
+        """Store the setting through the hook, as a typed /swd:conductor in the project would."""
+        event = {"hook_event_name": "UserPromptExpansion", "session_id": "s1", "cwd": str(project or self.project),
+                 "expansion_type": "slash_command", "command_name": "swd:conductor", "command_args": value,
+                 "prompt": f"/swd:conductor {value}"}
+        result = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(event), capture_output=True, text=True,
+                                env=self.env, encoding="utf-8")
+        self.assertTrue(result.stdout.startswith(f"swd conductor: set to {value}\n"), result.stdout + result.stderr)
 
     def real_runs_need_the_stubs(self):
         if os.name == "nt":
@@ -140,10 +156,118 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(len(args), 3)
         for line in args:
             self.assertIn("--model fable", line)
+        self.assertEqual(result.stdout.splitlines(), [
+            "starting with --model fable: Add item_count to the cart", "- [x] Add item_count to the cart — swd/item-1",
+            "starting with --model fable: #12", "- [x] #12 — swd/item-2",
+            "starting with --model fable: Add a changelog", "- [x] Add a changelog — swd/item-3"])
+
+    @stubbed
+    def test_under_opus_every_run_starts_with_model_opus_and_says_so_before_it_starts(self):
+        self.set_conductor("opus")
+        result = self.work()
+        self.assertEqual(result.returncode, 0)
+        args = self.runs_args()
+        self.assertEqual(len(args), 3)
+        for line in args:
+            self.assertIn("--model opus", line)
+            self.assertNotIn("fable", line)
+        self.assertEqual(result.stdout.splitlines(), [
+            "starting with --model opus: Add item_count to the cart", "- [x] Add item_count to the cart — swd/item-1",
+            "starting with --model opus: #12", "- [x] #12 — swd/item-2",
+            "starting with --model opus: Add a changelog", "- [x] Add a changelog — swd/item-3"])
+
+    def test_dry_run_under_opus_names_opus(self):
+        self.set_conductor("opus")
+        result = self.work("--dry-run")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.splitlines()[0], "3 open items, finish: branch, model: opus")
+        self.assertEqual(self.prompts(), [])
+
+    def test_setting_fable_again_gives_fable(self):
+        self.set_conductor("opus")
+        self.set_conductor("fable")
+        self.assertIn("finish: branch, model: fable", self.work("--dry-run").stdout)
+
+    def test_another_project_under_the_same_home_stays_on_fable(self):
+        other = self.project.parent / "other"
+        (other / ".swd").mkdir(parents=True)
+        (other / ".swd" / "queue.md").write_text("- [ ] one\n", encoding="utf-8")
+        self.set_conductor("opus", other)
+        self.assertIn("finish: branch, model: fable", self.work("--dry-run").stdout)
+        other_run = subprocess.run([sys.executable, str(SCRIPT), "--dry-run", str(other)], capture_output=True, text=True,
+                                   env=self.env, encoding="utf-8")
+        self.assertIn("finish: pr, model: opus", other_run.stdout, other_run.stderr)
+
+    def test_a_model_line_under_opus_is_ignored_naming_opus(self):
+        self.set_conductor("opus")
+        self.queue.write_text("Model: sonnet\n\n- [ ] one\n", encoding="utf-8")
+        for args in (("--dry-run",), ()):
+            if not args:
+                self.real_runs_need_the_stubs()   # the dry run above has been checked by now
+            with self.subTest(args=args):
+                stdout = self.work(*args).stdout
+                self.assertTrue(stdout.startswith(
+                    "ignoring 'Model: sonnet' in .swd/queue.md: every run starts with --model opus\n"), stdout)
+        for line in self.runs_args():
+            self.assertIn("--model opus", line)
+            self.assertNotIn("sonnet", line)
+
+    def test_the_queue_leaves_no_compiled_copy_of_the_hook(self):
+        # Setup denies running the hook by name; a .pyc beside it would be a way round that.
+        plugin = self.project.parent / "plugin"
+        for part in ("scripts/swd-queue.py", "scripts/check_run.py", "hooks/swd-mode.py"):
+            (plugin / part).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(ROOT / part, plugin / part)
+        self.set_conductor("opus")
+        env = {k: v for k, v in self.env.items() if k != "PYTHONDONTWRITEBYTECODE"}
+        result = subprocess.run([sys.executable, str(plugin / "scripts" / "swd-queue.py"), "--dry-run", str(self.project)],
+                                capture_output=True, text=True, env=env, encoding="utf-8")
+        self.assertIn("model: opus", result.stdout, result.stderr)   # the copy did load the hook
+        self.assertTrue((plugin / "scripts" / "__pycache__").is_dir())   # bytecode was on for everything else
+        self.assertFalse((plugin / "hooks" / "__pycache__").exists())
+
+    def test_the_setting_is_read_for_the_resolved_folder_the_runs_start_in(self):
+        # The setting is stored under the resolved folder; `.` or a `..` path must still find it.
+        self.set_conductor("opus")
+        for given, cwd in ((".", self.project), (str(self.project / ".." / "project"), None)):
+            with self.subTest(given=given):
+                result = subprocess.run([sys.executable, str(SCRIPT), "--dry-run", given], cwd=cwd, capture_output=True,
+                                        text=True, env=self.env, encoding="utf-8")
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(result.stdout.splitlines()[0], "3 open items, finish: branch, model: opus")
+
+    def test_a_hook_that_cannot_be_loaded_stops_the_queue_before_anything_else(self):
+        # Never a silent fall back to fable: that would ignore the stored opus without a word.
+        plugin = self.project.parent / "plugin"
+        for part in ("scripts/swd-queue.py", "scripts/check_run.py"):
+            (plugin / part).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(ROOT / part, plugin / part)
+        self.set_conductor("opus")
+        self.queue.write_text("Model: sonnet\n\n- [ ] one\n", encoding="utf-8")
+        before = self.queue.read_bytes()
+        for broken in (None, "def conductor_setting(\n"):
+            if broken:
+                (plugin / "hooks").mkdir()
+                (plugin / "hooks" / "swd-mode.py").write_text(broken, encoding="utf-8")
+            for args in (("--dry-run",), ()):
+                with self.subTest(hook=broken, args=args):
+                    result = subprocess.run([sys.executable, str(plugin / "scripts" / "swd-queue.py"), *args,
+                                             str(self.project)], capture_output=True, text=True, env=self.env,
+                                            encoding="utf-8")
+                    self.assertEqual(result.returncode, 1)
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+                    self.assertIn("could not read the conductor setting: ", result.stderr)
+                    self.assertIn("swd-mode.py", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(self.prompts(), [])
+                    self.assertEqual(self.runs_args(), [])
+                    self.assertEqual(self.queue.read_bytes(), before)
+                    self.assertFalse((self.project / ".swd" / "queue-report.md").exists())
 
     @stubbed
     def test_a_model_line_is_ignored_and_said_once_before_anything_else(self):
-        # The principal does no work off Fable 5.2, so the queue never starts a run elsewhere.
+        # The project's conductor setting decides the model, never the queue file.
         self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n", encoding="utf-8")
         result = self.work()
         self.assertEqual(result.stdout.count(self.IGNORED), 1)

@@ -7,9 +7,12 @@
 
 The queue is a markdown list. `- [ ] <requirement>` is an open item; `- [ ] #12` means GitHub
 issue 12. An optional line `Finish: pr`, `Finish: merge-push` or `Finish: branch` says how
-every run is delivered (default: pr). Every run starts with `--model fable`, because the
-principal does no work off Fable 5.2; a `Model:` line, which earlier versions read, is ignored
-and the script says so once. Each item is run as its own `claude -p "/swd:build ..."`,
+every run is delivered (default: pr). Every run starts on the model the project's conductor
+setting gives (`/swd:conductor`, read with the swd-mode hook's own function): `--model fable`
+by default, `--model opus` where the setting is `opus`, because `--fallback-model` does not
+switch on a usage limit. The script prints the model before each run; if the hook cannot be
+loaded, it says so in one line and starts nothing. A `Model:` line, which
+earlier versions read, is ignored and the script says so once. Each item is run as its own `claude -p "/swd:build ..."`,
 pre-approved, so each starts with a fresh context. When a run finishes the item becomes
 `- [x] <item> — <where the work is>`; when it does not, `- [!] <item> — blocked: <run folder>`.
 Two failures in a row stop the queue: that usually means something systemic, such as missing
@@ -17,6 +20,7 @@ permissions (run /swd:setup first). A summary is written to .swd/queue-report.md
 """
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -33,6 +37,20 @@ FINISH_WORDS = {
     "branch": "leave the branch and push nothing",
 }
 OPEN_RE = re.compile(r"^- \[ \] (.+?)\s*$")
+PLUGIN = Path(__file__).resolve().parent.parent
+
+
+def conductor_setting(project):
+    """'fable' or 'opus' for the project, by the hook's own function, so the two cannot disagree."""
+    spec = importlib.util.spec_from_file_location("swd_mode", PLUGIN / "hooks" / "swd-mode.py")
+    hook = importlib.util.module_from_spec(spec)
+    # No compiled copy of the hook beside it: setup's deny rules stop the hook being run by hand.
+    old, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        spec.loader.exec_module(hook)
+    finally:
+        sys.dont_write_bytecode = old
+    return hook.conductor_setting(str(project))
 
 
 def requirement(project, item):
@@ -53,8 +71,8 @@ def requirement(project, item):
             f"Write 'Closes #{number}' in the pull request description.")
 
 
-def run_item(project, text, finish):
-    """Run one requirement to the end. Returns (finished, where): the run's branch or pull request, or its folder."""
+def run_item(project, text, finish, model):
+    """Run one requirement to the end on `model`. Returns (finished, where): the run's branch or pull request, or its folder."""
     runs = project / ".swd" / "runs"
     before = set(runs.iterdir()) if runs.is_dir() else set()
     prompt = (f"/swd:build {text}\n\nI pre-approve the spec and plan; do not wait for me, and ask no questions: "
@@ -62,10 +80,9 @@ def run_item(project, text, finish):
     # Each run sees this plugin and the project's own settings (where /swd:setup put its rules), and
     # nothing from the user's global setup: a personal hook that rewrites shell commands would stop
     # them matching the project's permission rules, with nobody there to approve them.
-    plugin = str(Path(__file__).resolve().parent.parent)
     try:
-        subprocess.run(["claude", "-p", "--plugin-dir", plugin, "--setting-sources", "project,local",
-                        "--model", "fable", "--output-format", "json", "--", prompt], cwd=project,
+        subprocess.run(["claude", "-p", "--plugin-dir", str(PLUGIN), "--setting-sources", "project,local",
+                        "--model", model, "--output-format", "json", "--", prompt], cwd=project,
                        capture_output=True, text=True, env={**os.environ, "SWD_NO_BROWSER": "1"}, encoding="utf-8", errors="replace")
     except OSError as error:
         return False, f"could not start claude: {error}"
@@ -108,22 +125,30 @@ def main(argv=None):
         print(f"{queue}: Finish must be one of {', '.join(FINISH_WORDS)}", file=sys.stderr)
         return 1
 
-    model = re.search(r"^Model: (\S+)", queue.read_text(encoding="utf-8"), re.M)
-    if model:
+    try:
+        model = conductor_setting(project)
+    except Exception as error:   # missing, half-written or old hook: say so; falling back to fable would hide it
+        reason = " ".join(str(getattr(error, "strerror", None) or error).split())
+        print(f"could not read the conductor setting: {PLUGIN / 'hooks' / 'swd-mode.py'}: {reason}; "
+              "reinstall or update the swd plugin", file=sys.stderr)
+        return 1
+    ignored = re.search(r"^Model: (\S+)", queue.read_text(encoding="utf-8"), re.M)
+    if ignored:
         # Escape what the terminal would act on, so a crafted line cannot clear the screen or set the title.
-        shown = "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in model[1])
-        print(f"ignoring 'Model: {shown}' in .swd/queue.md: every run starts with --model fable", flush=True)
+        shown = "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in ignored[1])
+        print(f"ignoring 'Model: {shown}' in .swd/queue.md: every run starts with --model {model}", flush=True)
     open_items = [m.group(1) for m in map(OPEN_RE.match, queue.read_text(encoding="utf-8").splitlines()) if m]
     if args.dry_run:
-        print(f"{len(open_items)} open items, finish: {finish}, model: fable")
+        print(f"{len(open_items)} open items, finish: {finish}, model: {model}")
         for item in open_items:
             print(f"- {item}")
         return 0
 
     results, failures_in_a_row = [], 0
     for item in open_items[:args.max]:
+        print(f"starting with --model {model}: {item}", flush=True)
         text = requirement(project, item)
-        finished, where = run_item(project, text, finish) if text else (False, "could not read the issue with gh")
+        finished, where = run_item(project, text, finish, model) if text else (False, "could not read the issue with gh")
         mark = f"- [x] {item} — {where}" if finished else f"- [!] {item} — blocked: {where}"
         # Re-read the file each time: the user may be editing the queue while it runs.
         lines = queue.read_text(encoding="utf-8").splitlines()
