@@ -23,6 +23,7 @@ n=$(($(cat "$STUB_DIR/count" 2>/dev/null || echo 0) + 1)); echo $n > "$STUB_DIR/
 for last; do :; done
 printf '%s\n' "$last" > "$STUB_DIR/prompt-$n.txt"
 printf '%s\n' "$*" > "$STUB_DIR/args-$n.txt"
+printf '%s\n' "${SWD_UNATTENDED-unset}" > "$STUB_DIR/unattended-$n.txt"
 if grep -q "$STUB_FAIL_ON" "$STUB_DIR/prompt-$n.txt" 2>/dev/null && [ -n "$STUB_FAIL_ON" ]; then exit 0; fi
 git branch -q "swd/item-$n"
 run=".swd/runs/2026-11-12-item-$n"; mkdir -p "$run"
@@ -121,6 +122,46 @@ class QueueTest(unittest.TestCase):
         self.assertIn("- [x] Add a changelog — swd/item-3", text)
         self.assertNotIn("- [ ]", text)
         self.assertIn("3 done", (self.project / ".swd" / "queue-report.md").read_text(encoding="utf-8"))
+
+    def unattended(self):
+        return [p.read_text(encoding="utf-8") for p in sorted(self.stub.glob("unattended-*.txt"))]
+
+    @stubbed
+    def test_every_run_is_marked_unattended_with_its_model(self):
+        self.env.pop("SWD_UNATTENDED", None)
+        self.assertEqual(self.work().returncode, 0)
+        self.assertEqual(self.unattended(), ["fable\n"] * 3)
+
+    @stubbed
+    def test_under_opus_every_run_is_marked_unattended_on_opus(self):
+        self.env.pop("SWD_UNATTENDED", None)
+        self.set_conductor("opus")
+        self.assertEqual(self.work().returncode, 0)
+        self.assertEqual(self.unattended(), ["opus\n"] * 3)
+        self.assertEqual(len(self.runs_args()), 3)
+        for line in self.runs_args():
+            self.assertIn("--model opus", line)   # the same value as --model
+
+    @stubbed
+    def test_the_mark_is_the_queues_model_whatever_the_caller_set(self):
+        for setting, caller in (("fable", "0"), ("fable", ""), ("fable", "opus"), ("opus", "fable"), ("opus", "1")):
+            with self.subTest(setting=setting, caller=caller):
+                self.set_conductor(setting)
+                self.queue.write_text(QUEUE, encoding="utf-8")
+                for old in self.stub.glob("unattended-*.txt"):
+                    old.unlink()
+                self.assertEqual(self.work(SWD_UNATTENDED=caller).returncode, 0)
+                self.assertEqual(self.unattended(), [f"{setting}\n"] * 3)
+
+    def test_dry_run_starts_nothing_unattended(self):
+        self.assertEqual(self.work("--dry-run").returncode, 0)
+        self.assertEqual(self.unattended(), [])
+
+    def test_docstring_says_runs_are_marked_unattended_with_their_model(self):
+        doc = " ".join(SCRIPT.read_text(encoding="utf-8").split('"""')[1].split())
+        self.assertIn("SWD_UNATTENDED set to that model", doc)
+        self.assertIn("check_run.py", doc)
+        self.assertNotIn("SWD_UNATTENDED=1", doc)
 
     @stubbed
     def test_an_issue_item_carries_the_issue_text_and_asks_for_a_closing_reference(self):

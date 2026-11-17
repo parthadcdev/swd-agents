@@ -1,9 +1,11 @@
 """Tests for scripts/check_run.py. Run from the repo root: python3 -m unittest tests.test_check_run"""
+import os
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1050,8 +1052,258 @@ class CheckRunTest(unittest.TestCase):
         self.assertIn("Conductor line", help_text)
         self.assertIn("the Fable judge", help_text)
 
-    def cli(self, *args):
-        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, encoding="utf-8")
+    # --- a run /swd:queue started: SWD_UNATTENDED=<model> (0.11.0, contract C4) -----------------
+
+    UNATTENDED = ("decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs "
+                  "the Fable judge's verdict: the last 'Judge plan:' or 'Judge unreachable:' line below the last "
+                  "'Plan checksum:' line must be 'Judge plan: ...'; 'Judge unreachable:' is not enough, "
+                  "and the run stops as blocked")
+    NOT_HOLDING = ("decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs "
+                   "the Fable judge's verdict that it holds: the last 'Judge plan:' line below the last 'Plan checksum:' "
+                   "line does not say 'the plan holds', and the conductor of such a run does not overrule it; "
+                   "the plan goes back to the architect")
+    UNSEALED = ("decisions.md: this run was started by /swd:queue and has no 'Plan checksum:' line: its plan was never "
+                "sealed, so no builder may work on it, and the run stops as blocked")
+
+    def assertSealRefused(self, run, unattended, *lines):
+        before = self.seals(run)
+        refused = self.cli("--seal", str(run), unattended=unattended)
+        self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, list(lines)))
+        self.assertEqual(self.seals(run), before)
+
+    def assertSeals(self, run, unattended=None):
+        before = self.seals(run)
+        sealed = self.cli("--seal", str(run), unattended=unattended)
+        self.assertEqual(sealed.returncode, 0, sealed.stdout)
+        self.assertEqual([l.split(":")[0] for l in sealed.stdout.splitlines()], ["sealed plan.md", "sealed staffing.md"])
+        self.assertEqual(self.seals(run), before + 1)
+
+    def test_unattended_seal_on_opus_refuses_judge_unreachable(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.append(run, "Judge unreachable: Agent terminated early due to an API error\n")
+        self.assertSealRefused(run, "opus", self.UNATTENDED)
+        self.assertSeals(run)   # the same run, started by hand, seals as in 0.10.0
+
+    def test_unattended_seal_on_opus_with_no_judge_line_gives_only_the_unattended_line(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.assertSealRefused(run, "opus", self.UNATTENDED)
+
+    def test_unattended_the_last_judge_line_since_the_seal_must_be_the_verdict(self):
+        # The judge's verdict on an earlier version of the plan does not cover one it could not be reached for.
+        refused = {"verdict, plan amended, then unreachable": ("Judge plan: the plan holds (reports/judge-1.md)\n", True,
+                                                               "Judge unreachable: quota\n"),
+                   "verdict, then unreachable": ("Judge plan: the plan holds (reports/judge-1.md)\n", False,
+                                                 "Judge unreachable: quota\n")}
+        # Unattended, every unreachable line counts, whatever its value: a re-dispatch that returned nothing, written
+        # down as an empty or placeholder value, must not leave the old verdict in force. Attended, it is skipped.
+        for then in ("Judge unreachable:\n", "Judge unreachable:   \n", "Judge unreachable: none\n", "Judge unreachable: -\n",
+                     "Judge unreachable: n/a\n", "Judge unreachable: TBD\n"):
+            for amend in (True, False):
+                refused[f"verdict, {'plan amended, ' if amend else ''}then {then!r}"] = (
+                    "Judge plan: the plan holds (reports/judge-1.md)\n", amend, then)
+        for name, (first, amend, then) in refused.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, first)
+                if amend:
+                    replace(run / "plan.md", "First thing", "First thing, amended")
+                self.append(run, then)
+                self.assertSealRefused(run, "opus", self.UNATTENDED)
+                self.assertSeals(run)
+        sealed = {"unreachable, then the verdict": "Judge unreachable: quota\nJudge plan: the plan holds (reports/judge-2.md)\n",
+                  "a placeholder unreachable, then the verdict": "Judge unreachable: n/a\nJudge plan: the plan holds (reports/judge-2.md)\n",
+                  "a ruling's line after the verdict": "Judge plan: the plan holds (reports/judge-1.md)\n"
+                                                       "Judge ruling: keep T2 (reports/judge-2.md)\n"}
+        for name, lines in sealed.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, lines)
+                self.assertSeals(run, "opus")
+
+    def test_unattended_the_verdict_must_say_the_plan_holds(self):
+        for verdict in ("the plan does not hold: T3 must own tests/test_x.py (reports/judge-1.md)",
+                        "the plan holds, mostly", "The plan holds", "the plan holds (reports/judge-1.md) mostly",
+                        "the plan holds (judge-1.md)"):
+            with self.subTest(verdict), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, f"Judge plan: {verdict}\n")
+                self.assertSealRefused(run, "opus", self.NOT_HOLDING)
+                self.assertSeals(run)   # attended, the conductor may overrule it, as in 0.10.0
+        for verdict in ("the plan holds", "the plan holds.", "the plan holds (reports/judge-3.md)", "  the plan holds  "):
+            with self.subTest(verdict), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, f"Judge plan: {verdict}\n")
+                self.assertSeals(run, "opus")
+
+    def test_unattended_a_placeholder_judge_plan_does_not_count(self):
+        for line in ("Judge plan: TODO\n", "Judge plan:\n", "Judge plan:   n/a\n"):
+            with self.subTest(line), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, line)
+                self.assertSealRefused(run, "opus", self.UNATTENDED)
+
+    def test_unattended_a_judge_plan_before_the_last_seal_does_not_cover_an_amended_plan(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.append(run, "Judge plan: the plan holds (reports/judge-1.md)\n")
+        self.assertSeals(run, "opus")
+        replace(run / "plan.md", "First thing", "First thing, amended")
+        self.append(run, "Plan judged: the amended plan still meets the criteria.\n")
+        self.assertSealRefused(run, "opus", self.UNATTENDED)   # the verdict above the seal was for the old plan
+        self.append(run, "Judge unreachable: This agent switched to claude-opus-5-5\n")
+        self.assertSealRefused(run, "opus", self.UNATTENDED)
+        self.append(run, "Judge plan: the plan holds (reports/judge-2.md)\n")
+        self.assertSeals(run, "opus")
+
+    def test_unattended_a_staffing_change_alone_reseals_without_a_new_judge_line(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.assertSealRefused(run, "opus", self.UNATTENDED)
+        self.append(run, "Judge plan: the plan holds (reports/judge-1.md)\n")
+        self.assertSeals(run, "opus")
+        # A ruling the judge could not be reached for, after the seal, does not touch an unchanged plan.
+        self.append(run, "Judge unreachable: quota\n")
+        replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
+        self.assertSeals(run, "opus")
+
+    def test_unattended_the_model_comes_from_the_queue_not_the_conductor_line(self):
+        repo, run = make_run(self.tmp)   # <r7>: <r1> with a later 'Conductor: Fable 5.2' line
+        self.on_opus(run)
+        self.append(run, "Judge unreachable: Agent terminated early due to an API error\nConductor: Fable 5.2\n")
+        for value in ("opus", "1"):
+            with self.subTest(value):
+                self.assertSealRefused(run, value, self.UNATTENDED)
+        self.assertSeals(run)
+        with tempfile.TemporaryDirectory() as tmp:   # the message names Opus 5.5, whatever the Conductor: line says
+            repo, run = make_run(tmp)
+            self.append(run, "Conductor: Sonnet 5.5\nJudge unreachable: quota\n")
+            self.assertSealRefused(run, "opus", self.CONDUCTOR, self.UNATTENDED)
+        with tempfile.TemporaryDirectory() as tmp:   # a run the queue started on Fable 5.2 needs no judge line
+            repo, run = make_run(tmp)
+            self.on_opus(run)
+            self.assertSeals(run, "fable")
+            self.assertNotIn("Judge", (run / "decisions.md").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:   # --plan still asks for the Conductor: line
+            repo, run = make_run(tmp)
+            replace(run / "decisions.md", "Conductor: Fable 5.2\n", "")
+            for value in ("opus", "fable"):
+                plan = self.cli("--plan", str(run), unattended=value)
+                self.assertEqual((plan.returncode, plan.stdout.splitlines()), (1, [self.CONDUCTOR]))
+
+    def test_unattended_seal_on_fable_needs_no_judge_line(self):
+        repo, run = make_run(self.tmp)   # <r3>
+        self.assertSealRefused(run, "opus", self.UNATTENDED)
+        self.assertSeals(run, "fable")
+        self.assertNotIn("Judge", (run / "decisions.md").read_text(encoding="utf-8"))
+
+    def test_only_unset_or_empty_is_attended_and_any_other_value_is_opus(self):
+        for value in (None, ""):   # attended: as in 0.10.0
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.assertSealRefused(run, value, self.judge_message())
+                self.append(run, "Judge unreachable: Agent terminated early due to an API error\n")
+                self.assertSeals(run, value)
+        for value in ("1", "0", "true", "yes", " 1", "Opus", "FABLE", "fable ", "sonnet"):   # a typo fails closed
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, "Judge unreachable: Agent terminated early due to an API error\n")
+                self.assertSealRefused(run, value, self.UNATTENDED)
+
+    def test_check_judge_in_process_ignores_the_environment(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.append(run, "Judge unreachable: quota\n")
+        with unittest.mock.patch.dict(os.environ, {"SWD_UNATTENDED": "opus"}):
+            self.assertEqual(self.cr.check_judge(run), [])
+            self.assertEqual(self.cr.check_judge(run, unattended=None), [])
+            self.assertEqual(self.cr.check_judge(run, unattended="Opus 5.5"), [self.UNATTENDED])
+            self.assertEqual(self.cr.check_judge(run, unattended="Fable 5.2"), [])
+
+    def test_a_finished_run_sealed_before_0_10_0_checks_clean_unattended(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "decisions.md", "Conductor: Fable 5.2\n", "")
+        self.cr.seal_plan(run)
+        for value in ("opus", "fable"):
+            for args in ((str(run),), ("--task", "T1", str(run))):
+                done = self.cli(*args, unattended=value)
+                self.assertEqual((done.returncode, done.stdout), (0, ""))
+
+    def test_the_queue_changes_only_the_seal_and_the_unsealed_check(self):
+        # A sealed Opus run whose plan changed since the seal, with only 'Judge unreachable:': the judge rule would
+        # print something here, so equal output with and without the variable shows it is applied by --seal alone.
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.append(run, "Judge unreachable: quota\n")
+        self.cr.seal_plan(run)
+        replace(run / "plan.md", "First thing", "First thing, amended")
+        for args in ((str(run),), (str(repo),), ("--task", "T1", str(run)), ("--plan", str(run)), ("--finish", str(run))):
+            attended = self.cli(*args)
+            for value in ("opus", "fable"):
+                with self.subTest(args=args[:-1], value=value):
+                    queued = self.cli(*args, unattended=value)
+                    self.assertEqual((queued.returncode, queued.stdout), (attended.returncode, attended.stdout))
+                    self.assertNotIn("started by /swd:queue", queued.stdout)
+
+    def test_an_unsealed_run_the_queue_started_is_reported_by_task_and_the_finished_run_check(self):
+        for value in ("opus", "fable"):
+            with self.subTest(value), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)   # <r4>: never sealed, and nothing else wrong
+                for args in (("--task", "T1", str(run)), (str(run),), (str(repo),)):
+                    attended = self.cli(*args)
+                    self.assertEqual((attended.returncode, attended.stdout), (0, ""))   # as in 0.10.0
+                    done = self.cli(*args, unattended=value)
+                    self.assertEqual((done.returncode, done.stdout.splitlines()), (1, [self.UNSEALED]))
+                (repo / "stray.txt").write_text("x\n", encoding="utf-8")   # first, before what check_task finds
+                task = self.cli("--task", "T1", str(run), unattended=value)
+                self.assertEqual((task.returncode, task.stdout.splitlines()),
+                                 (1, [self.UNSEALED, "stray.txt changed, but no task owns it"]))
+                done = self.cli(str(run), unattended=value)
+                self.assertEqual(done.returncode, 1)
+                self.assertEqual(done.stdout.splitlines()[0], self.UNSEALED)
+                self.assertIn("uncommitted change: stray.txt", done.stdout)
+                (repo / "stray.txt").unlink()
+                with unittest.mock.patch.dict(os.environ, {"SWD_UNATTENDED": value}):   # in-process: as in 0.10.0
+                    self.assertEqual(self.cr.check_task(run, repo, "T1"), [])
+                    self.assertEqual(self.cr.check_run(run, repo), [])
+                for args in (("--plan", str(run)), ("--finish", str(run)), ("--seal", str(run))):
+                    self.assertNotIn(self.UNSEALED, self.cli(*args, unattended=value).stdout)
+                self.cr.seal_plan(run)
+                for args in (("--task", "T1", str(run)), (str(run),), (str(repo),)):
+                    done = self.cli(*args, unattended=value)
+                    self.assertEqual((done.returncode, done.stdout), (0, ""))
+            with self.subTest(value, line="Plan checksum: none"), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)   # a line that names the seal but is not one does not seal the run
+                self.append(run, "Plan checksum: none\n")
+                for args in (("--task", "T1", str(run)), (str(run),), (str(repo),)):
+                    attended = self.cli(*args)
+                    self.assertEqual((attended.returncode, attended.stdout), (0, ""))
+                    done = self.cli(*args, unattended=value)
+                    self.assertEqual((done.returncode, done.stdout.splitlines()), (1, [self.UNSEALED]))
+
+    def test_docstring_and_help_say_what_a_run_the_queue_started_adds(self):
+        doc = self.cr.__doc__
+        verdict = "in a run /swd:queue started, the judge's own verdict that the plan holds"
+        sealed = "in a run /swd:queue started, a sealed plan"
+        self.assertIn(verdict, doc.split("--seal", 1)[1].splitlines()[0])
+        self.assertIn(sealed, doc.split("--task T1", 1)[1].splitlines()[0])
+        self.assertIn(sealed, next(l for l in doc.splitlines() if "check_run.py <run_dir>" in l))
+        self.assertIn(verdict, " ".join(self.cli("--help").stdout.split()))
+
+    def cli(self, *args, unattended=None):
+        """Run the script with SWD_UNATTENDED as given, and without it otherwise, so a queue run of this suite passes."""
+        env = {k: v for k, v in os.environ.items() if k != "SWD_UNATTENDED"}
+        if unattended is not None:
+            env["SWD_UNATTENDED"] = unattended
+        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, encoding="utf-8", env=env)
 
     def test_cli_exit_codes(self):
         repo, run = make_run(self.tmp)

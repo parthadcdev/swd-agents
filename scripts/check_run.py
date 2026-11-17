@@ -2,10 +2,13 @@
 """Validate an swd run folder.
 
     python3 check_run.py --plan <run_dir>      check spec.md, plan.md and the 'Conductor:' line only (before the gate)
-    python3 check_run.py --seal <run_dir>      check the plan, the 'Plan judged:' line, staffing.md and, on a conductor other than Fable 5.2, the Fable judge's line, then record the checksums of the plan and of staffing.md in decisions.md
-    python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review
-    python3 check_run.py <run_dir>             check a finished run (a sealed run is not asked for '## Outcome'; an unsealed one is)
+    python3 check_run.py --seal <run_dir>      check the plan, the 'Plan judged:' line, staffing.md and, on a conductor other than Fable 5.2, the Fable judge's line and, in a run /swd:queue started, the judge's own verdict that the plan holds, then record the checksums of the plan and of staffing.md in decisions.md
+    python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review and, in a run /swd:queue started, a sealed plan
+    python3 check_run.py <run_dir>             check a finished run (a sealed run is not asked for '## Outcome'; an unsealed one is) and, in a run /swd:queue started, a sealed plan
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
+
+A run /swd:queue started has SWD_UNATTENDED set to the model the queue started it on; the seal takes the
+model from it, not from the 'Conductor:' line.
 
 <run_dir> is .swd/runs/<name>/ in the project. A project folder also works: its last run by
 name is checked.
@@ -15,6 +18,7 @@ The formats checked here are documented in standards/run-folder.md.
 """
 import argparse
 import hashlib
+import os
 import posixpath
 import re
 import subprocess
@@ -146,10 +150,14 @@ def check_conductor(run_dir):
     return []
 
 
-def check_judge(run_dir):
+def check_judge(run_dir, unattended=None):
     """Before the seal: a conductor not on Fable 5.2 has the Fable judge's line (or its failure) since the last seal.
-    A seal with plan.md unchanged since the last one (a change to staffing.md alone) needs no new line."""
-    value = decision(run_dir, "Conductor")
+    A seal with plan.md unchanged since the last one (a change to staffing.md alone) needs no new line.
+    unattended is None (attended), or the model a run /swd:queue started is on, "Fable 5.2" or "Opus 5.5", which then
+    replaces the 'Conductor:' line. On Opus 5.5 nobody is there to judge instead, so the last judge line since the
+    seal must be the judge's own verdict that the plan holds; there every 'Judge unreachable:' line counts, an empty
+    or placeholder one included, so a failed re-dispatch never leaves an earlier verdict in force."""
+    value = decision(run_dir, "Conductor") if unattended is None else unattended
     if value in (None, "Fable 5.2"):
         return []
     # Only \n, as decision() and Markdown viewers do: splitlines() would let \x0b or   hide a line inside another.
@@ -157,12 +165,26 @@ def check_judge(run_dir):
     sealed = [i for i, l in enumerate(lines) if SEAL_RE.match(l)]
     if sealed and plan_checksum(run_dir, missing="") == SEAL_RE.match(lines[sealed[-1]]).group(1):
         return []
+    judged = []  # (key, value) of each real judge line since the last seal, in order
     for line in lines[sealed[-1] + 1 if sealed else 0:]:
         for key in ("Judge plan:", "Judge unreachable:"):
-            if line.startswith(key) and line[len(key):].strip().lower() not in PLACEHOLDERS | {""}:
-                return []
-    return [f"decisions.md: the conductor is on {value}, so the plan needs the Fable judge: "
-            "a 'Judge plan: ...' line, or 'Judge unreachable: ...', below the last 'Plan checksum:' line"]
+            if line.startswith(key) and (line[len(key):].strip().lower() not in PLACEHOLDERS | {""}
+                                         or unattended is not None and key == "Judge unreachable:"):
+                judged.append((key, line[len(key):].strip()))
+    if unattended is None:
+        return [] if judged else [f"decisions.md: the conductor is on {value}, so the plan needs the Fable judge: "
+                                  "a 'Judge plan: ...' line, or 'Judge unreachable: ...', below the last 'Plan checksum:' line"]
+    if not judged or judged[-1][0] != "Judge plan:":
+        return ["decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs "
+                "the Fable judge's verdict: the last 'Judge plan:' or 'Judge unreachable:' line below the last "
+                "'Plan checksum:' line must be 'Judge plan: ...'; 'Judge unreachable:' is not enough, "
+                "and the run stops as blocked"]
+    if not re.fullmatch(r"the plan holds\.?(?: \(reports/judge-\d+\.md\))?", judged[-1][1]):
+        return ["decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs "
+                "the Fable judge's verdict that it holds: the last 'Judge plan:' line below the last 'Plan checksum:' "
+                "line does not say 'the plan holds', and the conductor of such a run does not overrule it; "
+                "the plan goes back to the architect"]
+    return []
 
 
 def check_staffing(run_dir):
@@ -633,7 +655,7 @@ def latest_run(repo_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--plan", action="store_true", help="check spec.md, plan.md and the Conductor line only")
-    parser.add_argument("--seal", action="store_true", help="check the plan, the Plan judged line, staffing.md and, off Fable 5.2, the Fable judge's line, then record the checksums of the plan and staffing.md")
+    parser.add_argument("--seal", action="store_true", help="check the plan, the Plan judged line, staffing.md and, off Fable 5.2, the Fable judge's line and, in a run /swd:queue started, the judge's own verdict that the plan holds, then record the checksums of the plan and staffing.md")
     parser.add_argument("--task", metavar="ID", help="check a returned task's changes before review")
     parser.add_argument("--finish", action="store_true", help="check the run was delivered and cleaned up")
     parser.add_argument("path", type=Path, help="a run folder, or a project folder")
@@ -648,20 +670,27 @@ def main(argv=None):
         print("no run folder found under .swd/runs/")
         return 1
     repo_dir = work_dir(run_dir, project_dir)  # git checks look at the run's worktree, not the user's copy
+    # /swd:queue sets this to the model it started the run on; nothing in the run folder can change it.
+    queue = os.environ.get("SWD_UNATTENDED", "")
+    unattended = None if not queue else "Fable 5.2" if queue == "fable" else "Opus 5.5"   # any other value fails closed
+    unsealed = []
+    if unattended and not SEAL_RE.search(read(run_dir / "decisions.md") or ""):
+        unsealed = ["decisions.md: this run was started by /swd:queue and has no 'Plan checksum:' line: its plan was "
+                    "never sealed, so no builder may work on it, and the run stops as blocked"]
     if args.finish:
         problems = check_finish(run_dir, project_dir)
     elif args.seal:
         problems = (check_plan(run_dir) + check_conductor(run_dir) + check_finish_choice(run_dir)
-                    + check_staffing(run_dir) + check_judge(run_dir))
+                    + check_staffing(run_dir) + check_judge(run_dir, unattended=unattended))
         if not problems:
             print(f"sealed plan.md: {seal_plan(run_dir)}")
             print(f"sealed staffing.md: {file_checksum(run_dir / 'staffing.md')}")
     elif args.task:
-        problems = check_task(run_dir, repo_dir, args.task)
+        problems = unsealed + check_task(run_dir, repo_dir, args.task)
     elif args.plan:
         problems = check_plan(run_dir) + check_conductor(run_dir)
     else:
-        problems = check_run(run_dir, repo_dir)
+        problems = unsealed + check_run(run_dir, repo_dir)
     for problem in problems:
         print(problem)
     return 1 if problems else 0

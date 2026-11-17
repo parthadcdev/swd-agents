@@ -13,7 +13,10 @@ by default, `--model opus` where the setting is `opus`, because `--fallback-mode
 switch on a usage limit. The script prints the model before each run; if the hook cannot be
 loaded, it says so in one line and starts nothing. A `Model:` line, which
 earlier versions read, is ignored and the script says so once. Each item is run as its own `claude -p "/swd:build ..."`,
-pre-approved, so each starts with a fresh context. When a run finishes the item becomes
+pre-approved, so each starts with a fresh context, and with SWD_UNATTENDED set to that model
+(the value it passes to --model) in its environment, which check_run.py reads: on Opus 5.5 its
+seal then needs the Fable judge's own verdict that the plan holds, so a run whose judge could not
+be reached stops, and its --task and finished-run checks report a plan that was never sealed. When a run finishes the item becomes
 `- [x] <item> — <where the work is>`; when it does not, `- [!] <item> — blocked: <run folder>`.
 Two failures in a row stop the queue: that usually means something systemic, such as missing
 permissions (run /swd:setup first). A summary is written to .swd/queue-report.md.
@@ -83,7 +86,7 @@ def run_item(project, text, finish, model):
     try:
         subprocess.run(["claude", "-p", "--plugin-dir", str(PLUGIN), "--setting-sources", "project,local",
                         "--model", model, "--output-format", "json", "--", prompt], cwd=project,
-                       capture_output=True, text=True, env={**os.environ, "SWD_NO_BROWSER": "1"}, encoding="utf-8", errors="replace")
+                       capture_output=True, text=True, env={**os.environ, "SWD_NO_BROWSER": "1", "SWD_UNATTENDED": model}, encoding="utf-8", errors="replace")
     except OSError as error:
         return False, f"could not start claude: {error}"
     new = sorted(set(runs.iterdir()) - before) if runs.is_dir() else []
