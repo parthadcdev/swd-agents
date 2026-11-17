@@ -42,6 +42,14 @@ Finish: pr
   would not fall back. The script prints
   `starting with --model <model>: <item>` before each run, and one line
   when it ignores a `Model:` line.
+- Every run the queue starts is unattended, and the queue marks it so
+  in that run's environment. When the conductor is on Opus 5.5 and the
+  Fable judge cannot be reached for the plan, the run stops as blocked
+  instead of judging the plan by itself, and the item is marked
+  `- [!]`. This rests on Claude Code passing the queue's marker on to
+  the commands a run executes, which has not been tried on a live
+  Claude Code; if it does not, the run judges the plan by itself and
+  goes on, as in 0.10.0.
 - When an item's run finishes it becomes `- [x] <item> — <link or branch>`.
   When it does not, `- [!] <item> — blocked: <run folder>`.
 
@@ -74,16 +82,21 @@ Finish: pr
    <python> <plugin>/scripts/swd-setup.py --print <project>
    ```
 
-   Every rule it printed must be in `.claude/settings.local.json` exactly
-   as printed, character for character: each allow rule in
-   `permissions.allow` and each rule under the `Deny rules` line in
-   `permissions.deny`. The deny rules make Claude Code refuse the plain
-   ways of running the plugin's hook by name. A rule that names another
-   version folder of the plugin does not count, so after a plugin update
-   this check sends the user to `/swd:setup`. A project set up before
-   0.10.0 has no deny rules, so this check sends the user to
-   `/swd:setup`. If any printed rule is missing, tell the user to run
-   `/swd:setup` first, and stop.
+   Its last line starts with `In place:` only when
+   `.claude/settings.local.json` holds every rule it lists and none that
+   an earlier version of the plugin wrote. If the command did not run, or
+   its last line does not start with `In place:`, tell the user to run
+   `/swd:setup` first, and stop. After a plugin update this check sends
+   the user to `/swd:setup`, because the allow rules name the plugin's
+   version folder.
+
+   Once `/swd:setup` has written its rules, Claude Code asks the user to
+   approve this command, and the two below that run `swd-queue.py`: the
+   ask rules setup writes cover the setup and queue scripts, so that an
+   agent that follows the playbooks cannot change the project's
+   permission rules or start a queue without the user. An agent set on
+   getting round the rules still can, as the README says. Tell the user
+   so before the first one.
 3. Show what will run, starting nothing:
 
    ```bash

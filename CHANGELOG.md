@@ -1,5 +1,111 @@
 # Changelog
 
+## 0.11.0
+
+- `/swd:setup` writes one allow rule per script a run needs, for each
+  of `python3`, `python` and `py -3`, naming the script's full path in
+  the installed version's folder, in place of the three broad Python
+  rules, which matched any command that starts with the Python name and
+  the plugin's folder. The seven scripts are `check_run.py`,
+  `swd-clean.py`, `swd-dashboard.py`, `swd-findings.py`, `swd-log.py`,
+  `swd-pr.py` and `swd-test.py`. Every rule naming the plugin's folder
+  is written for the plugin's path as typed and, when it resolves to
+  another spelling, as resolved, so with a symlinked `~/.claude` both
+  spellings match. Run `/swd:setup` again after updating; until you do,
+  `/swd:queue` sends you there.
+- `/swd:setup` writes seven ask rules: `Bash(python3 *swd-setup.*)`,
+  `Bash(python *swd-setup.*)`, `Bash(py *swd-setup.*)`, the same three
+  for `swd-queue.`, and `Bash(*SWD_UNATTENDED*)`. An ask rule beats an
+  allow rule. Once setup has written its rules, Claude Code asks you to
+  approve the setup and queue commands that `/swd:setup` and
+  `/swd:queue` run, every time, so that an agent that follows the
+  playbooks cannot change this project's permission rules or start a
+  queue without you; an agent set on getting round the rules still
+  can, as the limits below say. The two skills tell you so before the
+  first prompt. In an unattended run nobody can answer, so such a
+  command does not run.
+- `/swd:setup` removes the rules an earlier version of the plugin
+  wrote, after your yes: the three broad Python rules, the 0.8.x
+  `Bash(<plugin folder>/*)`, and the `sh` and per-script rules of
+  another version's folder. `--print` lists them under
+  `Rules an earlier version of the plugin wrote, which setup removes:`,
+  and the real run reports the count, as
+  `setup: <a> rules added to <settings>; <r> rules an earlier version of the plugin wrote removed`.
+  Every other rule, yours included, is kept in order. A settings file
+  that is not valid JSON, `NaN`, `Infinity` and a key repeated in one
+  object included, is refused and left unchanged.
+- `--print` ends with one line: `In place:` when the settings file holds
+  every rule it lists and none an earlier version wrote, and
+  `Not in place:` otherwise. `/swd:queue` starts only on `In place:`,
+  in place of comparing the rules one by one.
+- Setup refuses a `--command`, or the test command in
+  `.swd/project.md`, that is empty, whose first word holds a `*`, that
+  holds a control character, whose first word is not a plain program
+  name or path, whose first word is `env`, `xargs`, `sudo`, `doas`,
+  `eval` or `exec`, that is `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`
+  or `npx` alone or followed by an option (`bash scripts/test.sh` and
+  `npx jest` are accepted), or that names the plugin's own folder. It
+  prints one line saying why, exits 2 and writes nothing. The setup
+  skill warns that every command it takes from `.swd/project.md`, the
+  test, lint, type check and build commands, may have been written by
+  an agent in an earlier run: a wrong `Test command:` line is corrected
+  in the file, because setup always writes the rules for that line,
+  and another command is left out by not passing it with `--command`.
+- `/swd:queue` starts each run with `SWD_UNATTENDED` set to the model
+  it starts it with, `fable` or `opus`, and `check_run.py` reads it:
+  the seal takes the model from it, not from the `Conductor:` line. In
+  a run started so on Opus 5.5, the seal of a changed plan needs the
+  last `Judge plan:` or `Judge unreachable:` line since the last seal
+  to be the judge's verdict that the plan holds, and the build playbook
+  stops the run as blocked when the judge could not be reached. `check_run.py --seal`
+  refuses otherwise, with one of these lines:
+
+      decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs the Fable judge's verdict: the last 'Judge plan:' or 'Judge unreachable:' line below the last 'Plan checksum:' line must be 'Judge plan: ...'; 'Judge unreachable:' is not enough, and the run stops as blocked
+      decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs the Fable judge's verdict that it holds: the last 'Judge plan:' line below the last 'Plan checksum:' line does not say 'the plan holds', and the conductor of such a run does not overrule it; the plan goes back to the architect
+
+  In such a run, on either model, `check_run.py --task` and the check
+  of a finished run report a plan that was never sealed:
+
+      decisions.md: this run was started by /swd:queue and has no 'Plan checksum:' line: its plan was never sealed, so no builder may work on it, and the run stops as blocked
+
+  In a run you attend nothing changes: the principal judges alone when
+  the judge cannot be reached, and the run goes on. Whether Claude Code
+  passes `SWD_UNATTENDED` on to a run's commands has not been tried on a
+  live Claude Code; if it does not, a queue run seals as in 0.10.0.
+- What the rules do not stop:
+
+  The allow rules name each script a run needs by its full path, so a
+  command that runs the setup or queue script, a path that climbs out of
+  the plugin's folder with `..`, or a script name, the hook's included,
+  in another letter case, with a shell wildcard or partly quoted, matches
+  none of the plugin's allow rules: Claude Code asks before running it,
+  and in an unattended run, where nobody can answer, it does not run.
+
+  A project's interpreter rule, such as `Bash(python3 *)`, still lets an
+  agent run Python of its choice there, the hook or the setup script
+  under another spelling included: the ask and deny rules match command
+  text, so they catch only the plain spellings.
+
+  Some rules a run needs let an agent run a program of its choice in any
+  project: `Bash(git *)` matches `git -c` options that make git run a
+  program it names, the plugin's test runner runs the command a plan
+  names, and a run executes its own tests. So the rules keep an agent
+  that follows the playbooks from running the setup or queue script, but
+  they do not stop one that sets out to get round them.
+
+  Deny and ask rules hold in every permission mode, a mode that skips
+  permission checks included, except that a mod you installed can
+  approve a call they would stop when no managed settings or Team or
+  Enterprise login are in place; in a mode that skips permission checks
+  every command they do not match runs without a prompt, the other
+  spellings above included.
+
+  Setup refuses a project command, the test command in `.swd/project.md`
+  included, whose first word is not a plain program name or path or is
+  one of the programs it lists that run another command they are given,
+  not every program that can run another command: read each project
+  command's rules before you say yes.
+
 ## 0.10.0
 
 - A conductor setting per project. Type `/swd:conductor opus` in a

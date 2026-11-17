@@ -64,19 +64,62 @@ In the project you want work done in:
 Run `/swd:setup` once. Agents work in the background, where nobody can
 answer a permission prompt, so the project has to allow what they need
 before a run starts. Setup first checks that Python 3.9 or later is
-there. Then it shows you the rules (Python started on the plugin's
-folder, git, `gh pr`, your test command, the command that runs your
-code, and edits inside `.swd/`) and adds them to
-`.claude/settings.local.json` when you agree. The Python rules are
-broad: they allow any command that starts with the Python name and the
-plugin's folder, which is not limited to the plugin's own scripts.
+there. Then it shows you the rules and adds them to
+`.claude/settings.local.json` when you agree:
 
-The one exception is the plugin's hook, `hooks/swd-mode.py`. Setup also
-adds three deny rules, `Bash(python3 *swd-mode.*)`,
-`Bash(python *swd-mode.*)` and `Bash(py *swd-mode.*)`, so Claude Code
-refuses the plain ways of running the hook by name, even under the
-broad Python rules: without them an agent could pipe a forged event
-into the hook and turn swd mode off or set the conductor to `opus`. A
+- one allow rule for each script a run needs, for each of `python3`,
+  `python` and `py -3`, naming the script's full path in the installed
+  version's folder, such as
+  `Bash(python3 /Users/you/.claude/plugins/cache/swd-agents/swd/0.11.0/scripts/check_run.py *)`.
+  Each matches that script with any arguments and nothing else, except
+  when the plugin's path holds a space: a rule is matched as text, so
+  it can then match a command that runs another file (an open finding).
+  Setup writes them for the plugin's path as Claude Code gives it to
+  the skills and, when that path resolves to another spelling (a
+  symlinked `~/.claude`, for example), for that spelling too;
+- two `sh` rules for the Python check and the watch terminals, and a
+  rule to read the plugin's files;
+- git, `gh pr`, a few read-only commands, edits inside `.swd/`, your
+  test command, and the command that runs your code, such as
+  `Bash(python3 *)`, which is the broadest rule in the set: it lets
+  agents run any program with that interpreter in this project.
+
+Before you say yes, read the rules for your project's commands.
+`/swd:setup` takes them from `.swd/project.md` when there is one: the
+test command from its `Test command:` line, and the lint, type check
+and build commands it records. That file may have been written by an
+agent in an earlier run. If one of them names a shell or a program that
+runs other commands it is given, say no. Setup always writes the rules
+for the `Test command:` line, so a wrong one is corrected in the file;
+another command is left out by not passing it with `--command`.
+
+Setup also writes seven ask rules: `Bash(python3 *swd-setup.*)`,
+`Bash(python *swd-setup.*)`, `Bash(py *swd-setup.*)`,
+`Bash(python3 *swd-queue.*)`, `Bash(python *swd-queue.*)`,
+`Bash(py *swd-queue.*)` and `Bash(*SWD_UNATTENDED*)`. Claude Code asks you
+before a command they match, whatever allow rule matches it too,
+because an ask rule beats an allow rule. Once setup has written its
+rules, Claude Code asks you to approve the setup and queue commands
+that `/swd:setup` and `/swd:queue` run, every time, so that an agent
+that follows the playbooks cannot change this project's permission
+rules or start a queue without you; an agent set on getting round the
+rules still can, as the limits below say.
+
+Setup removes the rules an earlier version of the plugin wrote: the
+three rules that let Python run anything under the plugin's folder, the
+0.8.x `Bash(<plugin folder>/*)`, and the `sh` and per-script rules of
+another version's folder. It lists them before you say yes, keeps every
+other rule, yours included, in order, and reports how many rules it
+added and how many it removed. A settings file that is not valid JSON
+is left unchanged, and setup says so.
+
+The plugin's hook, `hooks/swd-mode.py`, is not one of the scripts the
+allow rules name. Setup also adds three deny rules,
+`Bash(python3 *swd-mode.*)`, `Bash(python *swd-mode.*)` and
+`Bash(py *swd-mode.*)`, so Claude Code refuses the plain ways of
+running the hook by name, even in a project with an interpreter rule:
+without them an agent could pipe a forged event into the hook there
+and turn swd mode off or set the conductor to `opus`. A
 deny rule refuses the command; it does not ask. The rules name the
 file up to its dot, `swd-mode.`, so the hook's compiled copy in
 `hooks/__pycache__/` is refused too, while a run folder whose name
@@ -91,26 +134,70 @@ They are not a hard boundary: they match command text, so they do not
 stop the name in another letter case on a file system that ignores
 case (macOS, Windows), the name written another way, such as part of
 it quoted or given through a shell variable, a shell wildcard, or code
-a run executes by design, such as its tests, and a session in a mode
-that skips permission checks is protected by no rule. Whether
-another allowed command can run the hook, such as `find -exec` or a
-git alias, has not been checked. Setup only adds rules; it never
-removes one.
+a run executes by design, such as its tests.
 
-Run `/swd:setup` again after each plugin update: two of its rules name
+Run `/swd:setup` again after each plugin update: the allow rules name
 the installed version's folder, so they stop matching after an update
-and a run asks permission for those commands (`/swd:queue` stops and
-sends you here). After updating to 0.10.0, run it again to add the
-deny rules; until you do, `/swd:queue` sends you here. `sh` rules for older versions can stay in the settings
-file, and each still matches the `check` or watch command in that old
-version's folder.
+and a run asks permission for those commands. Until you run it,
+`/swd:queue` stops and sends you here: it starts only when
+`swd-setup.py --print` ends with `In place:`, which it does only when
+the settings file holds every rule setup lists and none an earlier
+version wrote.
 
-`/swd:setup` no longer writes the 0.8.x rule `Bash(<plugin folder>/*)`
-(on macOS, for example,
-`Bash(/Users/you/.claude/plugins/cache/swd-agents/swd/*)`), but a
-settings file that already has it keeps it. It allows any command that
-starts with the plugin's folder, as broad as the Python rules: delete it
-from `.claude/settings.local.json`.
+### What the rules do not stop
+
+The allow rules name each script a run needs by its full path, so a
+command that runs the setup or queue script, a path that climbs out of
+the plugin's folder with `..`, or a script name, the hook's included,
+in another letter case, with a shell wildcard or partly quoted, matches
+none of the plugin's allow rules: Claude Code asks before running it,
+and in an unattended run, where nobody can answer, it does not run.
+
+A project's interpreter rule, such as `Bash(python3 *)`, still lets an
+agent run Python of its choice there, the hook or the setup script
+under another spelling included: the ask and deny rules match command
+text, so they catch only the plain spellings.
+
+Some rules a run needs let an agent run a program of its choice in any
+project: `Bash(git *)` matches `git -c` options that make git run a
+program it names, the plugin's test runner runs the command a plan
+names, and a run executes its own tests. So the rules keep an agent
+that follows the playbooks from running the setup or queue script, but
+they do not stop one that sets out to get round them.
+
+Deny and ask rules hold in every permission mode, a mode that skips
+permission checks included, except that a mod you installed can
+approve a call they would stop when no managed settings or Team or
+Enterprise login are in place; in a mode that skips permission checks
+every command they do not match runs without a prompt, the other
+spellings above included.
+
+Setup refuses a project command, the test command in `.swd/project.md`
+included, whose first word is not a plain program name or path or is
+one of the programs it lists that run another command they are given,
+not every program that can run another command: read each project
+command's rules before you say yes.
+
+An agent could also change the rules by editing
+`.claude/settings.local.json` itself. Claude Code's documentation lists
+`.claude/` among the protected folders: an allow rule never
+pre-approves an edit there, so the edit asks you in a session you
+attend, is denied in a queue run, is left to the classifier in auto
+mode, and goes through in a mode that skips permission checks. A
+program an agent runs can still write the file in any mode.
+
+`/swd:queue` sets `SWD_UNATTENDED` to the model it starts each run
+with, `fable` or `opus`, and `check_run.py` reads it: the seal takes
+the model from it, not from the `Conductor:` line. A run you start
+yourself has no such variable. The ask rule `Bash(*SWD_UNATTENDED*)`
+catches a command in which the name is written out plainly, not every
+command that names the variable: a quoted or escaped spelling, or a
+name built when the command runs, gets past it. The seal reads the
+judge's line from `decisions.md`, which the conductor writes, so it
+cannot show that the judge gave it. Whether Claude Code passes
+`SWD_UNATTENDED` on to the commands a run executes has not been tried
+on a live Claude Code; if it does not, a queue run seals as an attended
+one does, as in 0.10.0.
 
 ## swd mode
 
@@ -177,6 +264,9 @@ the reply starts `swd conductor: refused, still <current setting>`.
   issues (`- [ ] #42`). Each finished item is ticked off with its pull
   request or branch; a blocked one is marked and the queue moves on. Run
   `/swd:setup` first: nobody is there to answer a permission prompt.
+  Every run the queue starts is unattended. A run on Opus 5.5 stops as
+  blocked when the Fable judge cannot be reached for its plan, and its
+  plan is sealed only on the judge's verdict that it holds.
 - **`/swd:follow`** goes back to the pull requests earlier runs opened.
   It sends failing checks, and comments from the repository's owner,
   members and collaborators, through the team, pushes the fixes, and
@@ -255,8 +345,12 @@ needs.
   records why it overrules it (`Judge overruled:`). When the judge
   cannot be reached (the dispatch fails or is cut off, for example
   because the Fable quota has run out, or it returns no verdict, which
-  includes a judge that finds it is not on Fable 5.2), the principal
-  judges alone, records `Judge unreachable:`, and the run goes on.
+  includes a judge that finds it is not on Fable 5.2), what happens
+  depends on whether anyone attends the run. In a run you attend, the
+  principal then judges alone, records `Judge unreachable:`, and the
+  run goes on. A run `/swd:queue` started on Opus 5.5 stops as blocked
+  instead, and its seal accepts the plan only on the judge's verdict
+  that the plan holds.
   `check_run.py --seal` refuses to seal a plan conducted on Opus 5.5
   without a `Judge plan:` or `Judge unreachable:` line since the last
   seal; a seal with `plan.md` unchanged since the last one, such as

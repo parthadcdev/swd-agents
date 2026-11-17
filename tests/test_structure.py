@@ -102,6 +102,185 @@ OLD_BROAD_RULE = (
     "delete it from `.claude/settings.local.json`."
 )
 
+# C7 (0.11.0): what the rules stop and what they do not, word for word in the README, the setup skill and
+# the CHANGELOG. The reviews turned on documents that claimed more than the code delivers.
+LIMIT_ALLOW = (
+    "The allow rules name each script a run needs by its full path, so a command that runs the setup or "
+    "queue script, a path that climbs out of the plugin's folder with `..`, or a script name, the hook's "
+    "included, in another letter case, with a shell wildcard or partly quoted, matches none of the plugin's "
+    "allow rules: Claude Code asks before running it, and in an unattended run, where nobody can answer, it "
+    "does not run."
+)
+LIMIT_INTERPRETER = (
+    "A project's interpreter rule, such as `Bash(python3 *)`, still lets an agent run Python of its choice "
+    "there, the hook or the setup script under another spelling included: the ask and deny rules match "
+    "command text, so they catch only the plain spellings."
+)
+LIMIT_ROUTES = (
+    "Some rules a run needs let an agent run a program of its choice in any project: `Bash(git *)` matches "
+    "`git -c` options that make git run a program it names, the plugin's test runner runs the command a "
+    "plan names, and a run executes its own tests. So the rules keep an agent that follows the playbooks "
+    "from running the setup or queue script, but they do not stop one that sets out to get round them."
+)
+LIMIT_MODES = (
+    "Deny and ask rules hold in every permission mode, a mode that skips permission checks included, except "
+    "that a mod you installed can approve a call they would stop when no managed settings or Team or "
+    "Enterprise login are in place; in a mode that skips permission checks every command they do not match "
+    "runs without a prompt, the other spellings above included."
+)
+LIMIT_COMMAND = (
+    "Setup refuses a project command, the test command in `.swd/project.md` included, whose first word is "
+    "not a plain program name or path or is one of the programs it lists that run another command they are "
+    "given, not every program that can run another command: read each project command's rules before you "
+    "say yes."
+)
+C7_LIMITS = (
+    ("allow rules", LIMIT_ALLOW), ("interpreter rule", LIMIT_INTERPRETER), ("routes", LIMIT_ROUTES),
+    ("modes", LIMIT_MODES), ("project command", LIMIT_COMMAND),
+)
+# The 0.10.0 deny-rule limits that are still true in 0.11.0. The other two (a mode that skips permission
+# checks "is protected by no rule", and `find -exec` "has not been checked") were corrected by C7.
+DENY_LIMITS_0_11_0 = (
+    "the name in another letter case on a file system that ignores case",
+    "a shell wildcard",
+    "code a run executes by design, such as its tests",
+    "the name written another way, such as part of it quoted or given through a shell variable",
+)
+# Statements 0.11.0 makes false, gone from the setup skill and the README (older CHANGELOG entries keep them).
+GONE_0_11_0 = (
+    ("never removes", "never removes"),
+    ("removes none", "removes none"),
+    ("broad Python rules", "broad Python rules"),
+    ("not limited to the plugin's own scripts", "not limited to the plugin's own scripts"),
+    ("old sh rules stay", OLD_SH_RULES),
+    ("the 0.8.x paragraph", "delete it from `.claude/settings.local.json`"),
+    ("protected by no rule", "is protected by no rule"),
+    ("a session in a mode that skips permission checks", "a session in a mode that skips permission checks"),
+    ("find -exec not checked", "has not been checked"),
+    ("two rules name the version folder", "two of its rules name the installed version's folder"),
+)
+# C6: the setup skill's sentences, word for word. The prompt sentences claim only what the rules give: an agent
+# that follows the playbooks, once setup has written them (C6 as amended after the T4 reviews).
+SETUP_PROMPT = (
+    "Once setup has written its rules, Claude Code asks you to approve this command and the one in step 5 "
+    "each time: they run the setup script, which setup's ask rules cover, so that an agent that follows the "
+    "playbooks cannot change this project's permission rules without you. An agent set on getting round the "
+    "rules still can, as the limits in step 3 say, and a program an agent runs can write the settings file "
+    "itself. Say so to the user before running it."
+)
+# C6: the README's and the CHANGELOG's sentence on the prompt, word for word in both.
+PROMPT_ONCE = (
+    "Once setup has written its rules, Claude Code asks you to approve the setup and queue commands that "
+    "`/swd:setup` and `/swd:queue` run, every time, so that an agent that follows the playbooks cannot change "
+    "this project's permission rules or start a queue without you; an agent set on getting round the rules "
+    "still can, as the limits below say."
+)
+# The forms the T4 reviews failed: a claim about every agent, and a prompt promised with no "once setup has
+# written its rules". None is left in the setup skill, the queue skill, the README or the CHANGELOG.
+NO_AGENT_CLAIMS = ("no agent can change", "no agent changes")
+GONE_PROMPTS = (
+    "so that no agent can change this project's permission rules without you",
+    "so that no agent can change the project's permission rules or start a queue without the user",
+    "no agent changes this project's permission rules or starts a queue without you",
+    "So Claude Code asks you to approve the setup and queue commands",
+    "An ask rule beats an allow rule, so Claude Code asks you to approve",
+    "Claude Code asks the user to approve this command, and the two below that run `swd-queue.py`: "
+    "`/swd:setup` writes ask rules",
+)
+# C6: the warning on the commands setup takes from .swd/project.md covers every one of them, not only the
+# `Test command:` line, since any of them becomes a rule.
+WARN_SETUP = (
+    "Before asking for a yes, for every command that comes from `.swd/project.md`, its `Test command:` line, "
+    "which setup reads itself, and the lint, type check and build commands step 1 takes from it, tell the "
+    "user that this file may have been written by an agent in an earlier run, show the command as it stands "
+    "in the file, and say that a rule for a shell or for a program that runs other commands it is given "
+    "should be refused. Setup always writes `Bash(<that command>)` and `Bash(<that command> *)` for the "
+    "`Test command:` line, whatever `--command` holds, and refuses every run while that line fails its test, "
+    "so a wrong `Test command:` line is corrected in `.swd/project.md` by the user, not by you, and then "
+    "`/swd:setup` is run again. A lint, type check or build command from the file is left out by not passing "
+    "it with `--command`: if the user rejects one, run step 2 again without it, so that the rules the user "
+    "approves are the ones step 5 writes."
+)
+WARN_README = (
+    "Before you say yes, read the rules for your project's commands. `/swd:setup` takes them from "
+    "`.swd/project.md` when there is one: the test command from its `Test command:` line, and the lint, type "
+    "check and build commands it records. That file may have been written by an agent in an earlier run. If "
+    "one of them names a shell or a program that runs other commands it is given, say no. Setup always writes "
+    "the rules for the `Test command:` line, so a wrong one is corrected in the file; another command is left "
+    "out by not passing it with `--command`."
+)
+WARN_CHANGELOG = (
+    "The setup skill warns that every command it takes from `.swd/project.md`, the test, lint, type check and "
+    "build commands, may have been written by an agent in an earlier run: a wrong `Test command:` line is "
+    "corrected in the file, because setup always writes the rules for that line, and another command is left "
+    "out by not passing it with `--command`."
+)
+# The narrow warnings they replace, which named the `Test command:` line alone.
+GONE_WARNINGS = (
+    "names the command with `--command`",
+    "this line may have been written by an agent",
+    "Setup takes the test command from the `Test command:` line in `.swd/project.md` when there is one, and "
+    "that line may have been written",
+    "The setup skill warns that the test command in `.swd/project.md` may have been written",
+)
+# C6: the setup skill's per-script bullet states the exception the README states (open finding 26).
+SPACE_EXCEPTION = (
+    "so they match that script with any arguments and nothing else, except when the plugin's path holds a "
+    "space: a rule is matched as text, so it can then match a command that runs another file (an open finding)."
+)
+SETUP_REMOVES = (
+    "Setup removes only the rules it lists under that heading, which an earlier version of the plugin "
+    "wrote, and keeps every other rule in the file, yours included, in order."
+)
+# C1's headings and status line, as scripts/swd-setup.py --print prints them.
+SETUP_ASK_HEADING = (
+    "Ask rules, so Claude Code asks you before a command runs the setup or queue script, or names "
+    "SWD_UNATTENDED:"
+)
+SETUP_OLD_HEADING = "Rules an earlier version of the plugin wrote, which setup removes:"
+SETUP_DENY_HEADING = "Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:"
+# C6: the queue skill's sentences, word for word.
+QUEUE_IN_PLACE = (
+    "Its last line starts with `In place:` only when `.claude/settings.local.json` holds every rule it "
+    "lists and none that an earlier version of the plugin wrote. If the command did not run, or its last "
+    "line does not start with `In place:`, tell the user to run `/swd:setup` first, and stop. After a "
+    "plugin update this check sends the user to `/swd:setup`, because the allow rules name the plugin's "
+    "version folder."
+)
+QUEUE_PROMPT = (
+    "Once `/swd:setup` has written its rules, Claude Code asks the user to approve this command, and the two "
+    "below that run `swd-queue.py`: the ask rules setup writes cover the setup and queue scripts, so that an "
+    "agent that follows the playbooks cannot change the project's permission rules or start a queue without "
+    "the user. An agent set on getting round the rules still can, as the README says. Tell the user so before "
+    "the first one."
+)
+QUEUE_UNTRIED = (
+    "This rests on Claude Code passing the queue's marker on to the commands a run executes, which has not "
+    "been tried on a live Claude Code; if it does not, the run judges the plan by itself and goes on, as in "
+    "0.10.0."
+)
+QUEUE_UNATTENDED = (
+    "- Every run the queue starts is unattended, and the queue marks it so in that run's environment. When "
+    "the conductor is on Opus 5.5 and the Fable judge cannot be reached for the plan, the run stops as "
+    "blocked instead of judging the plan by itself, and the item is marked `- [!]`. " + QUEUE_UNTRIED
+)
+# A deny rule refuses; it never asks or prompts. Backticked spans are blanked first, so the dot in `swd-mode.`
+# does not end the sentence the check reads.
+DENY_PROMPTS = re.compile(r"\bdeny rules?\b[^.]*?(?<!not )\b(asks?|prompts?|prompted)\b(?! rules?)", re.I)
+
+
+def deny_prompts(text: str) -> list:
+    return DENY_PROMPTS.findall(re.sub(r"`[^`]*`", "``", text))
+
+
+def bare_every_time(text: str) -> list:
+    """Sentences that promise a prompt "every time" or "each time" without starting "Once setup has written its
+    rules" (or "Once `/swd:setup` has ..."): before setup has written its ask rules, nothing asks."""
+    text = re.sub(r"`[^`]*`", "``", text)
+    return [s for s in re.split(r"(?<=[.!?])\s+", text)
+            if re.search(r"\b(every|each) time\b", s) and re.search(r"\b(asks?|approve)\b", s)
+            and not re.match(r"Once (setup|``) has written its rules", s)]
+
 # C5 (0.10.0): the playbooks' text for the conductor, word for word. A model reads these as its rules.
 # The two Fable judge paragraphs carry the 0.11.0 wording for a run /swd:queue started.
 _MODEL_HEAD = (
@@ -765,13 +944,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.10.0"):
-            self.assertEqual(manifest["version"], "0.10.0")
+        with self.subTest(file="plugin.json", version="0.11.0"):
+            self.assertEqual(manifest["version"], "0.11.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.10.0"):
-            self.assertEqual(first, "## 0.10.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.11.0"):
+            self.assertEqual(first, "## 0.11.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the
@@ -1269,7 +1448,7 @@ class StructureTest(unittest.TestCase):
             "A deny rule refuses the command; it does not ask.",
             "so the hook's compiled copy in `hooks/__pycache__/` is refused too",
             "They are not a hard boundary",
-            *self.DENY_LIMITS,
+            *DENY_LIMITS_0_11_0,  # 0.11.0: C7 corrects the other two (test_readme_0_11_0)
             "permission rules apply to Claude's tool calls, not to hooks",
             "each with the model and effort it is staffed at",
         ):
@@ -1295,8 +1474,7 @@ class StructureTest(unittest.TestCase):
             "`Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:`",
             "they name no folder at all, so they hold after an update",
             "they are not a hard boundary",
-            *self.DENY_LIMITS,
-            "Setup never removes a rule.",
+            *DENY_LIMITS_0_11_0,  # 0.11.0: C7 corrects the other two; "Setup never removes a rule." goes (C6)
             "a command that starts with one of the three names and contains `swd-mode.` is refused, also as one "
             "part of a pipe or a chain, while one that runs Python under another name, such as the interpreter's "
             "full path or a name with its version, is not",
@@ -1310,9 +1488,7 @@ class StructureTest(unittest.TestCase):
         for needle in (
             "because `--fallback-model` does not switch on a rate-limit or usage-limit error",
             "`starting with --model <model>: <item>`",
-            "each allow rule in `permissions.allow` and each rule under the `Deny rules` line in "
-            "`permissions.deny`",
-            "A project set up before 0.10.0 has no deny rules, so this check sends the user to `/swd:setup`.",
+            # 0.11.0: the rule-by-rule comparison is replaced by setup's own `In place:` line (C6).
             # A `Model:` line in queue.md puts the ignored notice first, so the model is read from the count line.
             "The line with the number of open items ends with `model: <model>`, the model every run will start "
             "with; tell the user which.",
@@ -1350,6 +1526,378 @@ class StructureTest(unittest.TestCase):
                 self.assertNotIn(needle, entry)
         with self.subTest(file="CHANGELOG.md 0.10.0", absent="prompt"):
             self.assertNotRegex(entry, r"deny rules?[^.]*\b(asks? for approval|prompts?)\b")
+
+    # 0.11.0, user docs (C6, C7): every statement here was checked against setup, the queue and the checker
+    # on scratch folders; the reviews turned on documents that claimed more than the code delivers.
+    def assertLimitsAndNoFalseClaims(self, name, text, gone=True):
+        for label, sentence in C7_LIMITS:
+            with self.subTest(file=name, limit=label):
+                self.assertIn(sentence, text)
+        with self.subTest(file=name, absent="a deny rule that asks or prompts"):
+            self.assertEqual(deny_prompts(text), [])
+        if gone:
+            for label, needle in GONE_0_11_0:
+                with self.subTest(file=name, absent=label):
+                    self.assertNotIn(needle, text)
+
+    def test_the_deny_prompt_check_fires(self):
+        for bad in ("The three deny rules make Claude Code ask you first.",
+                    "A deny rule for `python3 *swd-mode.*` prompts.", "Deny rules are prompted for."):
+            with self.subTest(sentence=bad):
+                self.assertNotEqual(deny_prompts(bad), [])
+        for good in ("A deny rule refuses the command; it does not ask.", LIMIT_INTERPRETER, LIMIT_MODES):
+            with self.subTest(sentence=good):
+                self.assertEqual(deny_prompts(good), [])
+
+    def test_the_bare_every_time_check_fires(self):
+        for bad in (
+            "So Claude Code asks you to approve the setup and queue commands that `/swd:setup` and `/swd:queue` "
+            "run, every time: no agent changes this project's permission rules or starts a queue without you.",
+            "An ask rule beats an allow rule, so Claude Code asks you to approve the setup and queue commands that "
+            "`/swd:setup` and `/swd:queue` run, every time, and the two skills tell you so before the first prompt.",
+            "Claude Code asks you to approve this command and the one in step 5 each time.",
+        ):
+            with self.subTest(sentence=bad[:50]):
+                self.assertNotEqual(bare_every_time(bad), [])
+        for good in (PROMPT_ONCE, SETUP_PROMPT, "Once `/swd:setup` has written its rules, it asks every time."):
+            with self.subTest(sentence=good[:50]):
+                self.assertEqual(bare_every_time(good), [])
+
+    # The T4 reviews: the four documents claim the prompts only for an agent that follows the playbooks, only once
+    # setup has written its rules, and warn about every command taken from .swd/project.md (C6 as amended).
+    def test_prompts_and_agent_written_commands_0_11_0(self):
+        docs = {
+            "setup": words("skills", "setup", "SKILL.md"),
+            "queue": words("skills", "queue", "SKILL.md"),
+            "README.md": words("README.md"),
+            "CHANGELOG.md 0.11.0": changelog_entry("0.11.0"),
+        }
+        for name, needles in (
+            ("setup", (SETUP_PROMPT, WARN_SETUP, SPACE_EXCEPTION)),
+            ("queue", (QUEUE_PROMPT, QUEUE_UNTRIED)),
+            ("README.md", (PROMPT_ONCE, WARN_README)),
+            ("CHANGELOG.md 0.11.0", (PROMPT_ONCE, WARN_CHANGELOG)),
+        ):
+            for needle in needles:
+                with self.subTest(file=name, needle=needle[:60]):
+                    self.assertIn(needle, docs[name])
+        for name, text in docs.items():
+            for needle in GONE_PROMPTS + GONE_WARNINGS:
+                with self.subTest(file=name, absent=needle[:60]):
+                    self.assertNotIn(needle, text)
+            with self.subTest(file=name, absent="a bare every time"):
+                self.assertEqual(bare_every_time(text), [])
+        # No entry of the CHANGELOG, and none of the four documents, says it of every agent.
+        docs["CHANGELOG.md"] = words("CHANGELOG.md")
+        for name, text in docs.items():
+            for needle in NO_AGENT_CLAIMS:
+                with self.subTest(file=name, absent=needle):
+                    self.assertNotIn(needle, text)
+
+    def test_setup_skill_0_11_0(self):
+        setup = words("skills", "setup", "SKILL.md")
+        description = frontmatter(ROOT / "skills" / "setup" / "SKILL.md").get("description", "")
+        for needle in ("allow rules for the scripts a run needs", "ask rules", "deny rules",
+                       "removes the rules earlier versions of the plugin wrote"):
+            with self.subTest(file="setup description", needle=needle):
+                self.assertIn(needle, description)
+        for needle in (
+            SETUP_PROMPT, SETUP_REMOVES,
+            "`" + SETUP_ASK_HEADING + "`", "`" + SETUP_OLD_HEADING + "`", "`" + SETUP_DENY_HEADING + "`",
+            # step 3: the per-script rules, naming the version folder
+            "`Bash(<name> <plugin>/scripts/<script> *)`",
+            "`check_run.py`, `swd-clean.py`, `swd-dashboard.py`, `swd-findings.py`, `swd-log.py`, `swd-pr.py` "
+            "and `swd-test.py`",
+            "`<plugin>` is the installed plugin's version folder",
+            "they match that script with any arguments and nothing else",
+            SPACE_EXCEPTION,
+            "This is the broadest rule in the set",
+            # the ask rules
+            "`Bash(<name> *swd-setup.*)` and `Bash(<name> *swd-queue.*)`",
+            "an ask rule beats an allow rule",
+            "`Bash(*SWD_UNATTENDED*)`",
+            "catches a command in which the name `SWD_UNATTENDED` is written out plainly, not every command "
+            "that names the variable: a quoted or escaped spelling, or a name built when the command runs, "
+            "gets past it",
+            # the old rules, removed after the user's yes
+            "the real run in step 5 removes them, after the user's yes",
+            # step 5
+            "how many rules it added and how many it removed",
+            "must be run again after each plugin update, because the allow rules name the plugin's version "
+            "folder; until it is, `/swd:queue` sends the user here",
+            # a refused command
+            "report the line it printed and ask the user for the command as they type it",
+            # every command that comes from .swd/project.md
+            WARN_SETUP,
+            "this file may have been written by an agent in an earlier run",
+            "show the command as it stands in the file",
+            "a rule for a shell or for a program that runs other commands it is given should be refused",
+        ):
+            with self.subTest(file="setup", needle=needle):
+                self.assertIn(needle, setup)
+        # The per-script bullet's old form, which left out the space exception (open finding 26).
+        for needle in ("even under the broad Python rules above", "nothing else: not the setup or queue script"):
+            with self.subTest(file="setup", absent=needle):
+                self.assertNotIn(needle, setup)
+        with self.subTest(file="setup", order="prompt sentence before step 2's command"):
+            self.assertLess(setup.find(SETUP_PROMPT), setup.find("--print --command"))
+            self.assertLess(setup.find("2. Show what would be added"), setup.find(SETUP_PROMPT))
+        self.assertLimitsAndNoFalseClaims("setup", setup)
+
+    def test_queue_skill_0_11_0(self):
+        queue = words("skills", "queue", "SKILL.md")
+        for needle in (QUEUE_IN_PLACE, QUEUE_PROMPT, QUEUE_UNTRIED, QUEUE_UNATTENDED):
+            with self.subTest(file="queue", needle=needle[:40]):
+                self.assertIn(needle, queue)
+        with self.subTest(file="queue", order="the unattended bullet follows the Model: bullet"):
+            self.assertLess(queue.find("- A `Model:` line"), queue.find(QUEUE_UNATTENDED))
+            self.assertLess(queue.find(QUEUE_UNATTENDED), queue.find("- When an item's run finishes"))
+        with self.subTest(file="queue", order="the prompt is said before the first command that asks"):
+            self.assertLess(queue.find(QUEUE_PROMPT), queue.find("<python> <plugin>/scripts/swd-queue.py --dry-run"))
+
+    def test_readme_0_11_0(self):
+        readme = words("README.md")
+        for needle in (
+            # the allow rules
+            "one allow rule for each script a run needs, for each of `python3`, `python` and `py -3`, naming "
+            "the script's full path in the installed version's folder",
+            # the ask rules, and the prompt in /swd:setup and /swd:queue
+            "`Bash(python3 *swd-setup.*)`", "`Bash(py *swd-queue.*)`", "`Bash(*SWD_UNATTENDED*)`",
+            "an ask rule beats an allow rule",
+            PROMPT_ONCE,
+            # what to look for before saying yes: every command taken from .swd/project.md
+            WARN_README,
+            # the per-script rules and open finding 26
+            "Each matches that script with any arguments and nothing else, except when the plugin's path holds "
+            "a space: a rule is matched as text, so it can then match a command that runs another file (an "
+            "open finding).",
+            # the removal
+            "Setup removes the rules an earlier version of the plugin wrote:",
+            "It lists them before you say yes, keeps every other rule, yours included, in order, and reports "
+            "how many rules it added and how many it removed.",
+            # run again after each update
+            "Run `/swd:setup` again after each plugin update: the allow rules name the installed version's "
+            "folder",
+            # C7's README list
+            "lists `.claude/` among the protected folders",
+            "A program an agent runs can still write the file in any mode.",
+            "`/swd:queue` sets `SWD_UNATTENDED` to the model it starts each run with, `fable` or `opus`, and "
+            "`check_run.py` reads it: the seal takes the model from it, not from the `Conductor:` line.",
+            "catches a command in which the name is written out plainly, not every command that names the "
+            "variable: a quoted or escaped spelling, or a name built when the command runs, gets past it",
+            "The seal reads the judge's line from `decisions.md`, which the conductor writes",
+            "Whether Claude Code passes `SWD_UNATTENDED` on to the commands a run executes has not been tried "
+            "on a live Claude Code; if it does not, a queue run seals as an attended one does, as in 0.10.0.",
+            # attended vs a queue run on Opus 5.5
+            "In a run you attend, the principal then judges alone, records `Judge unreachable:`, and the run "
+            "goes on.",
+            "A run `/swd:queue` started on Opus 5.5 stops as blocked instead, and its seal accepts the plan "
+            "only on the judge's verdict that the plan holds.",
+            "A run on Opus 5.5 stops as blocked when the Fable judge cannot be reached for its plan, and its "
+            "plan is sealed only on the judge's verdict that it holds.",
+        ):
+            with self.subTest(file="README.md", needle=needle):
+                self.assertIn(needle, readme)
+        with self.subTest(file="README.md", absent="the 0.10.0 claim that the run always goes on"):
+            self.assertNotIn("the principal judges alone, records `Judge unreachable:`, and the run goes on.",
+                             readme)
+        for needle in ("Setup only adds rules", "Whether another allowed command can run the hook"):
+            with self.subTest(file="README.md", absent=needle):
+                self.assertNotIn(needle, readme)
+        self.assertLimitsAndNoFalseClaims("README.md", readme)
+
+    # Every new paragraph of the 0.11.0 user docs, whole, so that no sentence can go or change unseen. Each
+    # was checked against setup, the queue and the checker on scratch folders (reports/T4-docs-writer.md).
+    DOCS_0_11_0 = {
+        ("skills", "setup", "SKILL.md"): (
+            "2. Show what would be added, changing nothing. " + SETUP_PROMPT,
+            "If setup refuses a `--command` value or the test command in `.swd/project.md`, it prints one line "
+            "starting `setup: refused` that says which value and why, prints no rules and changes nothing (exit "
+            "2). Then report the line it printed and ask the user for the command as they type it. When the "
+            "refused value is the test command in `.swd/project.md`, setup refuses every run until that line is "
+            "corrected.",
+            "3. Tell the user, in a short list, what the rules allow in this project. `<plugin>` is the installed "
+            "plugin's version folder (for a checkout, the checkout itself). `<prefix>` is the folder above "
+            "`<plugin>` for an installed plugin, and `<plugin>` itself for a checkout:",
+            "- `Bash(<name> <plugin>/scripts/<script> *)` for each of the three Python names the launcher tries "
+            "(`py -3` among them) and each script a run needs: `check_run.py`, `swd-clean.py`, "
+            "`swd-dashboard.py`, `swd-findings.py`, `swd-log.py`, `swd-pr.py` and `swd-test.py`. Each names the "
+            "script's full path in the version folder, " + SPACE_EXCEPTION + " With no space in the path, no "
+            "such rule matches the setup or queue script, the hook, or a path that climbs out of the folder with "
+            "`..`. When the plugin's path as typed resolves to another spelling, such as through a symlinked "
+            "`~/.claude`, these rules, the two `sh` rules and the `Read` rule are listed for both spellings;",
+            "- a few read-only commands, and the project's commands from step 1, the test command from "
+            "`.swd/project.md` included; the interpreter's rule is the broadest in the set (step 1);",
+            "- seven ask rules, listed under the line `Ask rules, so Claude Code asks you before a command runs "
+            "the setup or queue script, or names SWD_UNATTENDED:`. `Bash(<name> *swd-setup.*)` and `Bash(<name> "
+            "*swd-queue.*)` for each of the three names (`py` for `py -3`) make Claude Code ask before a command "
+            "that starts with one of those names and contains `swd-setup.` or `swd-queue.`, whatever allow rule "
+            "matches it, because an ask rule beats an allow rule; in an unattended run nobody can answer, so the "
+            "command does not run. `Bash(*SWD_UNATTENDED*)` asks before a command that names the variable "
+            "`/swd:queue` sets for the runs it starts. It catches a command in which the name `SWD_UNATTENDED` is "
+            "written out plainly, not every command that names the variable: a quoted or escaped spelling, or a "
+            "name built when the command runs, gets past it;",
+            "- three deny rules, `Bash(<name> *swd-mode.*)` for each of the three names (`py` for `py -3`), "
+            "listed under the line `Deny rules, so Claude Code refuses the plain ways of running the plugin's "
+            "hook by name:`. With them Claude Code refuses the plain ways of running the plugin's hook, "
+            "`hooks/swd-mode.py`, by name, because a deny rule beats an allow rule. Without them an agent in a "
+            "project with an interpreter rule could pipe a forged event into the hook and turn swd mode off or "
+            "set the conductor to `opus`. A deny rule refuses the command; it does not ask.",
+            "They match command text, so they are not a hard boundary: they do not stop the name in another "
+            "letter case on a file system that ignores case, the name written another way, such as part of it "
+            "quoted or given through a shell variable, a shell wildcard, or code a run executes by design, such "
+            "as its tests; - the rules listed under",
+            "- the rules listed under `Rules an earlier version of the plugin wrote, which setup removes:`, when "
+            "the settings file has any: `Bash(<name> <prefix>*)` for the three names, which matched any command "
+            "that starts with the Python name and the plugin's folder, the 0.8.x `Bash(<prefix>*)`, and the `sh` "
+            "and per-script rules of another version folder; the real run in step 5 removes them, after the "
+            "user's yes.",
+            "Say that the rules go in `.claude/settings.local.json`, the user's own settings for this project. "
+            "Setup removes only the rules it lists under that heading, which an earlier version of the plugin "
+            "wrote, and keeps every other rule in the file, yours included, in order. Neither `sh` rule matches "
+            "the launcher's `run` or `install`. Tell the user what the rules do not stop, in these words:",
+            "command's rules before you say yes. " + WARN_SETUP + " 4. Ask whether to add them.",
+            "Report what it printed: how many rules it added and how many it removed. It prints `setup: <a> rules "
+            "added to <settings>`, `setup: <a> rules added to <settings>; <r> rules an earlier version of the "
+            "plugin wrote removed` or `setup: nothing to add`. A settings file that is not valid JSON is left "
+            "unchanged: it prints `<settings> is not valid JSON; fix or remove it, then run setup again` and "
+            "exits 1. Tell the user the rules apply from the next session or after the settings are reloaded, "
+            "that running `/swd:setup` again after the first run adds the project's test command if it was not "
+            "known yet, and that it must be run again after each plugin update, because the allow rules name the "
+            "plugin's version folder; until it is, `/swd:queue` sends the user here.",
+        ),
+        ("README.md",): (
+            "Then it shows you the rules and adds them to `.claude/settings.local.json` when you agree: - one "
+            "allow rule for each script a run needs, for each of `python3`, `python` and `py -3`, naming the "
+            "script's full path in the installed version's folder, such as `Bash(python3 "
+            "/Users/you/.claude/plugins/cache/swd-agents/swd/0.11.0/scripts/check_run.py *)`. Each matches that "
+            "script with any arguments and nothing else, except when the plugin's path holds a space: a rule is "
+            "matched as text, so it can then match a command that runs another file (an open finding). Setup "
+            "writes them for the plugin's path as Claude Code "
+            "gives it to the skills and, when that path resolves to another spelling (a symlinked `~/.claude`, "
+            "for example), for that spelling too; - two `sh` rules for the Python check and the watch terminals, "
+            "and a rule to read the plugin's files; - git, `gh pr`, a few read-only commands, edits inside "
+            "`.swd/`, your test command, and the command that runs your code, such as `Bash(python3 *)`, which "
+            "is the broadest rule in the set: it lets agents run any program with that interpreter in this "
+            "project.",
+            "in this project. " + WARN_README + " Setup also writes seven ask rules:",
+            "Setup also writes seven ask rules: `Bash(python3 *swd-setup.*)`, `Bash(python *swd-setup.*)`, "
+            "`Bash(py *swd-setup.*)`, `Bash(python3 *swd-queue.*)`, `Bash(python *swd-queue.*)`, `Bash(py "
+            "*swd-queue.*)` and `Bash(*SWD_UNATTENDED*)`. Claude Code asks you before a command they match, "
+            "whatever allow rule matches it too, because an ask rule beats an allow rule. " + PROMPT_ONCE
+            + " Setup removes the rules",
+            "Setup removes the rules an earlier version of the plugin wrote: the three rules that let Python run "
+            "anything under the plugin's folder, the 0.8.x `Bash(<plugin folder>/*)`, and the `sh` and "
+            "per-script rules of another version's folder. It lists them before you say yes, keeps every other "
+            "rule, yours included, in order, and reports how many rules it added and how many it removed. A "
+            "settings file that is not valid JSON is left unchanged, and setup says so.",
+            "The plugin's hook, `hooks/swd-mode.py`, is not one of the scripts the allow rules name. Setup also "
+            "adds three deny rules, `Bash(python3 *swd-mode.*)`, `Bash(python *swd-mode.*)` and `Bash(py "
+            "*swd-mode.*)`, so Claude Code refuses the plain ways of running the hook by name, even in a project "
+            "with an interpreter rule: without them an agent could pipe a forged event into the hook there and "
+            "turn swd mode off or set the conductor to `opus`.",
+            "a shell variable, a shell wildcard, or code a run executes by design, such as its tests. Run "
+            "`/swd:setup` again after each plugin update: the allow rules name the installed version's folder, "
+            "so they stop matching after an update and a run asks permission for those commands. Until you run "
+            "it, `/swd:queue` stops and sends you here: it starts only when `swd-setup.py --print` ends with "
+            "`In place:`, which it does only when the settings file holds every rule setup lists and none an "
+            "earlier version wrote. ### What the rules do not stop The allow rules name each script",
+            "command's rules before you say yes. An agent could also change the rules by editing "
+            "`.claude/settings.local.json` itself. Claude Code's documentation lists `.claude/` among the "
+            "protected folders: an allow rule never pre-approves an edit there, so the edit asks you in a "
+            "session you attend, is denied in a queue run, is left to the classifier in auto mode, and goes "
+            "through in a mode that skips permission checks. A program an agent runs can still write the file "
+            "in any mode.",
+            "`/swd:queue` sets `SWD_UNATTENDED` to the model it starts each run with, `fable` or `opus`, and "
+            "`check_run.py` reads it: the seal takes the model from it, not from the `Conductor:` line. A run you "
+            "start yourself has no such variable. The ask rule `Bash(*SWD_UNATTENDED*)` catches a command in "
+            "which the name is written out plainly, not every command that names the variable: a quoted or "
+            "escaped spelling, or a name built when the command runs, gets past it. The seal reads the judge's "
+            "line from `decisions.md`, which the conductor writes, so it cannot show that the judge gave it. "
+            "Whether Claude Code passes `SWD_UNATTENDED` on to the commands a run executes has not been tried on "
+            "a live Claude Code; if it does not, a queue run seals as an attended one does, as in 0.10.0.",
+            "Run `/swd:setup` first: nobody is there to answer a permission prompt. Every run the queue starts is "
+            "unattended. A run on Opus 5.5 stops as blocked when the Fable judge cannot be reached for its plan, "
+            "and its plan is sealed only on the judge's verdict that it holds.",
+            "When the judge cannot be reached (the dispatch fails or is cut off, for example because the Fable "
+            "quota has run out, or it returns no verdict, which includes a judge that finds it is not on Fable "
+            "5.2), what happens depends on whether anyone attends the run. In a run you attend, the principal "
+            "then judges alone, records `Judge unreachable:`, and the run goes on. A run `/swd:queue` started "
+            "on Opus 5.5 stops as blocked instead, and its seal accepts the plan only on the judge's verdict "
+            "that the plan holds. `check_run.py --seal` refuses",
+        ),
+        ("CHANGELOG.md 0.11.0",): (
+            "0.11.0 - `/swd:setup` writes one allow rule per script a run needs, for each of `python3`, `python` "
+            "and `py -3`, naming the script's full path in the installed version's folder, in place of the three "
+            "broad Python rules, which matched any command that starts with the Python name and the plugin's "
+            "folder. The seven scripts are `check_run.py`, `swd-clean.py`, `swd-dashboard.py`, "
+            "`swd-findings.py`, `swd-log.py`, `swd-pr.py` and `swd-test.py`. Every rule naming the plugin's "
+            "folder is written for the plugin's path as typed and, when it resolves to another spelling, as "
+            "resolved, so with a symlinked `~/.claude` both spellings match. Run `/swd:setup` again after "
+            "updating; until you do, `/swd:queue` sends you there.",
+            "- `/swd:setup` writes seven ask rules: `Bash(python3 *swd-setup.*)`, `Bash(python *swd-setup.*)`, "
+            "`Bash(py *swd-setup.*)`, the same three for `swd-queue.`, and `Bash(*SWD_UNATTENDED*)`. An ask rule "
+            "beats an allow rule. " + PROMPT_ONCE + " The two skills tell you so before the first prompt. In an "
+            "unattended run nobody can answer, so such a command does not run. - `/swd:setup` removes",
+            "- `/swd:setup` removes the rules an earlier version of the plugin wrote, after your yes: the three "
+            "broad Python rules, the 0.8.x `Bash(<plugin folder>/*)`, and the `sh` and per-script rules of "
+            "another version's folder. `--print` lists them under `Rules an earlier version of the plugin wrote, "
+            "which setup removes:`, and the real run reports the count, as `setup: <a> rules added to "
+            "<settings>; <r> rules an earlier version of the plugin wrote removed`. Every other rule, yours "
+            "included, is kept in order. A settings file that is not valid JSON, `NaN`, `Infinity` and a key "
+            "repeated in one object included, is refused and left unchanged.",
+            "- `--print` ends with one line: `In place:` when the settings file holds every rule it lists and "
+            "none an earlier version wrote, and `Not in place:` otherwise. `/swd:queue` starts only on "
+            "`In place:`, in place of comparing the rules one by one.",
+            "- Setup refuses a `--command`, or the test command in `.swd/project.md`, that is empty, whose first "
+            "word holds a `*`, that holds a control character, whose first word is not a plain program name or "
+            "path, whose first word is `env`, `xargs`, `sudo`, `doas`, `eval` or `exec`, that is `sh`, `bash`, "
+            "`zsh`, `dash`, `ksh`, `fish` or `npx` alone or followed by an option (`bash scripts/test.sh` and "
+            "`npx jest` are accepted), or that names the plugin's own folder. It prints one line saying why, "
+            "exits 2 and writes nothing. " + WARN_CHANGELOG + " - `/swd:queue` starts each run",
+            "- `/swd:queue` starts each run with `SWD_UNATTENDED` set to the model it starts it with, `fable` or "
+            "`opus`, and `check_run.py` reads it: the seal takes the model from it, not from the `Conductor:` "
+            "line. In a run started so on Opus 5.5, the seal of a changed plan needs the last `Judge plan:` or "
+            "`Judge unreachable:` line since the last seal to be the judge's verdict that the plan holds, and the "
+            "build playbook stops the run as blocked when the judge could not be reached. `check_run.py --seal` "
+            "refuses otherwise, with one of these lines: " + UNATTENDED_REFUSAL + " " + UNATTENDED_NOT_HOLDING
+            + " In such a run, on either model, `check_run.py --task` and the check of a finished run report a "
+            "plan that was never sealed: " + UNATTENDED_UNSEALED + " In a run you attend nothing changes: the "
+            "principal judges alone when the judge cannot be reached, and the run goes on. Whether Claude Code "
+            "passes `SWD_UNATTENDED` on to a run's commands has not been tried on a live Claude Code; if it does "
+            "not, a queue run seals as in 0.10.0. - What the rules do not stop: " + LIMIT_ALLOW,
+        ),
+    }
+
+    def test_0_11_0_docs_are_pinned_whole(self):
+        for parts, paragraphs in self.DOCS_0_11_0.items():
+            text = changelog_entry("0.11.0") if parts == ("CHANGELOG.md 0.11.0",) else words(*parts)
+            for paragraph in paragraphs:
+                with self.subTest(file=parts[-1], paragraph=paragraph[:60]):
+                    self.assertIn(paragraph, text)
+
+    def test_changelog_0_11_0(self):
+        entry = changelog_entry("0.11.0")
+        for needle in (
+            "one allow rule per script a run needs",
+            "in place of the three broad Python rules",
+            "Run `/swd:setup` again after updating; until you do, `/swd:queue` sends you there.",
+            "`Bash(python3 *swd-setup.*)`", "`Bash(*SWD_UNATTENDED*)`",
+            PROMPT_ONCE, WARN_CHANGELOG,
+            "`" + SETUP_OLD_HEADING + "`",
+            "`setup: <a> rules added to <settings>; <r> rules an earlier version of the plugin wrote removed`",
+            "refuses a `--command`",
+            "exits 2 and writes nothing",
+            "for the plugin's path as typed and, when it resolves to another spelling, as resolved",
+            "`SWD_UNATTENDED`", "`fable` or `opus`",
+            "the seal takes the model from it, not from the `Conductor:` line",
+            UNATTENDED_REFUSAL, UNATTENDED_NOT_HOLDING, UNATTENDED_UNSEALED,
+            "`In place:`",
+            "In a run you attend nothing changes",
+        ):
+            with self.subTest(file="CHANGELOG.md 0.11.0", needle=needle):
+                self.assertIn(needle, entry)
+        self.assertLimitsAndNoFalseClaims("CHANGELOG.md 0.11.0", entry, gone=False)
 
     def test_unattended_run_safeguards_are_pinned(self):
         def words(*parts: str) -> str:
@@ -1581,9 +2129,12 @@ class WindowsTest(unittest.TestCase):
 
     def test_no_playbook_runs_python3_by_name(self):
         # Windows has `python` or `py -3`, and `python3` there is often the Microsoft Store stub.
+        # 0.11.0: the setup skill quotes the example rule `Bash(python3 *)` in a C7 sentence; that names a
+        # rule, not a command a playbook runs.
         for path in PLAYBOOKS:
             with self.subTest(file=str(path.relative_to(ROOT))):
-                hits = [line for line in path.read_text(encoding="utf-8").splitlines() if re.search(r"\bpython3\b", line)]
+                hits = [line for line in path.read_text(encoding="utf-8").splitlines()
+                        if re.search(r"\bpython3\b", line.replace("`Bash(python3 *)`", ""))]
                 self.assertEqual(hits, [])
 
     def test_the_only_sh_scripts_named_are_the_launcher_and_the_watch_script_run_through_sh(self):
@@ -1683,11 +2234,8 @@ class WindowsTest(unittest.TestCase):
             "`Bash(sh <plugin>/scripts/swd-watch.sh *)`",
             "`Read(<prefix>**)`",
             "`Bash(git *)`", "`Bash(gh pr *)`", "`Edit(/.swd/**)`", "`Read(/.swd/**)`",
-            "The two `sh` rules name the installed plugin's version folder, so run `/swd:setup` again "
-            "after each plugin update; " + OLD_SH_RULES + ".",
-            OLD_BROAD_RULE,
-            "any command that starts with that name and `<prefix>`, which is not limited to the plugin's "
-            "own scripts",
+            # 0.11.0: setup removes the old `sh` rules and the 0.8.x rule, and writes no broad Python rule
+            # (GONE_0_11_0, test_setup_skill_0_11_0).
             "The user's yes is the gate for this install.",
         ):
             with self.subTest(file="setup", needle=needle):
@@ -1697,12 +2245,13 @@ class WindowsTest(unittest.TestCase):
         readme = words("README.md")
         for needle in (
             "Run `/swd:setup` again after each plugin update",
-            "which is not limited to the plugin's own scripts",
-            OLD_SH_RULES,
-            OLD_BROAD_RULE,
         ):
             with self.subTest(file="README.md", needle=needle):
                 self.assertIn(needle, readme)
+        for needle in (OLD_SH_RULES, OLD_BROAD_RULE):
+            for name, text in (("setup", setup), ("README.md", readme)):
+                with self.subTest(file=name, absent=needle):
+                    self.assertNotIn(needle, text)
         with self.subTest(file="README.md", absent="harmless"):
             self.assertNotIn("harmless", readme)
         # What old rules still match is said of the `sh` rules only: the 0.8.x rule is broad.
@@ -1714,13 +2263,19 @@ class WindowsTest(unittest.TestCase):
         queue = words("skills", "queue", "SKILL.md")
         for needle in (
             "<python> <plugin>/scripts/swd-setup.py --print <project>",
-            "Every rule it printed must be in `.claude/settings.local.json` exactly as printed",
-            "A rule that names another version folder of the plugin does not count, so after a plugin "
-            "update this check sends the user to `/swd:setup`.",
+            QUEUE_IN_PLACE,  # 0.11.0: setup's status line replaces the rule-by-rule comparison (C6)
         ):
             with self.subTest(file="queue", needle=needle):
                 self.assertIn(needle, queue)
         self.assertNotIn("does not already contain those rules", queue)
+        for needle in (
+            "Every rule it printed must be in `.claude/settings.local.json` exactly as printed",
+            "character for character",
+            "A rule that names another version folder of the plugin does not count",
+            "A project set up before 0.10.0 has no deny rules",
+        ):
+            with self.subTest(file="queue", absent=needle):
+                self.assertNotIn(needle, queue)
 
     def test_on_says_when_python_is_missing(self):
         on = words("skills", "on", "SKILL.md")
