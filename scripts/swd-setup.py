@@ -10,6 +10,11 @@ Without these rules, agents working in the background have their file writes and
 commands held for an approval nobody can give, and the run stalls. The rules allow: the
 plugin's own scripts, git and `gh pr`, the project's test command, a few read-only commands,
 and edits inside `.swd/` (the run folder and the run's worktree, where all changes are made).
+Three deny rules make Claude Code refuse the plain ways of running the plugin's hook,
+swd-mode.py, by name through the Bash tool; a deny rule refuses, it does not ask. They name
+the file up to its dot, swd-mode., so the hook's compiled copy in __pycache__ is refused too.
+They match command text only, so they are not a hard boundary. Setup only adds
+rules, to `permissions.allow` and `permissions.deny`; it never removes or reorders one.
 settings.local.json is the user's own file for this project and is not meant to be committed.
 """
 import argparse
@@ -21,6 +26,15 @@ from pathlib import Path
 # Read-only commands, plus the three the principal chains into its own commands (echo, cat, mkdir, touch).
 READ_ONLY = ["pwd", "ls *", "date *", "wc *", "diff *", "head *", "tail *", "grep *", "find *", "which *",
              "echo *", "cat *", "mkdir *", "touch *"]
+
+# Deny beats allow, so Claude Code refuses these even under the broad Python rules below: without them
+# `echo '<forged event>' | python3 <plugin>/hooks/swd-mode.py` runs and can turn swd mode off or set the conductor.
+# They name the file up to its dot, `swd-mode.`, so the compiled copy Python runs as readily,
+# `hooks/__pycache__/swd-mode.cpython-310.pyc`, is refused too. A deny rule refuses, it does not ask, so nothing
+# wider: `*swd-mode*` would refuse every checker call on a run folder named `...-swd-mode-fix`, which has no dot.
+# They match text, not the file, so a renamed copy or another letter case gets past them; they are not a hard boundary.
+# `python *` does not match `python3` (the space is part of the rule); `py *` covers `py -3`.
+DENY = ["Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)", "Bash(py *swd-mode.*)"]
 
 
 def plugin_prefix(root):
@@ -88,6 +102,9 @@ def main(argv=None):
         print(f"Rules for {settings}:")
         for rule in wanted:
             print("  " + rule)
+        print("Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:")
+        for rule in DENY:
+            print("  " + rule)
         return 0
 
     data = {}
@@ -96,13 +113,16 @@ def main(argv=None):
             data = json.loads(settings.read_text(encoding="utf-8"))
         except ValueError:
             data = None
-        if not isinstance(data, dict):
-            print(f"{settings} is not valid JSON; fix or remove it, then run setup again", file=sys.stderr)
-            return 1
-    permissions = data.setdefault("permissions", {})
-    allow = permissions.setdefault("allow", [])
-    added = [rule for rule in wanted if rule not in allow]
-    allow.extend(added)
+    permissions = data.setdefault("permissions", {}) if isinstance(data, dict) else None
+    if not (isinstance(permissions, dict) and all(isinstance(permissions.get(key, []), list) for key in ("allow", "deny"))):
+        print(f"{settings} is not valid JSON; fix or remove it, then run setup again", file=sys.stderr)
+        return 1
+    added = []
+    for key, rules_wanted in (("allow", wanted), ("deny", DENY)):
+        existing = permissions.setdefault(key, [])
+        missing = [rule for rule in rules_wanted if rule not in existing]
+        existing.extend(missing)
+        added += missing
     settings.parent.mkdir(parents=True, exist_ok=True)
     settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     print(f"setup: {len(added)} rules added to {settings}" if added else "setup: nothing to add")

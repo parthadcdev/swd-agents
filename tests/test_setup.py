@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "swd-setup.py"
 sys.path.insert(0, str(ROOT / "scripts"))
+DENY = ["Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)", "Bash(py *swd-mode.*)"]   # contract C6
 
 
 class SetupTest(unittest.TestCase):
@@ -58,13 +59,37 @@ class SetupTest(unittest.TestCase):
         self.settings.write_text(json.dumps({"permissions": {"allow": ["Bash(make *)", "Bash(git *)"], "deny": ["Bash(rm *)"]},
                                              "env": {"X": "1"}}), encoding="utf-8")
         self.setup()
-        self.setup()
+        self.assertEqual(self.setup().stdout.strip(), "setup: nothing to add")
         data = json.loads(self.settings.read_text(encoding="utf-8"))
         self.assertEqual(data["env"], {"X": "1"})
-        self.assertEqual(data["permissions"]["deny"], ["Bash(rm *)"])
+        self.assertEqual(data["permissions"]["deny"], ["Bash(rm *)", *DENY])
         allow = data["permissions"]["allow"]
         self.assertEqual(allow[:2], ["Bash(make *)", "Bash(git *)"])
         self.assertEqual(len(allow), len(set(allow)))
+
+    def test_deny_rules_already_there_are_kept_in_order_and_not_added_twice(self):
+        self.settings.parent.mkdir()
+        self.settings.write_text(json.dumps({"permissions": {"deny": ["Bash(py *swd-mode.*)", "Bash(rm *)"]}}), encoding="utf-8")
+        self.setup()
+        deny = json.loads(self.settings.read_text(encoding="utf-8"))["permissions"]["deny"]
+        self.assertEqual(deny, ["Bash(py *swd-mode.*)", "Bash(rm *)", "Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)"])
+
+    def test_the_count_includes_the_deny_rules(self):
+        allow_count = len(self.module().rules(self.project.resolve(), Path("/work/swd-agents")))
+        result = self.setup("--plugin-root", "/work/swd-agents")
+        self.assertEqual(result.stdout.strip(),
+                         f"setup: {allow_count + 3} rules added to {self.settings.resolve()}")
+        self.assertEqual(json.loads(self.settings.read_text(encoding="utf-8"))["permissions"]["deny"], DENY)
+
+    def test_settings_of_the_wrong_shape_are_not_overwritten(self):
+        for text in ('{"permissions": {"deny": "Bash(rm *)"}}', '{"permissions": {"allow": {}}}', '{"permissions": []}'):
+            with self.subTest(settings=text):
+                self.settings.parent.mkdir(exist_ok=True)
+                self.settings.write_text(text, encoding="utf-8")
+                result = self.setup()
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("is not valid JSON; fix or remove it, then run setup again", result.stderr)
+                self.assertEqual(self.settings.read_text(encoding="utf-8"), text)
 
     def test_unreadable_settings_are_not_overwritten(self):
         self.settings.parent.mkdir()
@@ -88,7 +113,12 @@ class SetupTest(unittest.TestCase):
     def test_print_lists_the_rules_for_a_posix_plugin_root(self):
         result = self.setup("--print", "--plugin-root", "/work/swd-agents")
         self.assertEqual(result.returncode, 0, result.stderr)
-        listed = [line.strip() for line in result.stdout.splitlines()[1:]]
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines[-4:], ["Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:",
+                                      "  Bash(python3 *swd-mode.*)", "  Bash(python *swd-mode.*)", "  Bash(py *swd-mode.*)"])
+        self.assertFalse(self.settings.exists())
+        listed = [line.strip() for line in lines[1:-4]]
+        self.assertFalse([rule for rule in listed if "swd-mode" in rule])
         self.assertEqual(listed[:10], [
             "Bash(python3 /work/swd-agents/*)",
             "Bash(python /work/swd-agents/*)",
@@ -172,6 +202,62 @@ class SetupTest(unittest.TestCase):
         for command in (f"sh {newer}/scripts/swd-python.sh check", f"sh {newer}/scripts/swd-watch.sh .swd/runs/x"):
             with self.subTest(command=command):
                 self.assertEqual([rule for rule in rules if allows(rule, command)], [])
+
+    def test_deny_rules_match_every_way_of_running_the_hook_and_no_playbook_command(self):
+        module = self.module()
+        self.assertEqual(module.DENY, DENY)
+        for name, root in self.ROOTS.items():
+            allow = module.rules(self.project, root)
+            plugin = root.as_posix()
+            prefix = module.plugin_prefix(root)
+            event = '{"hook_event_name":"UserPromptExpansion","command_name":"swd:conductor","command_args":"opus"}'
+            piped = f"echo '{event}' | python3 {plugin}/hooks/swd-mode.py"
+            hook_commands = [f"python3 {plugin}/hooks/swd-mode.py",
+                             f"python {plugin}/hooks/swd-mode.py",
+                             f"py -3 {plugin}/hooks/swd-mode.py",
+                             f"python3 {prefix}scripts/../hooks/swd-mode.py",
+                             f"py -3 {root}\\hooks\\swd-mode.py".replace("/", "\\"),
+                             f"python {root}\\hooks\\swd-mode.py".replace("/", "\\"),
+                             piped.split("|")[1].strip()]
+            for command in hook_commands:
+                with self.subTest(root=name, hook=command):
+                    self.assertTrue([rule for rule in module.DENY if allows(rule, command)])
+            # Every subcommand of the 0.9.0 forgery is allowed without a deny rule: that is the gap they close.
+            self.assertTrue(all(any(allows(rule, part.strip()) for rule in allow) for part in piped.split("|")))
+            run = ".swd/runs/2026-11-16-demo"
+            # The playbooks run ${CLAUDE_PLUGIN_ROOT}/scripts/..., the version folder included.
+            playbook_commands = [f"{python} {plugin}/scripts/{tail}" for python in ("python3", "python", "py -3") for tail in (
+                f"check_run.py --plan {run}", f"check_run.py --seal {run}", f"check_run.py --task T1 {run}",
+                f"check_run.py --finish {run}", f"check_run.py {run}",
+                f"swd-log.py {run} dispatch T1 generalist-engineer", f"swd-test.py {run} T1",
+                f"swd-dashboard.py --watch --open {run}", "swd-clean.py .", "swd-findings.py .",
+                f"swd-pr.py {run}", "swd-queue.py --dry-run .", "swd-setup.py --print .")]
+            for command in playbook_commands:
+                with self.subTest(root=name, playbook=command):
+                    self.assertTrue([rule for rule in allow if allows(rule, command)])
+                    self.assertEqual([rule for rule in module.DENY if allows(rule, command)], [])
+
+    def test_deny_rules_match_the_hooks_compiled_copy(self):
+        # Python runs a .pyc given as the script, and importing the hook writes one beside it.
+        module = self.module()
+        for name, root in self.ROOTS.items():
+            for python in ("python3", "python", "py -3"):
+                command = f"{python} {root.as_posix()}/hooks/__pycache__/swd-mode.cpython-310.pyc"
+                with self.subTest(root=name, command=command):
+                    self.assertTrue([rule for rule in module.DENY if allows(rule, command)])
+
+    def test_deny_rules_match_no_command_on_a_run_folder_named_for_swd_mode(self):
+        # A deny rule refuses outright, so a run whose short name holds `swd-mode` must keep its checker calls.
+        module = self.module()
+        run = ".swd/runs/2026-11-16-swd-mode-fix"
+        for name, root in self.ROOTS.items():
+            plugin = root.as_posix()
+            for python in ("python3", "python", "py -3"):
+                for tail in (f"check_run.py --seal {run}", f"swd-log.py {run} dispatch T1 generalist-engineer",
+                             f"swd-test.py {run} T1"):
+                    command = f"{python} {plugin}/scripts/{tail}"
+                    with self.subTest(root=name, command=command):
+                        self.assertEqual([rule for rule in module.DENY if allows(rule, command)], [])
 
     def test_rules_for_an_older_version_count_as_missing(self):
         # After a plugin update, setup adds the new version's sh rules and keeps the old ones (it never removes).
