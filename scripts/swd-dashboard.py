@@ -4,8 +4,10 @@
     python3 swd-dashboard.py <run_dir>                  write the page once
     python3 swd-dashboard.py --watch --open <run_dir>   open it in the browser and keep it current
 
-The page shows the tasks in columns by wave, coloured by status, and the activity timeline.
-It is rebuilt from plan.md, ledger.md and activity.md, so no agent has to do anything for it.
+The page shows the tasks in columns by wave, coloured by status, the model and effort each task,
+the reviews and the final check are staffed at, the model that conducts, and the activity timeline.
+It is rebuilt from plan.md, ledger.md, activity.md, staffing.md and decisions.md, so no agent
+has to do anything for it.
 Set SWD_NO_BROWSER=1 to stop --open from opening a browser (used by the pilots).
 """
 import argparse
@@ -18,7 +20,7 @@ import webbrowser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_run import ACTIVITY_RE, parse_ledger, parse_plan, read, run_mode  # noqa: E402
+from check_run import ACTIVITY_RE, decision, parse_ledger, parse_plan, read, run_mode  # noqa: E402
 
 REFRESH_SECONDS = 2
 MAX_WATCH_SECONDS = 12 * 60 * 60  # an abandoned run must not leave a process behind forever
@@ -74,11 +76,27 @@ def read_activity(run_dir):
     return entries
 
 
+def read_staffing(run_dir):
+    """For -> (Model, Effort) from staffing.md, by check_run's row rules; the last row wins. Never raises."""
+    staffing = {}
+    for line in (read(run_dir / "staffing.md") or "").splitlines():
+        if "|" not in line:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cells[:4] == ["For", "Agent", "Model", "Effort"] or all(c and set(c) <= set("-: ") for c in cells):
+            continue
+        if len(cells) == 5:
+            staffing[cells[0]] = (cells[2], cells[3])
+    return staffing
+
+
 def render(run_dir):
     """The whole page as a string. Never raises on a half-written or missing run file."""
     tasks, _ = parse_plan(read(run_dir / "plan.md") or "")
     rows, _ = parse_ledger(read(run_dir / "ledger.md") or "")
     activity = read_activity(run_dir)
+    staffing = read_staffing(run_dir)
+    conductor = decision(run_dir, "Conductor")
     finished = bool(activity) and activity[-1][1] == "done"
 
     statuses = {t["id"]: rows.get(t["id"], {}).get("status", "todo") for t in tasks}
@@ -108,6 +126,8 @@ def render(run_dir):
             if status not in ("todo", "in-progress", "in-review", "done", "blocked"):
                 status = "todo"
             meta = [esc(task["role"] or "no role")]
+            if task["id"] in staffing:
+                meta.append(esc(" ".join(staffing[task["id"]])))
             attempts = rows.get(task["id"], {}).get("attempts", 0)
             if attempts > 1:
                 meta.append(f"attempt {attempts}")
@@ -133,6 +153,12 @@ def render(run_dir):
     ) or '<div class="empty">Nothing has happened yet.</div>'
     percent = round(100 * done / len(tasks)) if tasks else 0
     refresh = "" if finished else f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">'
+    conductor_badge = f'\n<span class="badge">Conductor: {esc(conductor)}</span>' if conductor else ""
+    checkers = " · ".join(
+        f"{label}: {esc(' '.join(staffing[key]))}"
+        for key, label in (("review", "Review"), ("final", "Final")) if key in staffing
+    )
+    checkers = f'\n<p class="summary">{checkers}</p>' if checkers else ""
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -141,7 +167,7 @@ def render(run_dir):
 <body><main>
 <h1>{esc(run_dir.name)}</h1>
 <p class="summary"><span class="badge">{esc(run_mode(run_dir) or "mode not set")}</span>
-<span class="badge">{state}</span> {done} of {len(tasks)} tasks done</p>
+<span class="badge">{state}</span>{conductor_badge} {done} of {len(tasks)} tasks done</p>{checkers}
 <div class="bar" role="progressbar" aria-valuenow="{percent}" aria-valuemin="0" aria-valuemax="100"
  aria-label="Tasks done"><div style="width:{percent}%"></div></div>
 {board}

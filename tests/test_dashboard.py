@@ -46,6 +46,17 @@ ACTIVITY = """- 10:00:00 dispatch T1 generalist-engineer
 """
 
 
+STAFFING = """# Staffing
+
+| For | Agent | Model | Effort | Why |
+|---|---|---|---|---|
+| T1 | generalist-engineer | opus | medium | The hook and its tests |
+| T2 | backend-engineer | <b>sonnet</b> | low | A small change |
+| review | code-reviewer, security-reviewer | opus | medium | Review |
+| final | qa-engineer | opus | low | Runs commands |
+"""
+
+
 def load():
     spec = importlib.util.spec_from_file_location("swd_dashboard", SCRIPT)
     module = importlib.util.module_from_spec(spec)
@@ -146,6 +157,103 @@ class DashboardTest(unittest.TestCase):
             self.assertEqual(self.dash.main(["--watch", str(self.run_dir)]), 0)
         self.assertEqual(len(calls), 3)
         self.assertNotIn('http-equiv="refresh"', (self.run_dir / "dashboard.html").read_text(encoding="utf-8"))
+
+    def test_shows_each_tasks_the_checkers_and_the_conductors_model(self):
+        (self.run_dir / "staffing.md").write_text(STAFFING, encoding="utf-8")
+        (self.run_dir / "decisions.md").write_text("Base commit: 1a2b3c4\nConductor: Opus 5.5\n", encoding="utf-8")
+        page = self.dash.render(self.run_dir)
+        self.assertIn('<div class="meta">generalist-engineer · opus medium</div>', page)
+        self.assertIn('<div class="meta">backend-engineer · &lt;b&gt;sonnet&lt;/b&gt; low · attempt 2 · after T1</div>', page)
+        self.assertNotIn("<b>", page)
+        self.assertIn('<span class="badge">Conductor: Opus 5.5</span>', page)
+        self.assertLess(page.index("Running"), page.index("Conductor: Opus 5.5"))
+        self.assertIn('<p class="summary">Review: opus medium · Final: opus low</p>', page)
+
+    def test_markup_in_effort_and_conductor_is_escaped(self):
+        (self.run_dir / "staffing.md").write_text(
+            "| T1 | generalist-engineer | opus | <i>high</i> | x |\n"
+            "| final | qa-engineer | <script>alert(1)</script> | low | x |\n", encoding="utf-8")
+        (self.run_dir / "decisions.md").write_text("Conductor: <img src=x onerror=alert(1)>\n", encoding="utf-8")
+        page = self.dash.render(self.run_dir)
+        for raw in ("<i>", "<script>alert", "<img"):
+            self.assertNotIn(raw, page)
+        self.assertIn("generalist-engineer · opus &lt;i&gt;high&lt;/i&gt;</div>", page)
+        self.assertIn("Final: &lt;script&gt;alert(1)&lt;/script&gt; low</p>", page)
+        self.assertIn("Conductor: &lt;img src=x onerror=alert(1)&gt;</span>", page)
+
+    def test_without_staffing_or_decisions_the_page_shows_no_models(self):
+        page = self.dash.render(self.run_dir)
+        self.assertIn('<div class="meta">generalist-engineer</div>', page)
+        self.assertIn('<div class="meta">backend-engineer · attempt 2 · after T1</div>', page)
+        self.assertNotIn("Conductor:", page)
+        self.assertNotIn("Review:", page)
+        self.assertNotIn("Final:", page)
+
+    def test_a_missing_task_row_and_final_row_are_left_out(self):
+        (self.run_dir / "staffing.md").write_text(
+            "| For | Agent | Model | Effort | Why |\n|---|---|---|---|---|\n"
+            "| T2 | backend-engineer | opus | low | x |\n"
+            "| review | code-reviewer | opus | medium | x |\n", encoding="utf-8")
+        page = self.dash.render(self.run_dir)
+        self.assertIn('<div class="meta">generalist-engineer</div>', page)
+        self.assertIn('<div class="meta">backend-engineer · opus low · attempt 2 · after T1</div>', page)
+        self.assertIn('<p class="summary">Review: opus medium</p>', page)
+        self.assertNotIn("Final:", page)
+
+    def test_only_the_final_row_gives_only_the_final_part(self):
+        (self.run_dir / "staffing.md").write_text("| final | qa-engineer | opus | low | x |\n", encoding="utf-8")
+        page = self.dash.render(self.run_dir)
+        self.assertIn('<p class="summary">Final: opus low</p>', page)
+        self.assertNotIn("Review:", page)
+
+    def test_rows_without_five_cells_and_note_lines_are_skipped(self):
+        (self.run_dir / "staffing.md").write_text(
+            "# Staffing\n\nA note | with a stray bar\n"
+            "| T1 | generalist-engineer | opus | medium |\n"
+            "final | qa-engineer | haiku | low | a row without a leading bar is still a row\n"
+            "| T2 | backend-engineer | opus | low | x |\n"
+            "| T2 | backend-engineer | sonnet | high | the last row for a task wins |\n", encoding="utf-8")
+        page = self.dash.render(self.run_dir)
+        self.assertIn('<div class="meta">generalist-engineer</div>', page)
+        self.assertIn("backend-engineer · sonnet high · attempt 2", page)
+        self.assertNotIn("opus low", page)
+        self.assertIn('<p class="summary">Final: haiku low</p>', page)
+        self.assertEqual(
+            self.dash.read_staffing(self.run_dir),
+            {"T2": ("sonnet", "high"), "final": ("haiku", "low")})
+
+    def test_the_last_conductor_line_shows(self):
+        (self.run_dir / "decisions.md").write_text(
+            "Conductor: Fable 5.2\nJudge plan: the plan holds\nConductor: Opus 5.5\n", encoding="utf-8")
+        page = self.dash.render(self.run_dir)
+        self.assertIn("Conductor: Opus 5.5", page)
+        self.assertNotIn("Fable 5.2", page)
+
+    def test_read_staffing_never_raises(self):
+        self.assertEqual(self.dash.read_staffing(self.run_dir), {})
+        (self.run_dir / "staffing.md").mkdir()
+        self.assertEqual(self.dash.read_staffing(self.run_dir), {})
+        self.assertIn("2026-11-12-cart-total", self.dash.render(self.run_dir))
+
+    def test_cli_writes_the_page_in_every_staffing_case(self):
+        cases = {
+            "full": (STAFFING, "Conductor: Opus 5.5\n"),
+            "no staffing, no decisions": (None, None),
+            "rows missing": ("| review | code-reviewer | opus | medium | x |\n", "Base commit: 1\n"),
+            "bad rows": ("| T1 | a | b |\nnote | here\n", "Conductor: Fable 5.2\nConductor: Opus 5.5\n"),
+        }
+        for name, (staffing, decisions) in cases.items():
+            with self.subTest(name):
+                for file, text in (("staffing.md", staffing), ("decisions.md", decisions)):
+                    path = self.run_dir / file
+                    if text is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        path.write_text(text, encoding="utf-8")
+                result = self.cli(str(self.run_dir))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), str((self.run_dir / "dashboard.html").resolve()))
+                self.assertIn("T2", (self.run_dir / "dashboard.html").read_text(encoding="utf-8"))
 
     def test_cli_missing_run_folder_is_an_error_not_a_traceback(self):
         result = self.cli(str(self.run_dir / "nope"))
