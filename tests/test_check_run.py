@@ -128,7 +128,7 @@ def make_run(tmp, mode="production", single=False):
     commit(repo, "T9: task from an earlier run", ["old/x.py"])
     base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, encoding="utf-8").stdout.strip()
     (run / "decisions.md").write_text(
-        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nHousekeeping: removed 0, kept 0\nFinish: branch\nPlan judged: the outcome meets the criteria.\n\n- None.\n", encoding="utf-8")
+        f"Base commit: {base}\nBase branch: main\nBranch: swd/demo\nWorktree: {repo}\nConductor: Fable 5.2\nHousekeeping: removed 0, kept 0\nFinish: branch\nPlan judged: the outcome meets the criteria.\n\n- None.\n", encoding="utf-8")
     (run / "staffing.md").write_text(STAFFING, encoding="utf-8")
     if mode == "production":
         names = ["T1-code-reviewer", "T1-security-reviewer"]
@@ -890,6 +890,165 @@ class CheckRunTest(unittest.TestCase):
         replace(run / "plan.md", "- Check: `python3 -m unittest tests.test_b`\n", "")
         self.cr.seal_plan(run)
         self.assertEqual(self.problems(repo, run), ["plan.md: T2 is missing '- Check:'"])
+
+    # --- the conductor and the Fable judge (0.10.0) --------------------------------------------
+
+    CONDUCTOR = ("decisions.md: needs a line 'Conductor: Fable 5.2' or 'Conductor: Opus 5.5'; "
+                 "the principal records the model it conducts on")
+
+    def judge_message(self, value="Opus 5.5"):
+        return (f"decisions.md: the conductor is on {value}, so the plan needs the Fable judge: "
+                "a 'Judge plan: ...' line, or 'Judge unreachable: ...', below the last 'Plan checksum:' line")
+
+    def append(self, run, text):
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
+            f.write(text)
+
+    def on_opus(self, run):
+        replace(run / "decisions.md", "Conductor: Fable 5.2\n", "Conductor: Opus 5.5\n")
+
+    def seals(self, run):
+        return len(self.cr.SEAL_RE.findall((run / "decisions.md").read_text(encoding="utf-8")))
+
+    def test_plan_needs_a_real_conductor_line(self):
+        lines = {"missing": "", "empty": "Conductor: \n", "spaces": "Conductor:    \n",
+                 "placeholder": "Conductor: TODO\n", "another model": "Conductor: Sonnet 5.5\n",
+                 "lower case": "Conductor: opus 5.5\n"}
+        for name, line in lines.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                replace(run / "decisions.md", "Conductor: Fable 5.2\n", line)
+                plan = self.cli("--plan", str(run))
+                self.assertEqual((plan.returncode, plan.stdout.splitlines()), (1, [self.CONDUCTOR]))
+                self.assertEqual(self.cr.check_conductor(run), [self.CONDUCTOR])
+
+    def test_plan_accepts_either_conductor(self):
+        repo, run = make_run(self.tmp)
+        for value in ("Fable 5.2", "Opus 5.5"):
+            with self.subTest(value):
+                (run / "decisions.md").write_text(
+                    re.sub(r"(?m)^Conductor: .*$", f"Conductor: {value}  ", (run / "decisions.md").read_text(encoding="utf-8")),
+                    encoding="utf-8")
+                self.assertEqual(self.cr.check_conductor(run), [])
+                plan = self.cli("--plan", str(run))
+                self.assertEqual((plan.returncode, plan.stdout), (0, ""))
+
+    def test_the_last_conductor_line_counts(self):
+        repo, run = make_run(self.tmp)
+        self.append(run, "Conductor: Sonnet 5.5\n")
+        self.assertEqual(self.cli("--plan", str(run)).stdout.splitlines(), [self.CONDUCTOR])
+        self.append(run, "Conductor: Opus 5.5\n")
+        self.assertEqual(self.cli("--plan", str(run)).stdout, "")
+        self.assertEqual(self.cr.check_judge(run), [self.judge_message()])
+        self.append(run, "Conductor: Fable 5.2\n")
+        self.assertEqual(self.cr.check_judge(run), [])
+
+    def test_seal_on_opus_needs_the_judge(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        refused = self.cli("--seal", str(run))
+        self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, [self.judge_message()]))
+        self.assertEqual(self.seals(run), 0)
+
+    def test_seal_on_opus_with_a_judge_line(self):
+        for line in ("Judge plan: the plan holds (reports/judge-1.md)\n",
+                     "Judge unreachable: Agent terminated early due to an API error\n"):
+            with self.subTest(line), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, line)
+                sealed = self.cli("--seal", str(run))
+                self.assertEqual(sealed.returncode, 0, sealed.stdout)
+                self.assertEqual([l.split(":")[0] for l in sealed.stdout.splitlines()], ["sealed plan.md", "sealed staffing.md"])
+                self.assertEqual(self.seals(run), 1)
+
+    def test_a_placeholder_judge_line_does_not_count(self):
+        for line in ("Judge plan: TODO\n", "Judge plan:\n", "Judge unreachable:   \n", "Judge unreachable: n/a\n",
+                     "Judge ruling: the ruling holds (reports/judge-1.md)\n",
+                     "Judge overruled: reports/judge-1.md, because the spec says so\n"):
+            with self.subTest(line), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, line)
+                refused = self.cli("--seal", str(run))
+                self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, [self.judge_message()]))
+                self.assertEqual(self.seals(run), 0)
+
+    def test_a_judge_or_seal_line_hidden_inside_another_line_does_not_count(self):
+        # str.splitlines() also breaks at these; decision() and Markdown viewers break only at \n.
+        for sep in ("\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", " ", " "):
+            for hidden in ("Judge plan: the plan holds (reports/judge-1.md)", "Judge unreachable: quota"):
+                with self.subTest(sep=repr(sep), hidden=hidden), tempfile.TemporaryDirectory() as tmp:
+                    repo, run = make_run(tmp)
+                    self.on_opus(run)
+                    self.append(run, f"- Ruling: kept the plan.{sep}{hidden}\n")
+                    refused = self.cli("--seal", str(run))
+                    self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, [self.judge_message()]))
+                    self.assertEqual(self.seals(run), 0)
+            with self.subTest(sep=repr(sep), hidden="Plan checksum:"), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.on_opus(run)
+                self.append(run, f"- note{sep}Plan checksum: {self.cr.plan_checksum(run, missing='')}\n")
+                self.assertEqual(self.cr.check_judge(run), [self.judge_message()])
+
+    def test_a_judge_line_before_the_last_seal_does_not_cover_an_amended_plan(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.append(run, "Judge plan: the plan holds (reports/judge-1.md)\n")
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        replace(run / "plan.md", "First thing", "First thing, amended")
+        self.append(run, "Plan judged: the amended plan still meets the criteria.\n")
+        refused = self.cli("--seal", str(run))
+        self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, [self.judge_message()]))
+        self.assertEqual(self.seals(run), 1)
+        self.append(run, "Judge unreachable: This agent switched to claude-opus-5-5\n")
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        self.assertEqual(self.seals(run), 2)
+
+    def test_a_staffing_change_alone_reseals_on_opus_without_a_new_judge_line(self):
+        repo, run = make_run(self.tmp)
+        self.on_opus(run)
+        self.append(run, "Judge plan: the plan holds (reports/judge-1.md)\n")
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+        replace(run / "staffing.md", "| T1 | generalist-engineer | opus | medium |", "| T1 | generalist-engineer | opus | high |")
+        again = self.cli("--seal", str(run))
+        self.assertEqual(again.returncode, 0, again.stdout)
+        self.assertEqual(self.seals(run), 2)
+
+    def test_fable_seals_without_a_judge_line(self):
+        repo, run = make_run(self.tmp)
+        self.assertEqual(self.cr.check_judge(run), [])
+        sealed = self.cli("--seal", str(run))
+        self.assertEqual(sealed.returncode, 0, sealed.stdout)
+        self.assertNotIn("Judge", (run / "decisions.md").read_text(encoding="utf-8"))
+
+    def test_seal_reports_a_missing_conductor_and_an_unknown_one(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "decisions.md", "Conductor: Fable 5.2\n", "")
+        refused = self.cli("--seal", str(run))
+        self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, [self.CONDUCTOR]))
+        self.append(run, "Conductor: Sonnet 5.5\n")
+        refused = self.cli("--seal", str(run))
+        self.assertEqual((refused.returncode, refused.stdout.splitlines()), (1, [self.CONDUCTOR, self.judge_message("Sonnet 5.5")]))
+        self.assertEqual(self.seals(run), 0)
+
+    def test_a_run_sealed_before_the_conductor_line_still_checks_clean(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "decisions.md", "Conductor: Fable 5.2\n", "")
+        self.cr.seal_plan(run)
+        for args in ((str(run),), ("--task", "T1", str(run))):
+            done = self.cli(*args)
+            self.assertEqual((done.returncode, done.stdout), (0, ""))
+        self.assertEqual(self.problems(repo, run), [])
+        self.assertEqual(self.cr.check_judge(run), [])
+
+    def test_plan_and_seal_help_name_the_conductor_and_the_judge(self):
+        doc = self.cr.__doc__
+        self.assertIn("Conductor:", doc.split("--plan", 1)[1].splitlines()[0])
+        self.assertIn("judge", doc.split("--seal", 1)[1].splitlines()[0])
+        help_text = " ".join(self.cli("--help").stdout.split())
+        self.assertIn("Conductor line", help_text)
+        self.assertIn("the Fable judge", help_text)
 
     def cli(self, *args):
         return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, encoding="utf-8")

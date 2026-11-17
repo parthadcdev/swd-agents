@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Validate an swd run folder.
 
-    python3 check_run.py --plan <run_dir>      check spec.md and plan.md only (before the gate)
-    python3 check_run.py --seal <run_dir>      check the plan, the 'Plan judged:' line and staffing.md, then record the checksums of the plan and of staffing.md in decisions.md
+    python3 check_run.py --plan <run_dir>      check spec.md, plan.md and the 'Conductor:' line only (before the gate)
+    python3 check_run.py --seal <run_dir>      check the plan, the 'Plan judged:' line, staffing.md and, on a conductor other than Fable 5.2, the Fable judge's line, then record the checksums of the plan and of staffing.md in decisions.md
     python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review
     python3 check_run.py <run_dir>             check a finished run (a sealed run is not asked for '## Outcome'; an unsealed one is)
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
@@ -40,6 +40,7 @@ TASK_RE = re.compile(r"^### (T\d+): (.+)$")
 TASK_LIKE_RE = re.compile(r"^#+\s*T(ask)?\s*\d+\b", re.I)  # a heading that was meant to be a task
 BASE_RE = re.compile(r"^Base commit: (\S+)", re.M)
 FINISHES = ("merge-push", "pr", "branch")
+CONDUCTORS = ("Fable 5.2", "Opus 5.5")
 SEAL_RE = re.compile(r"^Plan checksum: ([0-9a-f]{64})\s*$", re.M)
 STAFFING_SEAL_RE = re.compile(r"^Staffing checksum: ([0-9a-f]{64})\s*$", re.M)
 FIELD_RE = re.compile(r"^- (%s): (.*)$" % "|".join(TASK_FIELDS))
@@ -136,6 +137,32 @@ def check_finish_choice(run_dir):
     if decision(run_dir, "Finish") not in FINISHES:
         return ["decisions.md: needs a line 'Finish: merge-push', 'Finish: pr' or 'Finish: branch'"]
     return []
+
+
+def check_conductor(run_dir):
+    """For --plan and --seal only: a run from before 0.10.0 has no 'Conductor:' line and must still check clean."""
+    if decision(run_dir, "Conductor") not in CONDUCTORS:
+        return ["decisions.md: needs a line 'Conductor: Fable 5.2' or 'Conductor: Opus 5.5'; the principal records the model it conducts on"]
+    return []
+
+
+def check_judge(run_dir):
+    """Before the seal: a conductor not on Fable 5.2 has the Fable judge's line (or its failure) since the last seal.
+    A seal with plan.md unchanged since the last one (a change to staffing.md alone) needs no new line."""
+    value = decision(run_dir, "Conductor")
+    if value in (None, "Fable 5.2"):
+        return []
+    # Only \n, as decision() and Markdown viewers do: splitlines() would let \x0b or   hide a line inside another.
+    lines = (read(run_dir / "decisions.md") or "").split("\n")
+    sealed = [i for i, l in enumerate(lines) if SEAL_RE.match(l)]
+    if sealed and plan_checksum(run_dir, missing="") == SEAL_RE.match(lines[sealed[-1]]).group(1):
+        return []
+    for line in lines[sealed[-1] + 1 if sealed else 0:]:
+        for key in ("Judge plan:", "Judge unreachable:"):
+            if line.startswith(key) and line[len(key):].strip().lower() not in PLACEHOLDERS | {""}:
+                return []
+    return [f"decisions.md: the conductor is on {value}, so the plan needs the Fable judge: "
+            "a 'Judge plan: ...' line, or 'Judge unreachable: ...', below the last 'Plan checksum:' line"]
 
 
 def check_staffing(run_dir):
@@ -605,8 +632,8 @@ def latest_run(repo_dir):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--plan", action="store_true", help="check spec.md and plan.md only")
-    parser.add_argument("--seal", action="store_true", help="check the plan, the Plan judged line and staffing.md, then record the checksums of the plan and staffing.md")
+    parser.add_argument("--plan", action="store_true", help="check spec.md, plan.md and the Conductor line only")
+    parser.add_argument("--seal", action="store_true", help="check the plan, the Plan judged line, staffing.md and, off Fable 5.2, the Fable judge's line, then record the checksums of the plan and staffing.md")
     parser.add_argument("--task", metavar="ID", help="check a returned task's changes before review")
     parser.add_argument("--finish", action="store_true", help="check the run was delivered and cleaned up")
     parser.add_argument("path", type=Path, help="a run folder, or a project folder")
@@ -624,14 +651,15 @@ def main(argv=None):
     if args.finish:
         problems = check_finish(run_dir, project_dir)
     elif args.seal:
-        problems = check_plan(run_dir) + check_finish_choice(run_dir) + check_staffing(run_dir)
+        problems = (check_plan(run_dir) + check_conductor(run_dir) + check_finish_choice(run_dir)
+                    + check_staffing(run_dir) + check_judge(run_dir))
         if not problems:
             print(f"sealed plan.md: {seal_plan(run_dir)}")
             print(f"sealed staffing.md: {file_checksum(run_dir / 'staffing.md')}")
     elif args.task:
         problems = check_task(run_dir, repo_dir, args.task)
     elif args.plan:
-        problems = check_plan(run_dir)
+        problems = check_plan(run_dir) + check_conductor(run_dir)
     else:
         problems = check_run(run_dir, repo_dir)
     for problem in problems:
