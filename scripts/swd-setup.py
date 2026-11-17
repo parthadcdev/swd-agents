@@ -13,13 +13,14 @@ version folder, so they match that script with any arguments and nothing else; a
 update run setup again. They also allow git and `gh pr`, the project's test command, a few
 read-only commands, and edits inside `.swd/` (the run folder and the run's worktree).
 Rules are written for the plugin's path as typed and, when it differs, as resolved.
-Ask rules make Claude Code ask before any command that runs the setup or queue script
-(swd-setup.*, swd-queue.*) or names SWD_UNATTENDED, whatever allow rule matches it, so no agent
-changes these rules or starts a queue without the user; in an unattended run nobody can answer,
-so the command does not run. Three deny rules make Claude Code refuse the plain ways of running
-the plugin's hook, swd-mode.py, by name; a deny rule refuses, it does not ask. Ask and deny rules
-name the file up to its dot, so a compiled copy in __pycache__ is caught too. They match command
-text only, so they are not a hard boundary.
+Ask rules make Claude Code ask before a command that starts with python3, python or py and
+contains swd-setup. or swd-queue., or that names SWD_UNATTENDED plainly, whatever allow rule
+matches it, so that an agent that follows the playbooks cannot change these rules or start a
+queue without the user; an agent set on getting round them still can. In an unattended run
+nobody can answer, so such a command does not run. Three deny rules make Claude Code refuse the
+plain ways of running the plugin's hook, swd-mode.py, by name; a deny rule refuses, it does not
+ask. Ask and deny rules name the file up to its dot, so a compiled copy in __pycache__ is caught
+too. They match command text only, so they are not a hard boundary.
 Setup adds missing rules to `permissions.allow`, `permissions.ask` and `permissions.deny`, and
 removes from `permissions.allow` only the rules an earlier version of the plugin wrote, which
 --print lists first; every other rule, the user's own included, is kept in order.
@@ -31,6 +32,13 @@ an assignment, a quote, a backslash or other shell syntax there is refused); or 
 program that runs another command it is given (env, xargs, sudo, doas, eval, exec, and sh, bash, zsh,
 dash, ksh, fish or npx alone or followed by an option; the name compared ignoring case). It is
 refused too when it names the plugin's own folder, whose scripts setup allows one by one.
+The plugin's path, given with --plugin-root or found by setup itself, is refused the same way, before
+any command, unless it is absolute (a single / at the start, or on Windows a drive letter and /), has no
+. or .. folder, is at least two folders below the root and not the home folder, by either of its
+spellings, or above it (on Windows /c/... counting as drive C there), and holds only letters, digits
+and . _ - + @ / : ~, because any other path would make the rules match commands or files other than
+the plugin's scripts; a space is refused. It is tested by its text as typed before setup opens it,
+and then as resolved.
 A settings file that is not strict JSON (NaN, Infinity, a number too large for a float and a key
 repeated in one object count as not JSON) is refused and left unchanged, and setup never writes one.
 settings.local.json is the user's own file for this project and is not meant to be committed.
@@ -85,6 +93,16 @@ SHELLS = ("sh", "bash", "zsh", "dash", "ksh", "fish", "npx")
 RUNS_ANOTHER = ("a rule's first word must name the program that runs, not an assignment or a program that runs another "
                 "command it is given (env, sh, bash, zsh, dash, ksh, fish, xargs, sudo, doas, eval, exec, npx), or the rule "
                 'would match every command; give the command itself, such as "npm test" or "bash scripts/test.sh"')
+# Every per-script, sh and Read rule is built from the plugin's path, so it must be a path no shell or interpreter reads as
+# an option, an expansion or code (`-c'...'` became `python3 -c'...'`), and the Read rule must stay below the home folder.
+# An allow list, as PLAIN is: two lists of refused characters each missed a value. No space: the shell splits the rule
+# there, so `<stdlib>/pdb.py -c` as the root ran any -c an agent added, and the skills type the path unquoted anyway.
+# `~` is accepted: it is not expanded inside a word, and Windows short names (RUNNER~1) hold it.
+ROOT_CHARS = "._-+@/:~"
+ROOT_WHY = ("a plugin path must be absolute (a single / at the start, or on Windows a drive letter and /), at least two "
+            "folders below the root and not your home folder or above it, with no . or .. folder, and made only of letters, "
+            "digits and . _ - + @ / : ~, with no space; any other path would make the rules match commands or files other "
+            "than the plugin's scripts; run setup from a plugin folder whose path is such a path")
 VERSION = r"\d+\.\d+\.\d+[^/\s]*"
 
 
@@ -107,6 +125,33 @@ def permission_path(prefix):
     if re.match(r"[A-Za-z]:/", prefix):
         return "//" + prefix[0].lower() + prefix[2:]
     return "/" + prefix
+
+
+def plain_root(root, homes, windows=os.name == "nt"):
+    """Whether every rule built from `root` names the plugin's own files (contract C1), from its text alone: nothing is
+    opened, so a //host root is never reached. The path is absolute (a single / at the start, or, only when `windows`, a
+    drive letter and /: elsewhere C:/work/x is relative, and its rule would run a file under the working folder), made
+    only of letters, digits and ROOT_CHARS, has no ., .. or empty folder, and its plugin prefix is at least two folders
+    below the root and not one of `homes` (the home folder's spellings, as_posix) or above it, case ignored. With
+    `windows`, a prefix starting /c/ is read as c:/ for those last two tests, as Git Bash and Claude Code read it."""
+    path = root.as_posix()
+    prefix = plugin_prefix(root)
+    if windows and re.match(r"/[A-Za-z]/", prefix):
+        prefix = prefix[1] + ":" + prefix[2:]
+    folder = prefix.rstrip("/").casefold()
+    return ((path.startswith("/") and not path.startswith("//") or windows and re.match(r"[A-Za-z]:/", path) is not None)
+            and all(c.isalnum() or c in ROOT_CHARS for c in path)
+            and not {"", ".", ".."} & set(path.split("/")[1:])
+            and folder.count("/") >= 2
+            and not any(home == folder or home.startswith(folder + "/")
+                        for home in (spelling.rstrip("/").casefold() for spelling in homes)))
+
+
+def check_root(source, root, homes):
+    """Raise Refused with C1's line unless plain_root(root, homes)."""
+    if not plain_root(root, homes):
+        shown = "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in root.as_posix())
+        raise Refused(f'setup: refused {source} "{shown}": {ROOT_WHY}')
 
 
 def test_command(project):
@@ -216,16 +261,22 @@ def main(argv=None):
     parser.add_argument("--command", action="append", default=[], metavar="CMD",
                         help="a project command to allow, such as its test or lint command (repeatable)")
     # The path as typed, never resolved: Bash rules match command text, and the skills type ${CLAUDE_PLUGIN_ROOT}.
-    parser.add_argument("--plugin-root", type=Path, default=Path(os.path.abspath(__file__)).parent.parent)
+    parser.add_argument("--plugin-root", type=Path)
     parser.add_argument("project", type=Path)
     args = parser.parse_args(argv)
 
-    typed = args.plugin_root
-    roots = [typed]
-    if typed.exists() and typed.resolve().as_posix() != typed.as_posix():
-        roots.append(typed.resolve())
+    typed = args.plugin_root or Path(os.path.abspath(__file__)).parent.parent
+    homes = (Path.home().as_posix(), Path.home().resolve().as_posix())
     project = args.project.resolve()
     try:
+        # By its text before exists() or resolve() opens it: on Windows //host/x is a network path, and opening it would
+        # reach that host. Only a root that passed is opened, and its resolved spelling is tested the same way.
+        check_root("--plugin-root" if args.plugin_root else "the plugin's path", typed, homes)
+        roots = [typed]
+        resolved = typed.resolve() if typed.exists() else typed
+        if resolved.as_posix() != typed.as_posix():
+            check_root("the plugin's resolved path", resolved, homes)
+            roots.append(resolved)
         wanted = rules(project, roots, args.command)
     except Refused as refused:
         print(refused, file=sys.stderr)

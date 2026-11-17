@@ -33,6 +33,10 @@ RUNNER = ("a rule's first word must name the program that runs, not an assignmen
 NOT_PLAIN = ("a rule's first word must be a plain program name or path, made only of letters, digits and . _ - + @ / : and not "
              "starting with -; quotes, backslashes, =, [, $, backticks, redirections and other shell syntax are refused, "
              "because the rule would then not name the program that runs")
+ROOT_REFUSAL = ("a plugin path must be absolute (a single / at the start, or on Windows a drive letter and /), at least two "
+                "folders below the root and not your home folder or above it, with no . or .. folder, and made only of letters, "
+                "digits and . _ - + @ / : ~, with no space; any other path would make the rules match commands or files other "
+                "than the plugin's scripts; run setup from a plugin folder whose path is such a path")   # contract C1
 NOTES = "the test command in .swd/project.md"
 INSTALLED = "/Users/you/.claude/plugins/cache/swd-agents/swd"   # path text only; never exists
 RUN = "/work/project/.swd/runs/2026-11-17-demo"
@@ -211,6 +215,14 @@ class SetupTest(unittest.TestCase):
             "Read(//c/work/swd-agents/**)",
         ])
         self.assertFalse([rule for rule in rules if "\\" in rule])
+
+    def test_rules_for_a_windows_short_name_root_name_it_as_typed(self):
+        # A root the Windows job accepts through the command line, built here on every platform through rules().
+        rules = self.module().rules(self.project, [PureWindowsPath("C:/Users/RUNNER~1/x/swd-agents")])
+        for rule in ("Bash(python3 C:/Users/RUNNER~1/x/swd-agents/scripts/check_run.py *)",
+                     "Bash(sh C:/Users/RUNNER~1/x/swd-agents/scripts/swd-watch.sh *)",
+                     "Read(//c/Users/RUNNER~1/x/swd-agents/**)"):
+            self.assertIn(rule, rules)
 
     def test_an_installed_windows_plugin_is_read_through_its_version_free_folder(self):
         installed = PureWindowsPath(r"C:\Users\you\.claude\plugins\cache\swd-agents\swd\0.9.0")
@@ -765,6 +777,173 @@ class SetupTest(unittest.TestCase):
                 result = self.setup("--plugin-root", f"{INSTALLED}/0.11.0", "--command", value)
                 self.assertEqual((result.returncode, result.stdout), (2, ""))
                 self.assertEqual(result.stderr, f'setup: refused --command "{value}": {why}\n')
+
+    # --- the plugin root check (contract C1, re-planned in T5) ------------------------------------------------
+
+    # Every per-script, sh and Read rule is built from the plugin's path, so the path must be one no shell or interpreter
+    # reads as an option, an expansion or code, and the Read rule must stay below the home folder: `--plugin-root=-c'...#'`
+    # wrote `Bash(python3 -c'...#'/scripts/check_run.py *)`, which ran any code (T1 security review), and `/` wrote
+    # `Read(//**)`. Each value goes in one argument, `--plugin-root=<value>`, so argparse takes a leading '-' as the value.
+    REFUSED_ROOTS = ["-c'__import__(\"os\").system(__import__(\"sys\").argv.pop())#'", "x", "",   # relative ("" is ".")
+                     "/work/a'b", '/work/a"b', "/work/a$(b", "/work/a#b",   # shell syntax
+                     "/", "C:/", "/work",   # too high: Read(//**), Read(//c/**), a whole top folder; C:/ is relative off Windows
+                     "/work/../etc/x",   # a .. folder
+                     "*", "/work/a?b", "/work/[x]", "/work/a\tb", "/work/a\nb",   # T1's wildcards and control characters
+                     # A space: the shell splits the rule there, so `<stdlib>/pdb.py -c` made Bash(python3 <stdlib>/pdb.py
+                     # -c/scripts/check_run.py *), which runs any -c an agent adds as Python, with nothing planted (T5
+                     # security review). The skills type the plugin path unquoted, so a spaced path never worked.
+                     "/Users/John Doe/.claude/plugins/cache/swd-agents/swd/0.11.0", "/work/x -c y",
+                     Path(os.__file__).parent.as_posix() + "/pdb.py -c",
+                     # Not on Windows: there a back slash is a separator, and //work/x is a network path the command line must
+                     # never be given, so no test looks up a host (test_plain_root_reads_the_text_alone covers it everywhere).
+                     # Off Windows a drive letter starts a relative path: its rules would run a file under the working folder.
+                     *([] if os.name == "nt" else ["/work/a\\b", "//work/x", "C:/work/swd-agents",
+                                                   "C:/Users/RUNNER~1/x/swd-agents"])]
+
+    def root_refusal(self, source, root):
+        shown = "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in Path(root).as_posix())
+        return f'setup: refused {source} "{shown}": {ROOT_REFUSAL}\n'
+
+    def test_a_plugin_root_that_is_not_an_absolute_plain_path_below_the_home_folder_is_refused(self):
+        # The home folder itself, by either spelling (on macOS /var/... is /private/var/...; on Windows a short name is
+        # resolved to the long one), and the folder above it: a Read rule there would cover every file in it.
+        for root in [*self.REFUSED_ROOTS, str(self.home), str(self.home.parent), str(self.home.resolve())]:
+            # With --command "*" too: the root is checked first, so its line is the only one.
+            for args in ((), ("--print",), ("--command", "*"), ("--print", "--command", "*")):
+                with self.subTest(root=root, args=args):
+                    result = self.setup(*args, f"--plugin-root={root}")
+                    self.assertEqual((result.returncode, result.stdout), (2, ""))
+                    self.assertEqual(result.stderr, self.root_refusal("--plugin-root", root))
+                    self.assertFalse(self.settings.parent.exists())
+        text = json.dumps({"permissions": {"allow": ["Bash(make *)"]}})
+        self.write_settings(text)
+        result = self.setup("--plugin-root=-c'x#'")   # the plan's Outcome
+        self.assertEqual((result.returncode, result.stdout), (2, ""))
+        self.assertEqual(result.stderr, f'setup: refused --plugin-root "-c\'x#\'": {ROOT_REFUSAL}\n')
+        self.assertEqual(self.settings.read_text(encoding="utf-8"), text)
+
+    @unittest.skipIf(os.name == "nt", "folder names with '*' and symlinks are not for Windows")
+    def test_a_plugin_path_setup_finds_by_itself_is_refused_as_typed_or_as_resolved(self):
+        # Checkouts cloned into folders named a[1], a'b and a b, run by their own path; and copies reached through symlinks
+        # whose targets, re*al, a#b and a b, hold a refused character, so only the resolved path holds one.
+        for name in ("a[1]", "a'b", "re*al", "a#b", "a b"):
+            (self.tmp / name / "plugin" / "scripts").mkdir(parents=True)
+            shutil.copy(SCRIPT, self.tmp / name / "plugin" / "scripts" / "swd-setup.py")
+        cases = [(self.tmp / name / "plugin", "the plugin's path", os.path.abspath(self.tmp / name / "plugin"))
+                 for name in ("a[1]", "a'b", "a b")]
+        for name, link in (("re*al", "link"), ("a#b", "hash-link"), ("a b", "space-link")):
+            (self.tmp / link).symlink_to(self.tmp / name, target_is_directory=True)
+            cases.append((self.tmp / link / "plugin", "the plugin's resolved path", (self.tmp / link / "plugin").resolve()))
+        for plugin, source, shown in cases:
+            for args in ((), ("--print",)):
+                with self.subTest(plugin=plugin.as_posix(), source=source, args=args):
+                    result = self.run_script(plugin / "scripts" / "swd-setup.py", *args)
+                    self.assertEqual((result.returncode, result.stdout), (2, ""))
+                    self.assertEqual(result.stderr, self.root_refusal(source, shown))
+                    self.assertFalse(self.settings.parent.exists())
+
+    def test_a_plugin_root_that_passes_the_check_is_accepted_and_named_as_typed(self):
+        # '~' is accepted, and so are letters outside ASCII, a plugin below the home folder, and a folder whose name only
+        # starts like the home folder's. A drive letter only on Windows; elsewhere it is refused above, and plain_root's
+        # test covers both. A space is refused above.
+        home = self.home.as_posix()
+        installed_home = self.home / ".claude" / "plugins" / "cache" / "swd-agents" / "swd" / "0.11.0"
+        for root, read in ((f"{INSTALLED}/0.11.0", f"Read(/{INSTALLED}/**)"),
+                           ("/work/swd-agents", "Read(//work/swd-agents/**)"),
+                           *([("C:/work/swd-agents", "Read(//c/work/swd-agents/**)"),
+                              ("C:/Users/RUNNER~1/x/swd-agents", "Read(//c/Users/RUNNER~1/x/swd-agents/**)")]
+                             if os.name == "nt" else []),
+                           ("/work/RUNNER~1/x/swd-agents", "Read(//work/RUNNER~1/x/swd-agents/**)"),
+                           ("/Users/Jos\u00e9/x/swd-agents", "Read(//Users/Jos\u00e9/x/swd-agents/**)"),
+                           (str(installed_home), f"Read({self.module().permission_path(installed_home.parent.as_posix() + '/')}**)"),
+                           (str(self.home)[:-1], f"Read({self.module().permission_path(home[:-1] + '/')}**)")):
+            with self.subTest(root=root):
+                shutil.rmtree(self.settings.parent, ignore_errors=True)
+                result = self.setup("--plugin-root", root)
+                self.assertEqual((result.returncode, result.stderr), (0, ""))
+                self.assertEqual(result.stdout, f"setup: 52 rules added to {self.settings.resolve()}\n")
+                allow = self.allow()
+                folder = Path(root).as_posix()
+                for script in RUN_SCRIPTS:
+                    for python in PYTHONS:
+                        self.assertIn(f"Bash({python} {folder}/scripts/{script} *)", allow)
+                self.assertIn(f"Bash(sh {folder}/scripts/swd-python.sh check)", allow)
+                self.assertIn(f"Bash(sh {folder}/scripts/swd-watch.sh *)", allow)
+                self.assertIn(read, allow)
+
+    def test_plain_root_reads_the_text_alone(self):
+        # On every platform, through plain_root(root, homes, windows): a drive letter starts an absolute path on Windows
+        # only (elsewhere C:/work/x is relative); a // start is refused everywhere (on Windows a network path); the home
+        # folder is refused by each spelling given, case ignored.
+        homes = ("/var/you", "/private/var/you", "C:/Users/RUNNER~1", "C:/Users/runneradmin")
+        for root, on_windows, elsewhere in ((PureWindowsPath("C:/work/swd-agents"), True, False),
+                                            (PureWindowsPath("C:/Users/RUNNER~1/x/swd-agents"), True, False),
+                                            (PureWindowsPath("//host/x"), False, False),
+                                            # Relative to drive C's current folder: a drive needs its / after the colon.
+                                            (PureWindowsPath("C:x/y/z"), False, False),
+                                            (PurePosixPath("//work/x"), False, False),
+                                            (PurePosixPath("/work/swd-agents"), True, True),
+                                            (PurePosixPath("/private/var/you"), False, False),
+                                            (PurePosixPath("/private/var"), False, False),
+                                            (PureWindowsPath("C:/Users/RunnerAdmin"), False, False)):
+            for windows, expected in ((True, on_windows), (False, elsewhere)):
+                with self.subTest(root=repr(root), windows=windows):
+                    self.assertIs(self.module().plain_root(root, homes, windows=windows), expected)
+
+    def test_plain_root_reads_the_git_bash_drive_spelling_as_a_drive_on_windows(self):
+        # Git Bash and Claude Code's matcher read /c/... as drive C ("C:\Users\alice becomes /c/Users/alice"), so with
+        # windows the depth and home tests read it so: /c/Users is one folder below C:/, /c/Users/you is the home folder.
+        # Elsewhere /c is an ordinary folder. A first folder of more than one letter is not a drive either way.
+        homes = ("C:/Users/you",)
+        for text, on_windows, elsewhere in (("/c/Users", False, True), ("/c/x", False, True), ("/c", False, False),
+                                            ("/c/Users/you", False, True), ("/C/Users/you", False, True),
+                                            ("/c/Users/you/plugins/swd-agents", True, True),
+                                            ("/work/swd-agents", True, True)):
+            for flavour in (PurePosixPath, PureWindowsPath):
+                for windows, expected in ((True, on_windows), (False, elsewhere)):
+                    with self.subTest(root=text, flavour=flavour.__name__, windows=windows):
+                        self.assertIs(self.module().plain_root(flavour(text), homes, windows=windows), expected)
+
+    def test_the_typed_root_is_tested_before_setup_opens_it(self):
+        # On Windows exists() or resolve() on //host/x would reach that host, and can send it the user's credentials. The
+        # fakes fail on the typed root without calling the real function, so no host is looked up even if this fails.
+        setup = self.module()
+        passed = []
+
+        def guard(real):
+            def fake(path, *args, **kwargs):
+                if path == Path(root):
+                    self.fail(f"{real.__name__}() called on the typed root {path}")
+                passed.append(path)   # the project and the home folder
+                return real(path, *args, **kwargs)
+            return fake
+
+        for root in ("//host/x", "-c'x#'"):
+            with self.subTest(root=root):
+                out, err = io.StringIO(), io.StringIO()
+                with mock.patch.object(Path, "exists", guard(Path.exists)), \
+                        mock.patch.object(Path, "resolve", guard(Path.resolve)), \
+                        mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}), \
+                        contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = setup.main([f"--plugin-root={root}", str(self.project)])
+                self.assertEqual((code, out.getvalue(), err.getvalue()), (2, "", self.root_refusal("--plugin-root", root)))
+                self.assertFalse(self.settings.parent.exists())
+        self.assertTrue(passed)   # the fakes were in place
+
+    @unittest.skipIf(os.name == "nt", "symlinks need extra rights on Windows")
+    def test_the_home_folder_is_refused_by_its_resolved_spelling(self):
+        # HOME a symlink: the real folder, and the one above it, are the home folder and above it by the resolved spelling.
+        real = self.tmp.resolve() / "real-home"
+        real.mkdir()
+        self.home = self.tmp / "home-link"
+        self.home.symlink_to(real, target_is_directory=True)
+        for root in (real.as_posix(), real.parent.as_posix()):
+            for args in ((), ("--print",)):
+                with self.subTest(root=root, args=args):
+                    result = self.setup(*args, "--plugin-root", root)
+                    self.assertEqual((result.returncode, result.stdout), (2, ""))
+                    self.assertEqual(result.stderr, self.root_refusal("--plugin-root", root))
+                    self.assertFalse(self.settings.parent.exists())
 
 
 def matches(rule, command):
