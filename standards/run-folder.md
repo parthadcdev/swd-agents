@@ -178,9 +178,18 @@ line of a finished run is a `done` event.
 
 ## decisions.md
 
-It starts with four lines the principal writes in preflight:
-`Base commit: <sha>`, `Base branch: <name>`, `Branch: swd/<short-name>` and
-`Worktree: <path>`. Preflight housekeeping adds `Housekeeping: removed <n>,
+It starts with five lines the principal writes in preflight:
+`Base commit: <sha>`, `Base branch: <name>`, `Branch: swd/<short-name>`,
+`Worktree: <path>` and `Conductor: Fable 5.2` or `Conductor: Opus 5.5`,
+the model the principal conducts on. Whenever the last `Conductor:` line
+does not name the model the principal is on, it appends a new one.
+`check_run.py --plan` and `--seal` read only the last, and report a run
+without one:
+
+    decisions.md: needs a line 'Conductor: Fable 5.2' or 'Conductor: Opus 5.5'; the principal records the model it conducts on
+
+The check of a finished run does not ask for it, so a run from before
+0.10.0, which has none, still checks clean. Preflight housekeeping adds `Housekeeping: removed <n>,
 kept <m>`. At the gate it gains `Finish: merge-push`, `Finish: pr`
 or `Finish: branch`. Below those, a list: each entry says what was decided,
 why, and what it costs if wrong.
@@ -191,6 +200,24 @@ Each time the plan is amended and sealed again, the principal adds a
 new `Plan judged:` line below the last `Plan checksum:` line;
 `check_run.py --seal` refuses to seal without it. A change to `staffing.md`
 alone is sealed again without a new `Plan judged:` line.
+
+A principal that is not on Fable 5.2 asks the Fable judge first (the build
+playbook's **The Fable judge.**) and records what came back in these lines:
+
+    Judge plan: <the verdict sentence> (reports/judge-<n>.md)
+    Judge ruling: <the verdict sentence> (reports/judge-<n>.md)
+    Judge overruled: reports/judge-<n>.md, because <why>
+    Judge unreachable: <what the dispatch returned, in one line>
+
+While the last `Conductor:` line names a model other than Fable 5.2,
+`check_run.py --seal` refuses a plan with neither a `Judge plan:` nor a
+`Judge unreachable:` line below the last `Plan checksum:` line, a value that
+is empty or a placeholder not counting:
+
+    decisions.md: the conductor is on Opus 5.5, so the plan needs the Fable judge: a 'Judge plan: ...' line, or 'Judge unreachable: ...', below the last 'Plan checksum:' line
+
+As with `Plan judged:`, a seal after a change to `staffing.md` alone needs
+no new judge line.
 
 `check_run.py --seal` adds lines of the form `Plan checksum: <sha256>` and,
 from 0.8.1, `Staffing checksum: <sha256>`. The last of each must match
@@ -303,6 +330,30 @@ a line.
 | Code review of the whole change | `reports/final-code-reviewer.md` |
 | Security review of the whole change | `reports/final-security-reviewer.md` |
 | Final QA | `reports/final-qa-engineer.md` |
+
+## Judge reports
+
+File: `reports/judge-<n>.md`, numbered from 1 in the run, written only by
+the judge (`swd:judge`). It is not a checker report: its verdict is a
+sentence, not `pass` or `fail`, and `check_run.py` does not read it.
+
+    Verdict: <one sentence: the decision the principal is to follow>
+
+    ## Question
+    <the question from the brief, word for word>
+
+    ## Reasoning
+    <what in the run folder and the project decides it, by file and line>
+
+The `Verdict: ` line is the first line and the only line that starts with
+`Verdict:`. On the plan it is `Verdict: the plan holds` or
+`Verdict: the plan does not hold: <what must change>`.
+
+Before each judge dispatch, choose the lowest `n` with no
+`reports/judge-<n>.md`; a reply that starts `No verdict` did not reach
+the judge, whatever file is there. The judge never reads
+`reports/pr-feedback-*.md` or `pr-reply-*.md`; a brief quotes the items
+a question turns on.
 
 ## Commits
 

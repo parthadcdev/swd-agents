@@ -47,9 +47,11 @@ table to look up.
   mechanical and fully specified.
 - **Judge cost per completed task**, not per dispatch. A cheaper
   dispatch that needs more fix attempts is not cheaper.
-- **Fable 5.2 conducts, at `high`.** Planning and orchestrating other
-  models is what it does well. Dispatch `fable` as a subagent only for
-  work the others have failed at.
+- **Fable 5.2 conducts, at `high`,** or Opus 5.5 where the project's
+  conductor setting is `opus` (`/swd:conductor`). Planning and
+  orchestrating other models is what Fable 5.2 does well. Dispatch
+  `fable` as a subagent only for work the others have failed at, and as
+  the judge of a conductor that is not on Fable 5.2.
 - **`xhigh` only where a gain has been shown:** the same task has
   failed at `high`. After a failed attempt, raise the effort before the
   model.
