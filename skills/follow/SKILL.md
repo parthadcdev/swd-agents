@@ -64,7 +64,10 @@ before you decide, for: the reading in step 2 of a requested change to
 anything the run executes, which is a trust boundary; a change
 requested by the repository's owner, a member or a collaborator that
 you would not make, which is a contested ruling; and the plan of a
-re-planned run, before you seal it.
+re-planned run, before you seal it. When the judge cannot be reached for
+that plan, the build playbook's rule holds: a follow-up you attend
+judges by itself and goes on, and one whose seal refuses the plan as a
+run `/swd:queue` started stops as blocked.
 
 ## Steps
 

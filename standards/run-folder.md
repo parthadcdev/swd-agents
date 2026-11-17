@@ -219,6 +219,25 @@ is empty or a placeholder not counting:
 As with `Plan judged:`, a seal after a change to `staffing.md` alone needs
 no new judge line.
 
+In a run `/swd:queue` started on a model other than Fable 5.2, which
+nobody attends, the seal takes the model from the queue, not from the
+`Conductor:` line, and a `Judge unreachable:` line does not count: of
+the `Judge plan:` and `Judge unreachable:` lines below the last
+`Plan checksum:` line, the last must be a `Judge plan:` line whose
+verdict is that the plan holds. Otherwise `check_run.py --seal`
+refuses, and the run stops as blocked, or, for a verdict that the plan
+does not hold, the plan goes back to the architect:
+
+    decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs the Fable judge's verdict: the last 'Judge plan:' or 'Judge unreachable:' line below the last 'Plan checksum:' line must be 'Judge plan: ...'; 'Judge unreachable:' is not enough, and the run stops as blocked
+    decisions.md: this run was started by /swd:queue and the conductor is on Opus 5.5, so the plan needs the Fable judge's verdict that it holds: the last 'Judge plan:' line below the last 'Plan checksum:' line does not say 'the plan holds', and the conductor of such a run does not overrule it; the plan goes back to the architect
+
+A run started any other way seals as above. In a run `/swd:queue`
+started, `check_run.py --task` and the check of a finished run also
+report a run whose `decisions.md` has no `Plan checksum:` line, and
+no builder is dispatched for a plan the seal has not accepted:
+
+    decisions.md: this run was started by /swd:queue and has no 'Plan checksum:' line: its plan was never sealed, so no builder may work on it, and the run stops as blocked
+
 `check_run.py --seal` adds lines of the form `Plan checksum: <sha256>` and,
 from 0.8.1, `Staffing checksum: <sha256>`. The last of each must match
 `plan.md` and `staffing.md`; nobody writes these by hand. A run with no
