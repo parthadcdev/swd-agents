@@ -223,10 +223,39 @@ GONE_WARNINGS = (
     "that line may have been written",
     "The setup skill warns that the test command in `.swd/project.md` may have been written",
 )
-# C6: the setup skill's per-script bullet states the exception the README states (open finding 26).
-SPACE_EXCEPTION = (
-    "so they match that script with any arguments and nothing else, except when the plugin's path holds a "
-    "space: a rule is matched as text, so it can then match a command that runs another file (an open finding)."
+# C6: the setup skill's per-script bullet. Setup refuses a plugin path with a space (C1, after T5), so the bullet says
+# the skills do not support one, in place of the space-in-path exception it stated before.
+PER_SCRIPT_SETUP = (
+    "so they match that script with any arguments and nothing else. No such rule matches the setup or queue "
+    "script, the hook, or a path that climbs out of the folder with `..`. Setup refuses a plugin path that holds a "
+    "space, which the skills' commands, typing the path unquoted, do not support."
+)
+# C6: C1's plugin root check, as T5 built it, is visible to users, so the CHANGELOG and the README say it, word for
+# word.
+PLUGIN_ROOT_CHANGELOG = (
+    "- `swd-setup.py` refuses a plugin path, whether given with `--plugin-root` or found by setup itself, that is "
+    "not absolute, that holds a `..` folder, that is the file-system root, one folder below it, your home folder or "
+    "above it, or that holds a character other than letters, digits and `. _ - + @ / : ~` (a space included), with "
+    "exit 2, one line on standard error and nothing written: such a path would make the rules match commands or "
+    "files other than the plugin's scripts. A plugin path with a space is not supported: the skills type the path "
+    "unquoted."
+)
+PLUGIN_ROOT_README = (
+    "Setup also refuses to run from a plugin folder whose path is not absolute, holds a `..` folder, is too high "
+    "(the file-system root, one folder below it, or your home folder or above it), or holds a character other than "
+    "letters, digits and `. _ - + @ / : ~` (a space included), given with `--plugin-root` or found by itself, because "
+    "such a path would make its rules match commands or files other than the plugin's scripts; it writes nothing "
+    "then. A plugin path with a space is not supported: the skills type the path unquoted."
+)
+# What these replace: the space-in-path exception (the setup skill and the README) and the texts on the plugin path
+# check before T5 (the CHANGELOG and the README), which accepted a space.
+GONE_PLUGIN_PATH = (
+    "except when the plugin's path holds a space",
+    "With no space in the path",
+    "so it can then match a command that runs another file",
+    "a plugin path that holds `*`, `?`, `[` or a control character",
+    "whose path holds `*`, `?`, `[` or a control character",
+    "A path with a space is accepted.",
 )
 SETUP_REMOVES = (
     "Setup removes only the rules it lists under that heading, which an earlier version of the plugin "
@@ -1573,7 +1602,7 @@ class StructureTest(unittest.TestCase):
             "CHANGELOG.md 0.11.0": changelog_entry("0.11.0"),
         }
         for name, needles in (
-            ("setup", (SETUP_PROMPT, WARN_SETUP, SPACE_EXCEPTION)),
+            ("setup", (SETUP_PROMPT, WARN_SETUP, PER_SCRIPT_SETUP)),
             ("queue", (QUEUE_PROMPT, QUEUE_UNTRIED)),
             ("README.md", (PROMPT_ONCE, WARN_README)),
             ("CHANGELOG.md 0.11.0", (PROMPT_ONCE, WARN_CHANGELOG)),
@@ -1582,7 +1611,7 @@ class StructureTest(unittest.TestCase):
                 with self.subTest(file=name, needle=needle[:60]):
                     self.assertIn(needle, docs[name])
         for name, text in docs.items():
-            for needle in GONE_PROMPTS + GONE_WARNINGS:
+            for needle in GONE_PROMPTS + GONE_WARNINGS + GONE_PLUGIN_PATH:
                 with self.subTest(file=name, absent=needle[:60]):
                     self.assertNotIn(needle, text)
             with self.subTest(file=name, absent="a bare every time"):
@@ -1610,7 +1639,7 @@ class StructureTest(unittest.TestCase):
             "and `swd-test.py`",
             "`<plugin>` is the installed plugin's version folder",
             "they match that script with any arguments and nothing else",
-            SPACE_EXCEPTION,
+            PER_SCRIPT_SETUP,
             "This is the broadest rule in the set",
             # the ask rules
             "`Bash(<name> *swd-setup.*)` and `Bash(<name> *swd-queue.*)`",
@@ -1635,7 +1664,7 @@ class StructureTest(unittest.TestCase):
         ):
             with self.subTest(file="setup", needle=needle):
                 self.assertIn(needle, setup)
-        # The per-script bullet's old form, which left out the space exception (open finding 26).
+        # The per-script bullet's 0.10.0 forms.
         for needle in ("even under the broad Python rules above", "nothing else: not the setup or queue script"):
             with self.subTest(file="setup", absent=needle):
                 self.assertNotIn(needle, setup)
@@ -1667,10 +1696,9 @@ class StructureTest(unittest.TestCase):
             PROMPT_ONCE,
             # what to look for before saying yes: every command taken from .swd/project.md
             WARN_README,
-            # the per-script rules and open finding 26
-            "Each matches that script with any arguments and nothing else, except when the plugin's path holds "
-            "a space: a rule is matched as text, so it can then match a command that runs another file (an "
-            "open finding).",
+            # the per-script rules; a plugin path with a space is refused (PLUGIN_ROOT_README)
+            "Each matches that script with any arguments and nothing else. Setup writes them for the plugin's "
+            "path as Claude Code gives it to the skills",
             # the removal
             "Setup removes the rules an earlier version of the plugin wrote:",
             "It lists them before you say yes, keeps every other rule, yours included, in order, and reports "
@@ -1688,6 +1716,8 @@ class StructureTest(unittest.TestCase):
             "The seal reads the judge's line from `decisions.md`, which the conductor writes",
             "Whether Claude Code passes `SWD_UNATTENDED` on to the commands a run executes has not been tried "
             "on a live Claude Code; if it does not, a queue run seals as an attended one does, as in 0.10.0.",
+            # C1's plugin root check
+            PLUGIN_ROOT_README,
             # attended vs a queue run on Opus 5.5
             "In a run you attend, the principal then judges alone, records `Judge unreachable:`, and the run "
             "goes on.",
@@ -1722,9 +1752,8 @@ class StructureTest(unittest.TestCase):
             "- `Bash(<name> <plugin>/scripts/<script> *)` for each of the three Python names the launcher tries "
             "(`py -3` among them) and each script a run needs: `check_run.py`, `swd-clean.py`, "
             "`swd-dashboard.py`, `swd-findings.py`, `swd-log.py`, `swd-pr.py` and `swd-test.py`. Each names the "
-            "script's full path in the version folder, " + SPACE_EXCEPTION + " With no space in the path, no "
-            "such rule matches the setup or queue script, the hook, or a path that climbs out of the folder with "
-            "`..`. When the plugin's path as typed resolves to another spelling, such as through a symlinked "
+            "script's full path in the version folder, " + PER_SCRIPT_SETUP + " When the plugin's path as typed "
+            "resolves to another spelling, such as through a symlinked "
             "`~/.claude`, these rules, the two `sh` rules and the `Read` rule are listed for both spellings;",
             "- a few read-only commands, and the project's commands from step 1, the test command from "
             "`.swd/project.md` included; the interpreter's rule is the broadest in the set (step 1);",
@@ -1771,9 +1800,7 @@ class StructureTest(unittest.TestCase):
             "allow rule for each script a run needs, for each of `python3`, `python` and `py -3`, naming the "
             "script's full path in the installed version's folder, such as `Bash(python3 "
             "/Users/you/.claude/plugins/cache/swd-agents/swd/0.11.0/scripts/check_run.py *)`. Each matches that "
-            "script with any arguments and nothing else, except when the plugin's path holds a space: a rule is "
-            "matched as text, so it can then match a command that runs another file (an open finding). Setup "
-            "writes them for the plugin's path as Claude Code "
+            "script with any arguments and nothing else. Setup writes them for the plugin's path as Claude Code "
             "gives it to the skills and, when that path resolves to another spelling (a symlinked `~/.claude`, "
             "for example), for that spelling too; - two `sh` rules for the Python check and the watch terminals, "
             "and a rule to read the plugin's files; - git, `gh pr`, a few read-only commands, edits inside "
@@ -1802,7 +1829,8 @@ class StructureTest(unittest.TestCase):
             "it, `/swd:queue` stops and sends you here: it starts only when `swd-setup.py --print` ends with "
             "`In place:`, which it does only when the settings file holds every rule setup lists and none an "
             "earlier version wrote. ### What the rules do not stop The allow rules name each script",
-            "command's rules before you say yes. An agent could also change the rules by editing "
+            "command's rules before you say yes. " + PLUGIN_ROOT_README + " An agent could also change the rules "
+            "by editing "
             "`.claude/settings.local.json` itself. Claude Code's documentation lists `.claude/` among the "
             "protected folders: an allow rule never pre-approves an edit there, so the edit asks you in a "
             "session you attend, is denied in a queue run, is left to the classifier in auto mode, and goes "
@@ -1888,6 +1916,7 @@ class StructureTest(unittest.TestCase):
             "`setup: <a> rules added to <settings>; <r> rules an earlier version of the plugin wrote removed`",
             "refuses a `--command`",
             "exits 2 and writes nothing",
+            PLUGIN_ROOT_CHANGELOG,
             "for the plugin's path as typed and, when it resolves to another spelling, as resolved",
             "`SWD_UNATTENDED`", "`fable` or `opus`",
             "the seal takes the model from it, not from the `Conductor:` line",

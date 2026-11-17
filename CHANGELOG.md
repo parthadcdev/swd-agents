@@ -38,6 +38,15 @@
   every rule it lists and none an earlier version wrote, and
   `Not in place:` otherwise. `/swd:queue` starts only on `In place:`,
   in place of comparing the rules one by one.
+- `swd-setup.py` refuses a plugin path, whether given with
+  `--plugin-root` or found by setup itself, that is not absolute,
+  that holds a `..` folder, that is the file-system root, one folder
+  below it, your home folder or above it, or that holds a character
+  other than letters, digits and `. _ - + @ / : ~` (a space
+  included), with exit 2, one line on standard error and nothing
+  written: such a path would make the rules match commands or files
+  other than the plugin's scripts. A plugin path with a space is not
+  supported: the skills type the path unquoted.
 - Setup refuses a `--command`, or the test command in
   `.swd/project.md`, that is empty, whose first word holds a `*`, that
   holds a control character, whose first word is not a plain program

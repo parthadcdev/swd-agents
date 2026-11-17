@@ -72,11 +72,10 @@ paths with forward slashes.
      `swd-dashboard.py`, `swd-findings.py`, `swd-log.py`, `swd-pr.py`
      and `swd-test.py`. Each names the script's full path in the version
      folder, so they match that script with any arguments and nothing
-     else, except when the plugin's path holds a space: a rule is
-     matched as text, so it can then match a command that runs another
-     file (an open finding). With no space in the path, no such rule
-     matches the setup or queue script, the hook, or a path that climbs
-     out of the folder with `..`. When the plugin's path as
+     else. No such rule matches the setup or queue script, the hook, or
+     a path that climbs out of the folder with `..`. Setup refuses a
+     plugin path that holds a space, which the skills' commands, typing
+     the path unquoted, do not support. When the plugin's path as
      typed resolves to another spelling, such as through a symlinked
      `~/.claude`, these rules, the two `sh` rules and the `Read` rule are
      listed for both spellings;

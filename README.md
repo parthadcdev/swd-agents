@@ -71,9 +71,7 @@ there. Then it shows you the rules and adds them to
   `python` and `py -3`, naming the script's full path in the installed
   version's folder, such as
   `Bash(python3 /Users/you/.claude/plugins/cache/swd-agents/swd/0.11.0/scripts/check_run.py *)`.
-  Each matches that script with any arguments and nothing else, except
-  when the plugin's path holds a space: a rule is matched as text, so
-  it can then match a command that runs another file (an open finding).
+  Each matches that script with any arguments and nothing else.
   Setup writes them for the plugin's path as Claude Code gives it to
   the skills and, when that path resolves to another spelling (a
   symlinked `~/.claude`, for example), for that spelling too;
@@ -176,7 +174,15 @@ Setup refuses a project command, the test command in `.swd/project.md`
 included, whose first word is not a plain program name or path or is
 one of the programs it lists that run another command they are given,
 not every program that can run another command: read each project
-command's rules before you say yes.
+command's rules before you say yes. Setup also refuses to run from a
+plugin folder whose path is not absolute, holds a `..` folder, is too
+high (the file-system root, one folder below it, or your home folder
+or above it), or holds a character other than letters, digits and
+`. _ - + @ / : ~` (a space included), given with `--plugin-root` or
+found by itself, because such a path would make its rules match
+commands or files other than the plugin's scripts; it writes nothing
+then. A plugin path with a space is not supported: the skills type the
+path unquoted.
 
 An agent could also change the rules by editing
 `.claude/settings.local.json` itself. Claude Code's documentation lists
