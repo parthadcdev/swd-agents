@@ -251,7 +251,7 @@ class QueueTest(unittest.TestCase):
                     "ignoring 'Model: sonnet' in .swd/queue.md: every run starts with --model opus\n"), stdout)
         for line in self.runs_args():
             self.assertIn("--model opus", line)
-            self.assertNotIn("sonnet", line)
+            self.assertNotIn("sonnet", line.replace(str(ROOT), ""))
 
     def test_the_queue_leaves_no_compiled_copy_of_the_hook(self):
         # Setup denies running the hook by name; a .pyc beside it would be a way round that.
@@ -317,7 +317,7 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(len(args), 2)
         for line in args:
             self.assertIn("--model fable", line)
-            self.assertNotIn("sonnet", line)
+            self.assertNotIn("sonnet", line.replace(str(ROOT), ""))
 
     def test_dry_run_says_a_model_line_is_ignored_and_names_fable(self):
         self.queue.write_text("Model: sonnet\n\n- [ ] one\n- [ ] two\n", encoding="utf-8")

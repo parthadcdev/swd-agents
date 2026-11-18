@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.12.0
+
+- Builders start on Sonnet: a builder's first attempt is on `sonnet`,
+  at the effort the principal chooses (`haiku` stays for mechanical,
+  fully specified work such as the preflight write check). Builders are
+  the five engineer roles and the docs writer. Before 0.12.0 every
+  design, review and build dispatch started from Opus 5.5.
+- The first failed check of a task's work moves the task to `opus`
+  before its fix is dispatched, keeping its effort, and raises the
+  `review` and `final` rows to at least `opus` in the same edit; the
+  principal records the ruling and seals again. A failed check is a
+  reviewer's `Verdict: fail`, the task's own tests failing where the
+  mode has no per-task review, a failed run of the test suite for a
+  wave or for the final check that the task owns, or a failed final QA
+  or final review that the task owns. A re-dispatch for a missing or
+  unusable report, a report sent back for correction, and a dispatch
+  the permission system refused do not move the model. A task already
+  on `opus` that fails again follows the old rule: raise the effort
+  first. A task a re-plan adds in place of a failed one starts on the
+  model the failed task had reached.
+- The architect, the code and security reviewers and QA still start
+  from Opus 5.5 at `medium`, and no checker runs below a builder.
+- This is the project owner's rule, set on 2026-11-17 to lower what
+  builders cost, beside Anthropic's guidance in `standards/models.md`;
+  no measurement supports it yet. `check_run.py` does not enforce it.
+- Run `/swd:setup` again after updating: its allow rules name the
+  installed version's folder.
+
 ## 0.11.0
 
 - `/swd:setup` writes one allow rule per script a run needs, for each

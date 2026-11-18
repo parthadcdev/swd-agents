@@ -303,20 +303,34 @@ committed, and say so in its brief. Record the call in `decisions.md`.
 **Staffing.** Dispatch only the roles the plan names. In prototype mode, tell
 the architect to use the fewest tasks and roles that can deliver.
 
-**Model and effort per dispatch.** You choose them; there is no table.
-`<plugin>/standards/models.md` is the team's standing rule for the
-choice (it is also in `<run>/standards.md`): read it and apply it as
-judgement to what each dispatch needs. Set the Agent tool's `model`
-parameter (`haiku`, `sonnet`, `opus` or `fable`) and its `effort`
-parameter (`low`, `medium`, `high` or `xhigh`) on every dispatch, the
-architect and the checkers included. After a failed fix attempt, move
-that task up for the next attempt: raise the effort first, and the
-model only when more effort is not what the failure needs. Change the
-task's row in `staffing.md` and record the ruling. If you raise its model,
-raise the `review` and `final` rows to at least that model in the same
-edit. Then seal again with `<python> <plugin>/scripts/check_run.py --seal <run>`: the seal covers
-`staffing.md`, and the checker reports it as changed until you do. The plan
-has not changed, so this seal needs no new `Plan judged:` line.
+**Model and effort per dispatch.** `<plugin>/standards/models.md` is
+the team's standing rule for the choice (it is also in
+`<run>/standards.md`): read it and apply it. There is no table: most of
+it is judgement about what each dispatch needs, and two parts are
+rules. Set the Agent tool's `model` parameter (`haiku`, `sonnet`,
+`opus` or `fable`) and its `effort` parameter (`low`, `medium`, `high`
+or `xhigh`) on every dispatch, the architect and the checkers included.
+A builder's first attempt is on `sonnet` (`haiku` for work that is
+mechanical and fully specified); the architect, the reviewers and QA
+start from Opus 5.5 at `medium`. When a check of a task's work fails
+and the task's row in `staffing.md` is on a model below `opus`, change
+that row to `opus` before you dispatch the fix, keeping its effort:
+this is a rule, not a judgement call. A failed check is any of these:
+a reviewer's `Verdict: fail`, the task's own tests failing where the
+mode has no per-task review, a failed run of the test suite for a wave
+or for the final check that the task owns, and a failed final QA or
+final review that the task owns. A re-dispatch for a missing or
+unusable report, a report sent back for correction, and a dispatch the
+permission system refused are not failed checks and do not move the
+model. A task already on `opus` that fails again moves up by
+judgement: raise the effort first, and the model only when more effort
+is not what the failure needs. Whenever you change a task's row,
+record the ruling in `decisions.md`, and if you raise its model, raise
+the `review` and `final` rows to at least that model in the same edit.
+Then seal again with `<python> <plugin>/scripts/check_run.py --seal <run>`:
+the seal covers `staffing.md`, and the checker reports it as changed
+until you do. The plan has not changed, so this seal needs no new
+`Plan judged:` line.
 
 ## Design
 
@@ -400,8 +414,8 @@ has not changed, so this seal needs no new `Plan judged:` line.
    | For | Agent | Model | Effort | Why |
    |---|---|---|---|---|
    | plan | architect | opus | medium | Design in an existing codebase |
-   | T1 | generalist-engineer | opus | medium | Multistep change to the checker and its tests |
-   | T2 | docs-writer | opus | low | Well-specified wording change |
+   | T1 | generalist-engineer | sonnet | medium | Multistep change to the checker and its tests |
+   | T2 | docs-writer | sonnet | low | Well-specified wording change |
    | review | code-reviewer, security-reviewer | opus | medium | Review is where Opus 5.5 gains most |
    | final | qa-engineer | opus | low | Runs commands and compares output |
    ```
@@ -653,9 +667,9 @@ finished while a test fails or a finding is open.
 
   Increment the task's `Attempts`, set it `in-progress`, log a `fix` line,
   and re-check the result exactly as in Build. Fixes for unrelated failures
-  go out in one message so they run in parallel. If you move the task up
-  for the attempt, change its row in `staffing.md` and seal again before
-  you dispatch, as "Model and effort per dispatch" says.
+  go out in one message so they run in parallel. If a check failed and the task's row is below `opus`, or you move a
+  task already on `opus` up, change its row in `staffing.md` and seal
+  again before you dispatch, as "Model and effort per dispatch" says.
 - **Counting.** `Attempts` counts every dispatch of a task's builder: the
   first build is 1 and each fix adds 1, whatever the failure was.
 - **Three fixes, then re-plan.** When a task still fails and its
@@ -663,6 +677,8 @@ finished while a test fails or a finding is open.
   `swd:architect` with the failing reports and ask for a root-cause
   re-plan. Check the amended plan with `<python> <plugin>/scripts/check_run.py --plan <run>`, then judge the amended plan (with the Fable judge first when you are not on Fable 5.2), staff and seal it as the Gate describes, add any new
   tasks to the ledger, and build them.
+  A task the re-plan adds in place of a task that failed starts on the
+  model the failed task had reached, not on `sonnet` again.
 - **If the re-planned work also fails**, give it one fix. If it still
   fails, set the task `blocked`, stop, and report to the user with the
   evidence.

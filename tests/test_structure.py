@@ -757,12 +757,13 @@ class StructureTest(unittest.TestCase):
             "until Anthropic publishes newer guidance",
             "explicitly on every dispatch",
             "Opus 5.5 at `medium`",
-            "Lower effort before a cheaper model",
             "cost per completed task",
             "Finish the whole task",
         ):
             with self.subTest(file="models.md", needle=needle):
                 self.assertIn(needle, models)
+        with self.subTest(file="models.md", absent="Lower effort before a cheaper model"):
+            self.assertNotIn("Lower effort before a cheaper model", models)
         for section in STANDARD_SECTIONS:
             with self.subTest(file="models.md", heading=section):
                 self.assertNotIn(section, models)
@@ -803,6 +804,94 @@ class StructureTest(unittest.TestCase):
             "This limit is for the commands the `## Outcome` shows",
             words("agents", "code-reviewer.md"),
         )
+
+    def test_builders_start_on_sonnet_and_move_to_opus(self):
+        def words(*parts: str) -> str:
+            return " ".join((ROOT.joinpath(*parts)).read_text(encoding="utf-8").split())
+
+        models = words("standards", "models.md")
+        build = words("skills", "build", "SKILL.md")
+        follow = words("skills", "follow", "SKILL.md")
+        folder = words("standards", "run-folder.md")
+        readme = words("README.md")
+        both = (
+            "A builder's first attempt is on `sonnet`",
+            "When a check of a task's work fails and the task's row in `staffing.md` is on a model below "
+            "`opus`, change that row to `opus` before you dispatch the fix",
+            "a rule, not a judgement call",
+            "a reviewer's `Verdict: fail`, the task's own tests failing where the mode has no per-task "
+            "review, a failed run of the test suite for a wave or for the final check that the task owns, "
+            "and a failed final QA or final review that the task owns",
+            "A re-dispatch for a missing or unusable report, a report sent back for correction, and a "
+            "dispatch the permission system refused are not failed checks and do not move the model",
+            "raise the `review` and `final` rows to at least",
+            "raise the effort first, and the model only when more effort is not what the failure needs",
+            "starts on the model the failed task had reached, not on `sonnet` again",
+        )
+        table = (
+            "| T1 | generalist-engineer | sonnet | medium |",
+            "| T2 | docs-writer | sonnet | low |",
+            "| plan | architect | opus | medium |",
+            "| review | code-reviewer, security-reviewer | opus | medium |",
+            "| final | qa-engineer | opus | low |",
+        )
+        present = (
+            ("models.md", models, both + (
+                "the architect, the code reviewer, the security reviewer and QA start from Opus 5.5 at `medium`",
+                "are not Anthropic's guidance",
+                "the project owner's rule, set on 2026-11-17",
+                "no measurement supports them yet",
+                "A task already on `opus`",
+                "the owner's rule is kept unless the owner changes it",
+            )),
+            ("build", build, both + (
+                "A task already on `opus` that fails again",
+                "If a check failed and the task's row is below `opus`",
+            ) + table),
+            ("run-folder.md", folder, table + ("moved up after a failed check",)),
+            ("follow", follow, (
+                "A finished task's row says what a fix to it is dispatched at",
+                "a fix after a failed check is staffed as `<plugin>/standards/models.md` says",
+            )),
+            ("README.md", readme, (
+                "a builder's first attempt is on `sonnet`",
+                "moves the task to `opus` before its fix is dispatched",
+                "From `opus` on, a failed fix raises the effort first",
+                "the project owner's rule of 2026-11-17",
+                "the owner's rule is kept",
+            )),
+        )
+        for name, text, needles in present:
+            for needle in needles:
+                with self.subTest(file=name, needle=needle):
+                    self.assertIn(needle, text)
+        absent = (
+            ("models.md", models, (
+                "Lower effort before a cheaper model", "consider `opus` at `low`", "multistep building",
+                "After a failed attempt, raise the effort before the model",
+                "Nothing else in the plugin repeats it",
+            )),
+            ("build", build, (
+                "After a failed fix attempt, move that task up for the next attempt", "multistep building",
+                "| T1 | generalist-engineer | opus", "| T2 | docs-writer | opus",
+            )),
+            ("run-folder.md", folder, (
+                "moved up after a failed fix", "| T1 | generalist-engineer | opus", "| T2 | docs-writer | opus",
+            )),
+            ("README.md", readme, ("It is replaced when Anthropic publishes newer guidance.",)),
+        )
+        for name, text, needles in absent:
+            for needle in needles:
+                with self.subTest(file=name, absent=needle):
+                    self.assertNotIn(needle, text)
+        entry = changelog_entry("0.12.0")
+        for needle in (
+            "first attempt is on `sonnet`", "moves the task to `opus`", "raise the effort first",
+            "the project owner's rule", "no measurement supports it yet",
+            "Run `/swd:setup` again after updating",
+        ):
+            with self.subTest(file="CHANGELOG.md", needle=needle):
+                self.assertIn(needle, " ".join(entry.split()))
 
     def test_t2_review_fixes_are_pinned(self):
         def words(*parts: str) -> str:
@@ -973,13 +1062,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.11.0"):
-            self.assertEqual(manifest["version"], "0.11.0")
+        with self.subTest(file="plugin.json", version="0.12.0"):
+            self.assertEqual(manifest["version"], "0.12.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.11.0"):
-            self.assertEqual(first, "## 0.11.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.12.0"):
+            self.assertEqual(first, "## 0.12.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the

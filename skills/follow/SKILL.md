@@ -192,7 +192,8 @@ of the file. A section that is not in the report has no items.
    refuses a `For` that is not a task id, `plan`, `review` or `final`, so
    rename such a row and take any `|` out of a note. A change to `staffing.md` without an amended plan is
    sealed again without a new `Plan judged:` line. A finished task's row
-   says what a fix to it is dispatched at.
+   says what a fix to it is dispatched at, and a fix after a failed check
+   is staffed as `<plugin>/standards/models.md` says.
 4. **Keep the records.** Update the ledger and log every dispatch, verdict
    and commit with `<python> <plugin>/scripts/swd-log.py`, as the build
    playbook shows. When the fixes are in, log `done` again and

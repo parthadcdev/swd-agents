@@ -262,8 +262,8 @@ mode.
 | For | Agent | Model | Effort | Why |
 |---|---|---|---|---|
 | plan | architect | opus | medium | Design in an existing codebase |
-| T1 | generalist-engineer | opus | medium | Multistep change to the checker and its tests |
-| T2 | docs-writer | opus | low | Well-specified wording change |
+| T1 | generalist-engineer | sonnet | medium | Multistep change to the checker and its tests |
+| T2 | docs-writer | sonnet | low | Well-specified wording change |
 | review | code-reviewer, security-reviewer | opus | medium | Review is where Opus 5.5 gains most |
 | final | qa-engineer | opus | low | Runs commands and compares output |
 ```
@@ -272,7 +272,7 @@ mode.
 name as in the ledger, with no `swd:` prefix; agents sharing a row are
 comma-separated. A task's `Agent` is the `Role` its plan names. `Model` is
 `haiku`, `sonnet`, `opus` or `fable`; `Effort` is `low`, `medium`, `high` or
-`xhigh`. When a task is moved up after a failed fix, its row is changed and
+`xhigh`. When a task is moved up after a failed check, its row is changed and
 the ruling goes in `decisions.md`, and the run is sealed again.
 
 Every line of this file that contains `|` is read as a row, with or

@@ -371,8 +371,18 @@ needs.
   not switch on a rate-limit or usage-limit error. It ignores a
   `Model:` line.
 - The model and effort for each task, review and check follow
-  `standards/models.md`, the team's standing rule. It is replaced when
-  Anthropic publishes newer guidance.
+  `standards/models.md`, the team's standing rule. Its Anthropic
+  guidance is replaced when Anthropic publishes newer guidance; the
+  owner's rule is kept.
+- Builders (the engineers and the docs writer) start on Sonnet: a
+  builder's first attempt is on `sonnet`. The first failed check of a
+  task's work, such as a reviewer's `Verdict: fail` or a failing test
+  run, moves the task to `opus` before its fix is dispatched, and the
+  `review` and `final` rows with it. From `opus` on, a failed fix
+  raises the effort first. The architect, the reviewers and QA start on
+  Opus 5.5. This part of `standards/models.md` is the project owner's
+  rule of 2026-11-17, not Anthropic's guidance, and no measurement
+  supports it yet.
 - The choices are written to `staffing.md` in the run folder and shown at
   the approval gate, together with the plan's `## Outcome`: the finished
   result as the plan says it will appear.
