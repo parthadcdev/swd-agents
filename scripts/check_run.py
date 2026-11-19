@@ -7,6 +7,7 @@
     python3 check_run.py <run_dir>             check a finished run (a sealed run is not asked for '## Outcome'; an unsealed one is) and, in a run /swd:queue started, a sealed plan
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
     python3 check_run.py --slice <who> <run_dir>   print one role's part of plan.md: builder:T1, review:T1, review:final or qa
+    python3 check_run.py --cap                 print how many agents may work at once, from SWD_PARALLEL or total memory (no run folder)
 
 A run /swd:queue started has SWD_UNATTENDED set to the model the queue started it on; the seal takes the
 model from it, not from the 'Conductor:' line.
@@ -673,6 +674,52 @@ def slice_plan(text, sections_wanted, tasks_wanted):
     return out
 
 
+def total_memory():
+    """Total physical memory in bytes, or None when it cannot be read."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class Status(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            status = Status()
+            status.dwLength = ctypes.sizeof(Status)
+            total = status.ullTotalPhys if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)) else 0
+        else:
+            total = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (ValueError, OSError, AttributeError):
+        return None
+    return total if total > 0 else None
+
+
+def parallel_cap(environ):
+    """(cap, reason, ignored): the most agents to work at once (None for no cap), why, and a bad SWD_PARALLEL value."""
+    value = environ.get("SWD_PARALLEL", "")
+    if re.fullmatch(r"[1-9][0-9]{0,5}", value):  # at most 999999, so int() never meets Python's digit limit
+        return int(value), f"SWD_PARALLEL={value}", None
+    if value == "none":
+        return None, "SWD_PARALLEL=none", None
+    ignored = value or None
+    nbytes = total_memory()
+    if nbytes is None:
+        return None, "total memory could not be read", ignored
+    gb = 2 ** 30
+    return (1 if nbytes <= 8 * gb else 2 if nbytes <= 16 * gb else None), f"total memory {nbytes / gb:.1f} GB", ignored
+
+
+def cap_main():
+    """--cap: print `Cap: <n or none> (<reason>)`. A bad SWD_PARALLEL is named on standard error."""
+    cap, reason, ignored = parallel_cap(os.environ)
+    if ignored is not None:
+        print(f"SWD_PARALLEL={ignored!r} ignored: use a whole number of 1 or more, or none", file=sys.stderr)
+    print(f"Cap: {'none' if cap is None else cap} ({reason})")
+    return 0
+
+
 def slice_main(who, path):
     """--slice: print one role's part of plan.md. Errors go to standard error, one line, exit 1."""
     match = re.fullmatch(r"(builder|review):(T\d+)", who)
@@ -709,8 +756,15 @@ def main(argv=None):
     parser.add_argument("--task", metavar="ID", help="check a returned task's changes before review")
     parser.add_argument("--finish", action="store_true", help="check the run was delivered and cleaned up")
     parser.add_argument("--slice", metavar="WHO", help="print one role's part of plan.md: builder:T<n>, review:T<n>, review:final or qa")
-    parser.add_argument("path", type=Path, help="a run folder, or a project folder")
+    parser.add_argument("--cap", action="store_true", help="print how many agents may work at once, from SWD_PARALLEL or total memory; needs no path")
+    parser.add_argument("path", nargs="?", type=Path, help="a run folder, or a project folder")
     args = parser.parse_args(argv)
+    if args.cap:
+        if args.plan or args.seal or args.task is not None or args.finish or args.slice is not None:
+            parser.error("--cap takes no other mode")
+        return cap_main()  # first: reads no run folder
+    if args.path is None:
+        parser.error("the following arguments are required: path")
     if args.slice is not None:
         return slice_main(args.slice, args.path)  # before every other mode: reads only plan.md
 

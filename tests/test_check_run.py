@@ -1511,5 +1511,100 @@ class SliceTest(unittest.TestCase):
             (self.run_dir / "decisions.md").write_text(decisions, encoding="utf-8")
 
 
+GB = 2 ** 30
+BAD_PARALLEL = "SWD_PARALLEL={!r} ignored: use a whole number of 1 or more, or none\n"
+
+
+class CapTest(unittest.TestCase):
+    """--cap: how many agents may work at once. Memory is replaced in a child process, never read from this machine."""
+
+    def cap(self, parallel, setup="check_run.total_memory = lambda: None", args=("--cap",)):
+        """Run check_run.main(args) in a child with SWD_PARALLEL set to `parallel` (None removes it); `setup` runs first.
+        The child switches its output to UTF-8 as check_run.py's __main__ does, which `-c` skips (a piped stream on
+        Windows is otherwise in the ANSI code page)."""
+        code = (f"import os, sys; sys.path.insert(0, {str(ROOT / 'scripts')!r}); import check_run\n"
+                "sys.stdout.reconfigure(encoding='utf-8', errors='replace')\n"
+                "sys.stderr.reconfigure(encoding='utf-8', errors='replace')\n"
+                f"{setup}\nsys.exit(check_run.main({list(args)!r}))")
+        env = {k: v for k, v in os.environ.items() if k != "SWD_PARALLEL"}
+        if parallel is not None:
+            env["SWD_PARALLEL"] = parallel
+        return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", env=env)
+
+    def memory(self, nbytes, parallel=None):
+        return self.cap(parallel, f"check_run.total_memory = lambda: {nbytes}")
+
+    def assertCap(self, result, line, stderr=""):
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, line + "\n", stderr))
+
+    def test_memory_bands_and_their_boundaries(self):
+        cases = [(1 * GB, "1 (total memory 1.0 GB)"), (8 * GB, "1 (total memory 8.0 GB)"),
+                 (8 * GB + 1, "2 (total memory 8.0 GB)"), (12 * GB, "2 (total memory 12.0 GB)"),
+                 (16 * GB, "2 (total memory 16.0 GB)"), (16 * GB + 1, "none (total memory 16.0 GB)"),
+                 (64 * GB, "none (total memory 64.0 GB)")]
+        for nbytes, line in cases:
+            with self.subTest(nbytes=nbytes):
+                self.assertCap(self.memory(nbytes), "Cap: " + line)
+
+    def test_unreadable_memory_is_no_cap(self):
+        line = "Cap: none (total memory could not be read)"
+        self.assertCap(self.cap(None), line)
+        if hasattr(os, "sysconf"):
+            boom = "def boom(name): raise ValueError(name)\nos.sysconf = boom"
+            self.assertCap(self.cap(None, boom), line)
+
+    def test_the_override_beats_memory(self):
+        for value, line in (("1", "Cap: 1 (SWD_PARALLEL=1)"), ("3", "Cap: 3 (SWD_PARALLEL=3)"),
+                            ("12", "Cap: 12 (SWD_PARALLEL=12)"), ("999999", "Cap: 999999 (SWD_PARALLEL=999999)"),
+                            ("none", "Cap: none (SWD_PARALLEL=none)")):
+            with self.subTest(value=value):
+                self.assertCap(self.memory(4 * GB, value), line)
+
+    def test_a_bad_override_is_named_on_stderr_and_memory_decides(self):
+        for value in ("0", "-1", "2.5", " 2", "2 ", "01", "None", "NONE", "two", "٢", "1000000", "9" * 5000):
+            with self.subTest(value=value[:20], length=len(value)):
+                self.assertCap(self.memory(4 * GB, value), "Cap: 1 (total memory 4.0 GB)", BAD_PARALLEL.format(value))
+
+    def test_an_empty_override_is_unset(self):
+        self.assertCap(self.memory(4 * GB, ""), "Cap: 1 (total memory 4.0 GB)")
+
+    def test_a_path_given_with_cap_is_ignored(self):
+        self.assertCap(self.cap("2", args=("--cap", str(ROOT / "nowhere"))), "Cap: 2 (SWD_PARALLEL=2)")
+
+    def test_total_memory_here_is_a_positive_int(self):
+        import check_run
+        total = check_run.total_memory()
+        self.assertIsInstance(total, int)
+        self.assertGreater(total, 0)
+        if sys.platform == "darwin":
+            sysctl = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, check=True)
+            self.assertEqual(total, int(sysctl.stdout))
+
+    def test_every_other_mode_still_needs_a_path(self):
+        for args in (("--slice", "qa"), ("--finish",), ("--task", "T1"), ("--plan",), ("--seal",), ()):
+            with self.subTest(args=args):
+                result = self.cap("none", args=args)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("the following arguments are required: path", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_cap_with_another_mode_is_refused_and_does_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "plan.md").write_text("# Plan\n", encoding="utf-8")
+            decisions = "Base commit: 0\nPlan judged: holds\n"
+            (run / "decisions.md").write_text(decisions, encoding="utf-8")
+            env = {**os.environ, "SWD_PARALLEL": "2"}
+            for mode in (["--plan"], ["--seal"], ["--task", "T1"], ["--finish"], ["--slice", "qa"]):
+                with self.subTest(mode=mode):
+                    result = subprocess.run([sys.executable, str(ROOT / "scripts" / "check_run.py"), "--cap", *mode, tmp],
+                                            capture_output=True, text=True, encoding="utf-8", env=env)
+                    self.assertEqual((result.returncode, result.stdout), (2, ""))
+                    self.assertTrue(result.stderr.endswith("check_run.py: error: --cap takes no other mode\n"), result.stderr)
+                    self.assertEqual((run / "decisions.md").read_text(encoding="utf-8"), decisions)
+                    self.assertEqual(sorted(p.name for p in run.iterdir()), ["decisions.md", "plan.md"])
+
+
 if __name__ == "__main__":
     unittest.main()
