@@ -463,8 +463,9 @@ records the line it prints in `decisions.md`, such as
 | Over 16 GB | none |
 | Cannot be read | none |
 
-Set `SWD_PARALLEL` to override it: a whole number of 1 or more, or `none`
-for no cap. Anything else is ignored, with a line saying so. Set it in
+Set `SWD_PARALLEL` to override it: a whole number from 1 to 999999, or
+`none` for no cap. Any other value, a longer number included, is ignored
+with one line on standard error. Set it in
 your shell profile or in `env` in Claude Code's settings, and never type it
 in front of a command: a permission rule does not match a command that
 starts with an assignment. `/swd:queue` passes its environment to every run.
@@ -475,6 +476,15 @@ project, through a lock on `.swd/test.lock`. A run that has to wait prints
 waiting counts against the waiting agent's command time limit: with a cap
 of 2 and a suite of about two minutes, a builder's check can wait that
 long. With no cap nothing changes. No permission rule is added.
+
+If `.swd/test.lock` is a link or not a regular file, `swd-test.py`
+refuses it: it prints
+`cannot use .swd/test.lock as the test lock: it is a link, not a regular file, or cannot be opened; remove it and run again`
+on standard error, runs no test command, records no evidence and exits 2.
+Remove the file and run again. On a file system that cannot lock, the test
+runs without the lock, records its evidence as usual, and prints
+`could not lock .swd/test.lock on this file system; running this test without the lock`
+on standard error.
 
 ## Watching a run
 

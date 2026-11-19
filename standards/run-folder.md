@@ -207,8 +207,9 @@ same time, as the line `check_run.py --cap` prints, copied as it is:
 It writes it in preflight after the five opening lines, and again on
 resume, and `/swd:follow` writes it below any `Conductor:` line it must
 append first. The last `Cap:` line is the cap. The cap comes from total
-memory unless `SWD_PARALLEL`, a whole number of 1 or more or `none`,
-overrides it. No check reads it, so a run from before 0.14.0, which has
+memory unless `SWD_PARALLEL`, a whole number from 1 to 999999 or `none`,
+overrides it. Any other value, a longer number included, is ignored with
+one line on standard error. No check reads it, so a run from before 0.14.0, which has
 none, still checks clean.
 
 When there is a cap, `swd-test.py` also takes a lock on
@@ -217,6 +218,15 @@ until the evidence is written, so only one test suite runs at a time for
 the project. A run that has to wait prints
 `waiting for another test run of this project to end`. The lock file is
 never deleted and is not part of any task's changes.
+
+If `.swd/test.lock` is a link or not a regular file, `swd-test.py`
+refuses it: it prints
+`cannot use .swd/test.lock as the test lock: it is a link, not a regular file, or cannot be opened; remove it and run again`
+on standard error, runs no test command, records no evidence and exits 2.
+Remove the file and run again. On a file system that cannot lock, the test
+runs without the lock, records its evidence as usual, and prints
+`could not lock .swd/test.lock on this file system; running this test without the lock`
+on standard error.
 
 Before the seal the principal adds one line, `Plan judged: <one sentence>`,
 saying the plan was judged against the spec.

@@ -2351,6 +2351,13 @@ CAP_LINE = "Cap: 2 (total memory 16.0 GB)"
 CAP_PARAGRAPH = "**The cap.** The cap is the most agents you have working at the same time"
 CAP_WAIT = "waiting for another test run of this project to end"
 CAP_CMD = "<python> <plugin>/scripts/check_run.py --cap"
+# C1 and C2 as amended: the override's range, and the lock's two new cases with their lines quoted exactly.
+CAP_RANGE = "a whole number from 1 to 999999"
+CAP_IGNORED = "Any other value, a longer number included, is ignored with one line on standard error."
+CAP_REFUSED = ("`cannot use .swd/test.lock as the test lock: it is a link, not a regular file, or cannot be "
+               "opened; remove it and run again`")
+CAP_REFUSED_EFFECT = "runs no test command, records no evidence and exits 2. Remove the file and run again."
+CAP_NO_LOCK = "`could not lock .swd/test.lock on this file system; running this test without the lock`"
 
 
 class CapTest(unittest.TestCase):
@@ -2408,13 +2415,17 @@ class CapTest(unittest.TestCase):
             ("README.md", words("README.md")),
             ("CHANGELOG.md 0.14.0", entry),
         ):
-            for needle in ("SWD_PARALLEL", ".swd/test.lock", CAP_WAIT):
+            for needle in ("SWD_PARALLEL", ".swd/test.lock", CAP_WAIT, CAP_RANGE, CAP_IGNORED,
+                           CAP_REFUSED, CAP_REFUSED_EFFECT, CAP_NO_LOCK):
                 with self.subTest(file=name, needle=needle):
                     self.assertIn(needle, text)
+            # C1: a number past 999999 is ignored, so "1 or more" is no longer true.
+            with self.subTest(file=name, absent="a whole number of 1 or more"):
+                self.assertNotIn("a whole number of 1 or more", text)
         with self.subTest(file="run-folder.md", needle="`Cap:`"):
             self.assertIn("`Cap:`", words("standards", "run-folder.md"))
         with self.subTest(file="run-folder.md", needle="SWD_PARALLEL override"):
-            self.assertIn("unless `SWD_PARALLEL`, a whole number of 1 or more or `none`, overrides it",
+            self.assertIn(f"unless `SWD_PARALLEL`, {CAP_RANGE} or `none`, overrides it",
                           words("standards", "run-folder.md"))
         with self.subTest(file="run-folder.md", needle="no check reads it"):
             self.assertIn("No check reads it", words("standards", "run-folder.md"))

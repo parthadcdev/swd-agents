@@ -5,9 +5,9 @@
 - A run keeps to a cap on how many agents work at the same time.
   `check_run.py --cap` prints it as `Cap: <n or none> (<reason>)`: 1 for a
   machine with 8 GB of memory or less, 2 up to 16 GB, none above that or
-  when the memory cannot be read. `SWD_PARALLEL` (a whole number of 1 or
-  more, or `none`) overrides it; a bad value is ignored with a line on
-  standard error.
+  when the memory cannot be read. `SWD_PARALLEL` (a whole number from 1
+  to 999999, or `none`) overrides it. Any other value, a longer number
+  included, is ignored with one line on standard error.
 - The build playbook has a paragraph, **The cap.**, that every dispatch
   point refers to: at most the cap Agent calls in one message, the next
   group only when the whole group has returned. Preflight and Resume
@@ -19,6 +19,15 @@
   project, through a lock on `.swd/test.lock`. A run that has to wait
   prints `waiting for another test run of this project to end`. With no
   cap nothing changes.
+- If `.swd/test.lock` is a link or not a regular file, `swd-test.py`
+  refuses it: it prints
+  `cannot use .swd/test.lock as the test lock: it is a link, not a regular file, or cannot be opened; remove it and run again`
+  on standard error, runs no test command, records no evidence and exits
+  2. Remove the file and run again. On a file system that cannot lock,
+  the test runs without the lock, records its evidence as usual, and
+  prints
+  `could not lock .swd/test.lock on this file system; running this test without the lock`
+  on standard error.
 - No permission rule is added: the existing `check_run.py` rule from
   `/swd:setup` covers the new mode.
 
