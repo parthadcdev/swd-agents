@@ -1062,13 +1062,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.13.0"):
-            self.assertEqual(manifest["version"], "0.13.0")
+        with self.subTest(file="plugin.json", version="0.14.0"):
+            self.assertEqual(manifest["version"], "0.14.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.13.0"):
-            self.assertEqual(first, "## 0.13.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.14.0"):
+            self.assertEqual(first, "## 0.14.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the
@@ -2343,7 +2343,85 @@ class RoleSliceTest(unittest.TestCase):
         with self.subTest(file="CHANGELOG.md 0.13.0", needle="no permission rule"):
             self.assertIn("No permission rule is added", entry)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.13.0")
+        self.assertEqual(manifest["version"], "0.14.0")
+
+
+# 0.14.0 (C3, C4): a run keeps to the cap, and the test lock keeps one suite at a time.
+CAP_LINE = "Cap: 2 (total memory 16.0 GB)"
+CAP_PARAGRAPH = "**The cap.** The cap is the most agents you have working at the same time"
+CAP_WAIT = "waiting for another test run of this project to end"
+CAP_CMD = "<python> <plugin>/scripts/check_run.py --cap"
+
+
+class CapTest(unittest.TestCase):
+    def test_the_build_playbook_carries_the_cap(self):
+        build = words("skills", "build", "SKILL.md")
+        for needle in (
+            CAP_PARAGRAPH,
+            "The last `Cap:` line in `decisions.md` is the cap.",
+            "`Cap: none` means dispatch as this playbook says.",
+            "put at most the cap Agent calls in one message",
+            "send the next group only when every agent of the one before has returned",
+            "Never run an agent in the background to get round it.",
+            CAP_WAIT,
+            f"learn the cap with `{CAP_CMD}` and append the line it prints, such as `{CAP_LINE}`, to `decisions.md`",
+            "**Dispatch the wave.**",
+            "at most the cap of them in one message (**The cap.**)",
+            "(one after the other when the cap is 1)",
+            "at most the cap of them in one message. If",
+            "at most the cap of them per message (QA first when they do not all fit; every one of them still runs)",
+            "and, when the paragraph below calls for it, `swd:security-reviewer` with `final` and the base commit,",
+            "Include `swd:security-reviewer` when the mode is production,",
+            f"Run `{CAP_CMD}` again and append its line to `decisions.md`, because the machine or `SWD_PARALLEL` may have changed.",
+        ):
+            with self.subTest(file="build", needle=needle):
+                self.assertIn(needle, build)
+        with self.subTest(file="build", absent="Dispatch the whole wave at once"):
+            self.assertNotIn("Dispatch the whole wave at once", build)
+        with self.subTest(file="build", absent="uncapped final security review"):
+            self.assertNotIn("In the same message, dispatch `swd:security-reviewer`", build)
+
+    def test_follow_and_queue_keep_to_it(self):
+        follow = words("skills", "follow", "SKILL.md")
+        queue = words("skills", "queue", "SKILL.md")
+        for needle in (
+            "`<plugin>/skills/build/SKILL.md`, and its **The cap.** paragraph, before you dispatch anyone.",
+            f"learn the cap with `{CAP_CMD}`",
+            "Before the first dispatch for each run, append the line it prints",
+            "below any `Conductor:` line you must append first",
+            "Keep to the cap as the build playbook's **The cap.** says.",
+        ):
+            with self.subTest(file="follow", needle=needle):
+                self.assertIn(needle, follow)
+        for needle in (
+            "The queue runs one item at a time, so it adds nothing to the cap.",
+            "Each run learns the cap in its own Preflight and keeps to it.",
+            "`SWD_PARALLEL` set where the queue starts reaches every run.",
+        ):
+            with self.subTest(file="queue", needle=needle):
+                self.assertIn(needle, queue)
+
+    def test_the_docs_describe_the_cap_and_the_lock(self):
+        entry = changelog_entry("0.14.0")
+        for name, text in (
+            ("standards/run-folder.md", words("standards", "run-folder.md")),
+            ("README.md", words("README.md")),
+            ("CHANGELOG.md 0.14.0", entry),
+        ):
+            for needle in ("SWD_PARALLEL", ".swd/test.lock", CAP_WAIT):
+                with self.subTest(file=name, needle=needle):
+                    self.assertIn(needle, text)
+        with self.subTest(file="run-folder.md", needle="`Cap:`"):
+            self.assertIn("`Cap:`", words("standards", "run-folder.md"))
+        with self.subTest(file="run-folder.md", needle="SWD_PARALLEL override"):
+            self.assertIn("unless `SWD_PARALLEL`, a whole number of 1 or more or `none`, overrides it",
+                          words("standards", "run-folder.md"))
+        with self.subTest(file="run-folder.md", needle="no check reads it"):
+            self.assertIn("No check reads it", words("standards", "run-folder.md"))
+        with self.subTest(file="README.md", needle="command time limit"):
+            self.assertIn("command time limit", words("README.md"))
+        with self.subTest(file="CHANGELOG.md 0.14.0", needle="no permission rule"):
+            self.assertIn("No permission rule is added", entry)
 
 
 class WindowsTest(unittest.TestCase):

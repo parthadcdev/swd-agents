@@ -50,6 +50,9 @@ Finish: pr
   the commands a run executes, which has not been tried on a live
   Claude Code; if it does not, the run judges the plan by itself and
   goes on, as in 0.10.0.
+- The queue runs one item at a time, so it adds nothing to the cap. Each
+  run learns the cap in its own Preflight and keeps to it. `SWD_PARALLEL`
+  set where the queue starts reaches every run.
 - When an item's run finishes it becomes `- [x] <item> — <link or branch>`.
   When it does not, `- [!] <item> — blocked: <run folder>`.
 

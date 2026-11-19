@@ -199,6 +199,25 @@ kept <m>`. At the gate it gains `Finish: merge-push`, `Finish: pr`
 or `Finish: branch`. Below those, a list: each entry says what was decided,
 why, and what it costs if wrong.
 
+The principal also records the cap, the most agents it has working at the
+same time, as the line `check_run.py --cap` prints, copied as it is:
+
+    Cap: 2 (total memory 16.0 GB)
+
+It writes it in preflight after the five opening lines, and again on
+resume, and `/swd:follow` writes it below any `Conductor:` line it must
+append first. The last `Cap:` line is the cap. The cap comes from total
+memory unless `SWD_PARALLEL`, a whole number of 1 or more or `none`,
+overrides it. No check reads it, so a run from before 0.14.0, which has
+none, still checks clean.
+
+When there is a cap, `swd-test.py` also takes a lock on
+`.swd/test.lock` in the project before it runs a test command and keeps it
+until the evidence is written, so only one test suite runs at a time for
+the project. A run that has to wait prints
+`waiting for another test run of this project to end`. The lock file is
+never deleted and is not part of any task's changes.
+
 Before the seal the principal adds one line, `Plan judged: <one sentence>`,
 saying the plan was judged against the spec.
 Each time the plan is amended and sealed again, the principal adds a

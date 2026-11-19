@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.14.0
+
+- A run keeps to a cap on how many agents work at the same time.
+  `check_run.py --cap` prints it as `Cap: <n or none> (<reason>)`: 1 for a
+  machine with 8 GB of memory or less, 2 up to 16 GB, none above that or
+  when the memory cannot be read. `SWD_PARALLEL` (a whole number of 1 or
+  more, or `none`) overrides it; a bad value is ignored with a line on
+  standard error.
+- The build playbook has a paragraph, **The cap.**, that every dispatch
+  point refers to: at most the cap Agent calls in one message, the next
+  group only when the whole group has returned. Preflight and Resume
+  record the `Cap:` line in `decisions.md`; `/swd:follow` does the same
+  for each run it picks up. `/swd:queue` runs one item at a time, so it
+  adds nothing, and passes `SWD_PARALLEL` on to every run. No check reads
+  the `Cap:` line, so old run folders check as before.
+- With a cap, `swd-test.py` runs one test suite at a time for the
+  project, through a lock on `.swd/test.lock`. A run that has to wait
+  prints `waiting for another test run of this project to end`. With no
+  cap nothing changes.
+- No permission rule is added: the existing `check_run.py` rule from
+  `/swd:setup` covers the new mode.
+
 ## 0.13.0
 
 - `check_run.py --slice <who> <run>` prints one role's part of

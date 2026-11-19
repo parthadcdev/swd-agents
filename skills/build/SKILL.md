@@ -158,6 +158,17 @@ which prints only that agent's part of `plan.md`: `<who>` is
 security review of one task, `review:final` for a review of the whole
 change, quick mode's included, and `qa` for final QA.
 
+**The cap.** The cap is the most agents you have working at the same time.
+The last `Cap:` line in `decisions.md` is the cap. `Cap: none` means
+dispatch as this playbook says. With a number, wherever the playbook sends
+several Agent calls in one message (a wave's builders, a task's two
+reviewers, fixes, the final checks), put at most the cap Agent calls in one
+message, and send the next group only when every agent of the one before
+has returned. Never run an agent in the background to get round it. The cap
+does not count your own session or the dashboard. With a cap,
+`swd-test.py` runs one test suite at a time for the project, and a run that
+has to wait prints `waiting for another test run of this project to end`.
+
 Work through the sections below in order.
 
 ## Preflight
@@ -222,6 +233,10 @@ Work through the sections below in order.
    Worktree: <absolute path of <work>>
    Conductor: <Fable 5.2 or Opus 5.5, the model you are on>
    ```
+
+   Then learn the cap with `<python> <plugin>/scripts/check_run.py --cap`
+   and append the line it prints, such as `Cap: 2 (total memory 16.0 GB)`,
+   to `decisions.md`. No check reads it.
 6. Housekeeping. Clear out what earlier runs left behind:
 
    ```bash
@@ -571,8 +586,9 @@ attempt count changes.
 
 Then, for each wave in order:
 
-1. **Dispatch the whole wave at once.** Send every task in the wave in a
-   single message with one Agent call each, so they run in parallel. Set
+1. **Dispatch the wave.** Send the tasks of the wave in a single message
+   with one Agent call each, at most the cap of them in one message
+   (**The cap.**), so they run in parallel. Set
    each task `in-progress` and increment `Attempts`. A brief looks like this:
 
    ```
@@ -616,7 +632,8 @@ What happens next depends on the mode.
 
 3. Set the task `in-review` and dispatch `swd:code-reviewer` and
    `swd:security-reviewer` in one message, each with the run folder path
-   and the task id, so they review in parallel.
+   and the task id, so they review in parallel (one after the other when
+   the cap is 1).
 4. When both verdicts are `pass`, commit the task's files and set it `done`:
 
    ```bash
@@ -674,7 +691,7 @@ finished while a test fails or a finding is open.
 
   Increment the task's `Attempts`, set it `in-progress`, log a `fix` line,
   and re-check the result exactly as in Build. Fixes for unrelated failures
-  go out in one message so they run in parallel. If a check failed and the task's row is below `opus`, or you move a
+  go out together, at most the cap of them in one message. If a check failed and the task's row is below `opus`, or you move a
   task already on `opus` up, change its row in `staffing.md` and seal
   again before you dispatch, as "Model and effort per dispatch" says.
 - **Counting.** `Attempts` counts every dispatch of a task's builder: the
@@ -733,15 +750,17 @@ is lost; the user reads `decisions.md` in the final report.
    A failure goes to the Fix loop with `Fix: evidence/final-<k>.txt`; run
    the script again after the fix. `check_run.py` requires its last
    recorded result to be a pass.
-1. Dispatch `swd:qa-engineer` with `final`, and `swd:code-reviewer` with
-   `final` and the base commit, in one message. This happens in both modes;
-   in prototype mode it is the only review, and the reviewer writes
+1. Dispatch `swd:qa-engineer` with `final`, `swd:code-reviewer` with
+   `final` and the base commit, and, when the paragraph below calls for it,
+   `swd:security-reviewer` with `final` and the base commit, in one message,
+   at most the cap of them per message (QA first when they do not all fit;
+   every one of them still runs). This happens in both modes; in prototype
+   mode these are the only reviews, and the code reviewer writes
    `reports/final-code-reviewer.md`.
 
-   In the same message, dispatch `swd:security-reviewer` with `final` and
-   the base commit when the mode is production, or when a prototype's change
-   touches a trust boundary: authentication, secrets, user input that
-   reaches a query or a shell, or payments.
+   Include `swd:security-reviewer` when the mode is production, or when a
+   prototype's change touches a trust boundary: authentication, secrets,
+   user input that reaches a query or a shell, or payments.
 
    In production mode, when the plan has only one task, dispatch final QA
    alone. That task's own code and security reviews already covered the
@@ -882,7 +901,10 @@ merging and pushing a branch that was left for them.
    `<plugin>/standards/models.md`, and write the file if the plan is sealed
    again. A run sealed before 0.8.1 has no `Staffing checksum:` line, so its
    `staffing.md` is not compared until the run is sealed again; that seal
-   holds it to the `review` and `final` rows and the floor.
+   holds it to the `review` and `final` rows and the floor. Run
+   `<python> <plugin>/scripts/check_run.py --cap` again and append its line
+   to `decisions.md`, because the machine or `SWD_PARALLEL` may have
+   changed.
 2. For each task that is `in-progress`, run `git -C <work> status --short`
    on its files. Keep half-finished edits in place and set the task back to
    `todo`; the builder will pick up from them. Do not reset its attempt

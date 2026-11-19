@@ -447,6 +447,35 @@ Two files in `.swd/` outlive runs:
 - `findings.md`: defects the team noticed and did not fix, as a checklist.
   Give one to `/swd:build` as the requirement to have it fixed.
 
+## Keeping a run to your machine's memory
+
+Agents running side by side each hold a model session and, in a builder's
+check, a test suite. On a small machine that can run it out of memory, so
+the principal keeps a cap on how many agents work at the same time. At the
+start of a run, and again on resume, it runs `check_run.py --cap` and
+records the line it prints in `decisions.md`, such as
+`Cap: 2 (total memory 16.0 GB)`.
+
+| Total memory | Cap |
+|---|---|
+| 8 GB or less | 1 |
+| Over 8 GB, up to 16 GB | 2 |
+| Over 16 GB | none |
+| Cannot be read | none |
+
+Set `SWD_PARALLEL` to override it: a whole number of 1 or more, or `none`
+for no cap. Anything else is ignored, with a line saying so. Set it in
+your shell profile or in `env` in Claude Code's settings, and never type it
+in front of a command: a permission rule does not match a command that
+starts with an assignment. `/swd:queue` passes its environment to every run.
+
+With a cap, `swd-test.py` also runs one test suite at a time for the
+project, through a lock on `.swd/test.lock`. A run that has to wait prints
+`waiting for another test run of this project to end`. The time spent
+waiting counts against the waiting agent's command time limit: with a cap
+of 2 and a suite of about two minutes, a builder's check can wait that
+long. With no cap nothing changes. No permission rule is added.
+
 ## Watching a run
 
 Each run keeps its records in `.swd/runs/<date>-<name>/` in your project:

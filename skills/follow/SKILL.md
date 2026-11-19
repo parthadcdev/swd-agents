@@ -24,7 +24,7 @@ commands are written for. Write paths with forward slashes.
 The rules of the build playbook apply to every change you make here. Read
 the **Your model.** and **The Fable judge.** paragraphs and the Design
 steps 4 and 5, Gate, Build, Fix loop and Never sections of
-`<plugin>/skills/build/SKILL.md` before you dispatch anyone. You still
+`<plugin>/skills/build/SKILL.md`, and its **The cap.** paragraph, before you dispatch anyone. You still
 never write product code yourself.
 
 **Your model.** The principal runs on a model the project's conductor
@@ -87,6 +87,12 @@ run `/swd:queue` started stops as blocked.
    quoted full path, Python is not on this terminal's PATH (it was just
    installed, or its installer left it off PATH): tell the user to open a new terminal and start
    Claude Code again, as the setup skill says, and stop.
+
+   Then learn the cap with `<python> <plugin>/scripts/check_run.py --cap`.
+   Before the first dispatch for each run, append the line it prints, such
+   as `Cap: 2 (total memory 16.0 GB)`, to that run's `decisions.md`, below
+   any `Conductor:` line you must append first. Keep to the cap as the
+   build playbook's **The cap.** says.
 2. For each, ask what its pull request needs, waiting up to five minutes
    for checks that are still running:
 
