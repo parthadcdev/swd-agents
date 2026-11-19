@@ -158,13 +158,17 @@ which prints only that agent's part of `plan.md`: `<who>` is
 security review of one task, `review:final` for a review of the whole
 change, quick mode's included, and `qa` for final QA.
 
-**The cap.** The cap is the most agents you have working at the same time.
-The last `Cap:` line in `decisions.md` is the cap. `Cap: none` means
-dispatch as this playbook says. With a number, wherever the playbook sends
-several Agent calls in one message (a wave's builders, a task's two
-reviewers, fixes, the final checks), put at most the cap Agent calls in one
-message, and send the next group only when every agent of the one before
-has returned. Never run an agent in the background to get round it. The cap
+**The cap.** The cap is the most agents you have working at the same
+time, set from the machine's total memory so that a run does not exhaust a
+small machine. The last `Cap:` line in `decisions.md` is the cap.
+`Cap: none` means dispatch as this playbook says. With a number, wherever
+the playbook sends several Agent calls in one message (a wave's builders, a
+task's two reviewers, fixes, the final checks), put at most the cap Agent
+calls in one message, and send the next group only when every agent of the
+one before has returned. The cap counts every agent of the run that is
+still working, whatever it is doing, so do not send a task's reviewers
+while builders of the same wave are still working if that would go over
+the cap. Never run an agent in the background to get round it. The cap
 does not count your own session or the dashboard. With a cap,
 `swd-test.py` runs one test suite at a time for the project, and a run that
 has to wait prints `waiting for another test run of this project to end`.

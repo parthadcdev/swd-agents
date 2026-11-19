@@ -2348,7 +2348,13 @@ class RoleSliceTest(unittest.TestCase):
 
 # 0.14.0 (C3, C4): a run keeps to the cap, and the test lock keeps one suite at a time.
 CAP_LINE = "Cap: 2 (total memory 16.0 GB)"
-CAP_PARAGRAPH = "**The cap.** The cap is the most agents you have working at the same time"
+# The plan's Outcome quotes this first sentence word for word.
+CAP_PARAGRAPH = ("**The cap.** The cap is the most agents you have working at the same time, set from the "
+                 "machine's total memory so that a run does not exhaust a small machine.")
+# The cap counts reviewers and builders together, not each dispatch point on its own.
+CAP_COUNTS_ALL = ("The cap counts every agent of the run that is still working, whatever it is doing, so do not "
+                  "send a task's reviewers while builders of the same wave are still working if that would go "
+                  "over the cap.")
 CAP_WAIT = "waiting for another test run of this project to end"
 CAP_CMD = "<python> <plugin>/scripts/check_run.py --cap"
 # C1 and C2 as amended: the override's range, and the lock's two new cases with their lines quoted exactly.
@@ -2365,6 +2371,7 @@ class CapTest(unittest.TestCase):
         build = words("skills", "build", "SKILL.md")
         for needle in (
             CAP_PARAGRAPH,
+            CAP_COUNTS_ALL,
             "The last `Cap:` line in `decisions.md` is the cap.",
             "`Cap: none` means dispatch as this playbook says.",
             "put at most the cap Agent calls in one message",
