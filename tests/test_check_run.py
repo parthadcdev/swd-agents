@@ -1333,5 +1333,183 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual(self.cli(str(repo)).returncode, 1)
 
 
+SLICE_PLAN = """# Plan: slices
+
+Test command: `python3 -m unittest`
+
+## Outcome
+OUTCOME-LINE
+
+## Design
+DESIGN-LINE
+
+## Contracts
+### C1: the contract
+CONTRACT-LINE
+
+## Performance
+PERFORMANCE-LINE
+
+## Tasks
+
+### T1: First
+- Role: generalist-engineer
+- Wave: 1
+- Files: a.py
+- Depends: none
+- Check: `true`
+- Outcome: TASK1-LINE
+
+#### Detail of T1
+TASK1-DETAIL
+
+### T2: Second
+- Role: generalist-engineer
+- Wave: 1
+- Files: b.py
+- Depends: none
+- Check: `true`
+- Outcome: TASK2-LINE
+"""
+
+QUICK_PLAN = """# Plan: quick
+
+Test command: `true`
+
+## Outcome
+OUTCOME-LINE
+
+### T1: Only
+- Role: generalist-engineer
+- Wave: 1
+- Files: a.py
+- Depends: none
+- Check: `true`
+- Outcome: TASK1-LINE
+"""
+
+
+class SliceTest(unittest.TestCase):
+    def setUp(self):
+        import check_run
+        self.cr = check_run
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo, self.run_dir = make_run(self._tmp.name)
+
+    def slice(self, who, plan=SLICE_PLAN, path=None, unattended=None):
+        (self.run_dir / "plan.md").unlink(missing_ok=True)
+        if plan is not None:
+            (self.run_dir / "plan.md").write_text(plan, encoding="utf-8")
+        return self.cli(who, path, unattended)
+
+    def cli(self, who, path=None, unattended=None):
+        """--slice on the run as it is, without writing plan.md first."""
+        env = {k: v for k, v in os.environ.items() if k != "SWD_UNATTENDED"}
+        if unattended:
+            env["SWD_UNATTENDED"] = unattended
+        return subprocess.run([sys.executable, str(SCRIPT), "--slice", who, str(path or self.run_dir)],
+                              capture_output=True, text=True, encoding="utf-8", env=env)
+
+    def assertSlice(self, result, present, absent):
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        for word in present + ["Test command:"]:
+            self.assertIn(word, result.stdout)
+        for word in absent:
+            self.assertNotIn(word, result.stdout)
+
+    def test_builder_slice(self):
+        self.assertSlice(self.slice("builder:T1"),
+                         ["# Plan: slices", "DESIGN-LINE", "CONTRACT-LINE", "### C1", "PERFORMANCE-LINE", "TASK1-LINE", "TASK1-DETAIL"],
+                         ["OUTCOME-LINE", "TASK2-LINE", "## Tasks"])
+
+    def test_review_task_slice(self):
+        self.assertSlice(self.slice("review:T2"),
+                         ["CONTRACT-LINE", "PERFORMANCE-LINE", "TASK2-LINE"],
+                         ["DESIGN-LINE", "OUTCOME-LINE", "TASK1-LINE", "TASK1-DETAIL"])
+
+    def test_review_final_slice(self):
+        self.assertSlice(self.slice("review:final"),
+                         ["OUTCOME-LINE", "CONTRACT-LINE", "PERFORMANCE-LINE", "TASK1-LINE", "TASK1-DETAIL", "TASK2-LINE"],
+                         ["DESIGN-LINE", "## Tasks"])
+
+    def test_qa_slice(self):
+        self.assertSlice(self.slice("qa"), ["OUTCOME-LINE"],
+                         ["DESIGN-LINE", "CONTRACT-LINE", "PERFORMANCE-LINE", "TASK1-LINE", "TASK2-LINE"])
+
+    def test_lines_are_plan_lines_in_order_once(self):
+        lines = SLICE_PLAN.splitlines()
+        for who in ("builder:T1", "review:final", "qa"):
+            out = self.slice(who).stdout.splitlines()
+            rest = iter(lines)  # every printed line is found, unchanged, after the one before it
+            self.assertTrue(all(l in rest for l in out), who)
+
+    def test_missing_performance_is_left_out(self):
+        plan = SLICE_PLAN.replace("## Performance\nPERFORMANCE-LINE\n\n", "")
+        self.assertSlice(self.slice("builder:T1", plan), ["TASK1-LINE"], ["PERFORMANCE-LINE"])
+
+    def test_quick_plan(self):
+        self.assertSlice(self.slice("builder:T1", QUICK_PLAN), ["TASK1-LINE"], ["OUTCOME-LINE"])
+        self.assertSlice(self.slice("review:final", QUICK_PLAN), ["OUTCOME-LINE", "TASK1-LINE"], [])
+        self.assertSlice(self.slice("qa", QUICK_PLAN), ["OUTCOME-LINE"], ["TASK1-LINE"])
+
+    def test_project_folder_resolves_the_last_run(self):
+        self.assertSlice(self.slice("qa", path=self.run_dir.parents[2]), ["OUTCOME-LINE"], [])
+
+    def test_errors_are_one_line_on_stderr(self):
+        cases = [
+            ("builder:T9", SLICE_PLAN, "plan.md: no task T9"),
+            ("review:T9", SLICE_PLAN, "plan.md: no task T9"),
+            ("tester", SLICE_PLAN, "--slice: 'tester' is not one of builder:T<n>, review:T<n>, review:final, qa"),
+            ("builder:", SLICE_PLAN, "--slice: 'builder:' is not one of builder:T<n>, review:T<n>, review:final, qa"),
+            ("builder:T1", None, "missing plan.md"),
+        ]
+        for who, plan, message in cases:
+            result = self.slice(who, plan)
+            self.assertEqual((result.returncode, result.stdout, result.stderr), (1, "", message + "\n"), who)
+
+    def test_error_order_who_before_run_folder(self):
+        empty = Path(self._tmp.name) / "empty"
+        empty.mkdir()
+        self.assertIn("is not one of", self.slice("nope", path=empty).stderr)
+        result = self.slice("qa", path=empty)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (1, "", "no run folder found under .swd/runs/\n"))
+
+    def state(self):
+        """Every file under the repo (outside .git) with its bytes, and git status --short."""
+        files = {p: p.read_bytes() for p in self.repo.rglob("*") if p.is_file() and ".git" not in p.relative_to(self.repo).parts}
+        status = subprocess.run(["git", "-C", str(self.repo), "status", "--short", "--untracked-files=all"],
+                                capture_output=True, text=True, encoding="utf-8", check=True).stdout
+        return files, status
+
+    def test_changes_nothing_and_ignores_the_queue(self):
+        for plan in (SLICE_PLAN, QUICK_PLAN):
+            (self.run_dir / "plan.md").write_text(plan, encoding="utf-8")
+            before = self.state()
+            for env in (None, "fable", "opus"):
+                for who in ("builder:T1", "review:T1", "review:final", "qa", "builder:T9", "tester"):
+                    self.cli(who, unattended=env)
+            self.assertEqual(self.state(), before)
+
+    def test_sealed_and_unsealed_print_the_same(self):
+        for plan in (SLICE_PLAN, QUICK_PLAN):
+            (self.run_dir / "plan.md").write_text(plan, encoding="utf-8")
+            decisions = (self.run_dir / "decisions.md").read_text(encoding="utf-8")
+            self.assertNotIn("Plan checksum:", decisions)
+            whos = ("builder:T1", "review:T1", "review:final", "qa")
+            unsealed = {who: self.cli(who) for who in whos}
+            queued = {who: self.cli(who, unattended="opus") for who in whos}
+            with open(self.run_dir / "decisions.md", "a", encoding="utf-8") as f:
+                f.write(f"Plan checksum: {self.cr.plan_checksum(self.run_dir)}\n")
+            for who in whos:
+                sealed = self.cli(who)
+                self.assertEqual((sealed.returncode, sealed.stderr), (0, ""), who)
+                self.assertEqual(sealed.stdout, unsealed[who].stdout, who)
+                self.assertEqual(sealed.stdout, queued[who].stdout, who)
+                self.assertEqual(self.cli(who, unattended="opus").stdout, sealed.stdout, who)
+            (self.run_dir / "decisions.md").write_text(decisions, encoding="utf-8")
+
+
 if __name__ == "__main__":
     unittest.main()

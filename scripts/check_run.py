@@ -6,6 +6,7 @@
     python3 check_run.py --task T1 <run_dir>   check a returned task's changes before review and, in a run /swd:queue started, a sealed plan
     python3 check_run.py <run_dir>             check a finished run (a sealed run is not asked for '## Outcome'; an unsealed one is) and, in a run /swd:queue started, a sealed plan
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
+    python3 check_run.py --slice <who> <run_dir>   print one role's part of plan.md: builder:T1, review:T1, review:final or qa
 
 A run /swd:queue started has SWD_UNATTENDED set to the model the queue started it on; the seal takes the
 model from it, not from the 'Conductor:' line.
@@ -646,6 +647,55 @@ def check_finish(run_dir, project_dir):
     return problems
 
 
+SLICE_SECTIONS = {"builder": ("Design", "Contracts", "Performance"), "review": ("Contracts", "Performance"),
+                  "review:final": ("Outcome", "Contracts", "Performance"), "qa": ("Outcome",)}
+HEADING_RE = re.compile(r"^(#{1,6}) ")
+
+
+def slice_plan(text, sections_wanted, tasks_wanted):
+    """The header, the wanted '## ' sections and the wanted tasks (None for every task), unchanged and in plan order.
+    A section ends at the next heading of its level or higher, or at a task heading."""
+    out, in_header, level = [], True, None   # level: of the section being printed, None when not printing
+    for line in text.splitlines():
+        heading = HEADING_RE.match(line)
+        if line.startswith("## "):
+            in_header = False
+        if heading:
+            task = TASK_RE.match(line)
+            if level is not None and (task or len(heading.group(1)) <= level):
+                level = None
+            if task and (tasks_wanted is None or task.group(1) in tasks_wanted):
+                level = 3
+            elif line.startswith("## ") and line[3:].strip() in sections_wanted:
+                level = 2
+        if in_header or level is not None:
+            out.append(line + "\n")
+    return out
+
+
+def slice_main(who, path):
+    """--slice: print one role's part of plan.md. Errors go to standard error, one line, exit 1."""
+    match = re.fullmatch(r"(builder|review):(T\d+)", who)
+    kind = match.group(1) if match else who if who in ("review:final", "qa") else None
+    if kind is None:
+        print(f"--slice: '{who}' is not one of builder:T<n>, review:T<n>, review:final, qa", file=sys.stderr)
+        return 1
+    path = path.resolve()
+    run_dir = path if path.parent.name == "runs" and path.parent.parent.name == ".swd" else latest_run(path)
+    if run_dir is None or not run_dir.is_dir():
+        print("no run folder found under .swd/runs/", file=sys.stderr)
+        return 1
+    text = read(run_dir / "plan.md")
+    if text is None:
+        print("missing plan.md", file=sys.stderr)
+        return 1
+    if match and not any(TASK_RE.match(l) and l.startswith(f"### {match.group(2)}:") for l in text.splitlines()):
+        print(f"plan.md: no task {match.group(2)}", file=sys.stderr)
+        return 1
+    sys.stdout.writelines(slice_plan(text, SLICE_SECTIONS[kind], {match.group(2)} if match else None if kind == "review:final" else set()))
+    return 0
+
+
 def latest_run(repo_dir):
     runs = repo_dir / ".swd" / "runs"
     folders = sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []
@@ -658,8 +708,11 @@ def main(argv=None):
     parser.add_argument("--seal", action="store_true", help="check the plan, the Plan judged line, staffing.md and, off Fable 5.2, the Fable judge's line and, in a run /swd:queue started, the judge's own verdict that the plan holds, then record the checksums of the plan and staffing.md")
     parser.add_argument("--task", metavar="ID", help="check a returned task's changes before review")
     parser.add_argument("--finish", action="store_true", help="check the run was delivered and cleaned up")
+    parser.add_argument("--slice", metavar="WHO", help="print one role's part of plan.md: builder:T<n>, review:T<n>, review:final or qa")
     parser.add_argument("path", type=Path, help="a run folder, or a project folder")
     args = parser.parse_args(argv)
+    if args.slice is not None:
+        return slice_main(args.slice, args.path)  # before every other mode: reads only plan.md
 
     path = args.path.resolve()
     if path.parent.name == "runs" and path.parent.parent.name == ".swd":
