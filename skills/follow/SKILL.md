@@ -161,7 +161,8 @@ of the file. A section that is not in the report has no items.
    never names the feedback report.
 3. **Route each change to its owner.** If there is no change to make,
    skip this step and steps 4 and 5. The builder role that owns the
-   file in `plan.md` gets the normal brief plus the items it is to
+   file in `plan.md` gets the normal brief, its `Run tests with:` and
+   `Read the plan with:` lines included, plus the items it is to
    make, each quoted whole from `## Failing checks` or
    `## Comments to address`: its `- ` line and the quoted lines that
    belong to it, kept as they stand, after the line
@@ -169,7 +170,7 @@ of the file. A section that is not in the report has no items.
    name the feedback report, so the outside section is not put in
    front of a builder.
    Test-first, the `check_run.py --task` check, the reviews for the run's
-   mode and the commit all work exactly as in the build playbook's Fix
+   mode (with their `Read the plan with:` lines) and the commit all work exactly as in the build playbook's Fix
    loop. Set the Agent tool's `model` and `effort` on every dispatch, as
    `<plugin>/standards/models.md` says: the task's row in the run's
    `staffing.md` for its builder and the `review` row for its reviewers (the `final` row in a quick run),

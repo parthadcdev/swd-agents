@@ -31,7 +31,9 @@ and any earlier reports to read. Read:
 
 1. `standards.md` in the run folder: the engineering bar and the builder
    process you must follow, and the report format.
-2. Your task in `plan.md`, plus the `## Design` and `## Contracts` sections.
+2. Your part of the plan: run the command on your brief's `Read the plan
+   with:` line. `plan.md` in the run folder stays whole: open it only when
+   your part lacks something you need.
 3. `spec.md`, for what the work is ultimately judged against.
 4. The reports your brief names. On a fix, the failing report tells you what
    to fix.

@@ -300,6 +300,11 @@ Builders work test first and own the files the plan gives them. Checkers
 report findings and never edit code. A run uses only the roles its plan
 needs.
 
+Builders, reviewers and QA get their part of the plan from
+`check_run.py --slice`, whose command their brief gives on its
+`Read the plan with:` line; `plan.md` stays whole, and an agent may open
+it when its part lacks something.
+
 ## Models
 
 - The principal runs on Fable 5.2, or on Fable 5.2 or Opus 5.5 in a

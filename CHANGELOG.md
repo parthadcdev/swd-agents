@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.13.0
+
+- `check_run.py --slice <who> <run>` prints one role's part of
+  `plan.md`: `builder:T<n>` (header, `## Design`, `## Contracts`,
+  `## Performance` and the task), `review:T<n>` (header, `## Contracts`,
+  `## Performance` and the task), `review:final` (header, `## Outcome`,
+  `## Contracts`, `## Performance` and every task) or `qa` (header and
+  `## Outcome`). It writes nothing and reads neither `decisions.md` nor
+  git.
+- Builders, reviewers and QA get their part of the plan from
+  `check_run.py --slice`, whose command their brief gives on its
+  `Read the plan with:` line; `plan.md` stays whole, and an agent may open
+  it when its part lacks something.
+- The nine agent files, the three mode standards' builder process and
+  `standards/run-folder.md` say so. The agent files name only the brief
+  line, never the script. No permission rule is added: the existing
+  `check_run.py` rule from `/swd:setup` covers the new mode.
+- Run `/swd:setup` again after updating: its allow rules name the
+  installed version's folder.
+
 ## 0.12.0
 
 - Builders start on Sonnet: a builder's first attempt is on `sonnet`,

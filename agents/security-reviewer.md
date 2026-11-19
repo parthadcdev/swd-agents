@@ -33,10 +33,13 @@ Read:
 
 1. `standards.md`: the bar this run is held to, including its `## Security`
    section.
-2. `spec.md` and the task under review in `plan.md`.
-3. For a task: the files the task owns (`git diff` shows the uncommitted
+2. `spec.md`.
+3. Your part of the plan: run the command on your brief's `Read the plan
+   with:` line. `plan.md` in the run folder stays whole: open it only when
+   your part lacks something you need.
+4. For a task: the files the task owns (`git diff` shows the uncommitted
    change).
-4. For `final`: the whole change on the branch (`git diff <base>...HEAD`,
+5. For `final`: the whole change on the branch (`git diff <base>...HEAD`,
    where your brief gives the base).
 
 ## Process

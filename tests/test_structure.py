@@ -1062,13 +1062,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.12.0"):
-            self.assertEqual(manifest["version"], "0.12.0")
+        with self.subTest(file="plugin.json", version="0.13.0"):
+            self.assertEqual(manifest["version"], "0.13.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.12.0"):
-            self.assertEqual(first, "## 0.12.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.13.0"):
+            self.assertEqual(first, "## 0.13.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the
@@ -2240,6 +2240,110 @@ class StructureTest(unittest.TestCase):
 PLAYBOOKS = sorted((ROOT / "skills").glob("*/SKILL.md")) + agent_files()
 SH_PREFIX = "sh <plugin>/scripts/"
 SKILLS_WITH_PYTHON = ("build", "follow", "queue", "setup")
+
+
+# 0.13.0 (C2): each agent gets its part of the plan from the command on its brief's `Read the plan with:` line.
+SLICE_ITEM = (
+    "Your part of the plan: run the command on your brief's `Read the plan with:` line.",
+    "`plan.md` in the run folder stays whole: open it only when your part lacks something you need.",
+)
+SLICE_REMOVED = {
+    "generalist-engineer": "Your task in `plan.md`, plus the `## Design` and `## Contracts` sections.",
+    "backend-engineer": "Your task in `plan.md`, plus the `## Design` and `## Contracts` sections.",
+    "frontend-engineer": "Your task in `plan.md`, plus the `## Design` and `## Contracts` sections.",
+    "database-engineer": "Your task in `plan.md`, plus the `## Design` and `## Contracts` sections.",
+    "devops-engineer": "Your task in `plan.md`, plus the `## Design` and `## Contracts` sections.",
+    "docs-writer": "Your task in `plan.md`, plus the `## Design` and `## Contracts` sections.",
+    "code-reviewer": "in `plan.md`, the `## Contracts` section and the task under review",
+    "security-reviewer": "the task under review in `plan.md`",
+    "qa-engineer": "`plan.md`: the `Test command:` line and the `## Outcome` section.",
+}
+SLICE_DOC = (
+    "Builders, reviewers and QA get their part of the plan from `check_run.py --slice`, whose command their "
+    "brief gives on its `Read the plan with:` line; `plan.md` stays whole, and an agent may open it when its "
+    "part lacks something."
+)
+SLICE_BRIEF_LINE = "Read the plan with: <python> <plugin>/scripts/check_run.py --slice builder:T2 <run>"
+SLICE_PLAYBOOK = (
+    "Every brief to a builder, a reviewer or QA also has a line "
+    "`Read the plan with: <python> <plugin>/scripts/check_run.py --slice <who> <run>`, which prints only that "
+    "agent's part of `plan.md`: `<who>` is `builder:<task id>` for a builder, `review:<task id>` for a code or "
+    "security review of one task, `review:final` for a review of the whole change, quick mode's included, "
+    "and `qa` for final QA."
+)
+SLICE_STEP_1 = {
+    "production": (
+        "Read your part of the plan, which the command on your brief's `Read the plan with:` line prints (your "
+        "task, the design and the contracts), and the reports your brief names.",
+        "Read your task in `plan.md`, the contracts above the task list, and the reports your brief names.",
+    ),
+    "prototype": (
+        "Read your part of the plan, which the command on your brief's `Read the plan with:` line prints (your "
+        "task, the design and the contracts), and the reports your brief names.",
+        "Read your task in `plan.md`, the contracts above the task list, and the reports your brief names.",
+    ),
+    "quick": (
+        "Read the project notes your brief names, your part of the plan, which the command on your brief's "
+        "`Read the plan with:` line prints, and the reports your brief names.",
+        "Read the project notes your brief names, your task in `plan.md` and the reports your brief names.",
+    ),
+}
+
+
+class RoleSliceTest(unittest.TestCase):
+    def test_every_agent_reads_its_slice(self):
+        for name, removed in SLICE_REMOVED.items():
+            text = words("agents", f"{name}.md")
+            for needle in SLICE_ITEM:
+                with self.subTest(agent=name, needle=needle):
+                    self.assertIn(needle, text)
+            with self.subTest(agent=name, absent=removed):
+                self.assertNotIn(removed, text)
+
+    def test_no_agent_file_names_a_script(self):
+        for path in agent_files():
+            text = path.read_text(encoding="utf-8")
+            for needle in ("scripts/", ".py", ".sh"):
+                with self.subTest(agent=path.name, absent=needle):
+                    self.assertNotIn(needle, text)
+
+    def test_the_playbooks_carry_the_brief_line(self):
+        build = words("skills", "build", "SKILL.md")
+        follow = words("skills", "follow", "SKILL.md")
+        for needle in (SLICE_PLAYBOOK, "Run tests with: <python> <plugin>/scripts/swd-test.py <run> T2 " + SLICE_BRIEF_LINE):
+            with self.subTest(file="build", needle=needle):
+                self.assertIn(needle, build)
+        for mention in re.findall(r"\S*check_run\.py --slice", build):
+            with self.subTest(file="build", mention=mention):
+                self.assertEqual(mention, "<plugin>/scripts/check_run.py --slice")
+        for needle in (
+            "the normal brief, its `Run tests with:` and `Read the plan with:` lines included",
+            "their `Read the plan with:` lines",
+        ):
+            with self.subTest(file="follow", needle=needle):
+                self.assertIn(needle, follow)
+
+    def test_the_standards_point_at_the_brief_command(self):
+        for name, (new, old) in SLICE_STEP_1.items():
+            text = words("standards", f"{name}.md")
+            with self.subTest(standard=name, needle=new):
+                self.assertIn(new, text)
+            with self.subTest(standard=name, absent=old):
+                self.assertNotIn(old, text)
+
+    def test_the_docs_say_it_and_the_release_is_0_13_0(self):
+        entry = changelog_entry("0.13.0")
+        for name, text in (
+            ("standards/run-folder.md", words("standards", "run-folder.md")),
+            ("README.md", words("README.md")),
+            ("CHANGELOG.md 0.13.0", entry),
+        ):
+            with self.subTest(file=name):
+                self.assertIn(SLICE_DOC, text)
+        with self.subTest(file="CHANGELOG.md 0.13.0", needle="no permission rule"):
+            self.assertIn("No permission rule is added", entry)
+        manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["version"], "0.13.0")
 
 
 class WindowsTest(unittest.TestCase):

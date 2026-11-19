@@ -151,6 +151,12 @@ lines: `Run folder: <run>`, `Work in: <work>` and
 `Project notes: <absolute path of .swd/project.md>`. Every brief to a
 builder or checker also has a line
 `Goal: <what this dispatch must achieve, and why the run needs it>`.
+Every brief to a builder, a reviewer or QA also has a line
+`Read the plan with: <python> <plugin>/scripts/check_run.py --slice <who> <run>`,
+which prints only that agent's part of `plan.md`: `<who>` is
+`builder:<task id>` for a builder, `review:<task id>` for a code or
+security review of one task, `review:final` for a review of the whole
+change, quick mode's included, and `qa` for final QA.
 
 Work through the sections below in order.
 
@@ -574,6 +580,7 @@ Then, for each wave in order:
    Work in: <work>
    Project notes: <absolute path of .swd/project.md>
    Run tests with: <python> <plugin>/scripts/swd-test.py <run> T2
+   Read the plan with: <python> <plugin>/scripts/check_run.py --slice builder:T2 <run>
    Task: T2
    Goal: Expose the cart total over the API, so the checkout page in T3 has something to call.
    You own: src/api.py, tests/test_api.py

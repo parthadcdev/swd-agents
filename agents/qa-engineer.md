@@ -29,7 +29,9 @@ plain form; do not conclude that you have no shell.
 Your brief gives you the run folder path and `final`. Read:
 
 1. `standards.md`: the bar this run is held to.
-2. `plan.md`: the `Test command:` line and the `## Outcome` section.
+2. Your part of the plan: run the command on your brief's `Read the plan
+   with:` line. `plan.md` in the run folder stays whole: open it only when
+   your part lacks something you need.
 3. `spec.md`: the acceptance criteria.
 
 ## Process

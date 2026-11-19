@@ -30,11 +30,13 @@ Your brief gives you the run folder path and either a task id or `final`.
 Read:
 
 1. `standards.md`: the bar this run is held to.
-2. `spec.md` and, in `plan.md`, the `## Contracts` section and the task
-   under review.
-3. For a task: the builder's report, then the files the task owns
+2. `spec.md`.
+3. Your part of the plan: run the command on your brief's `Read the plan
+   with:` line. `plan.md` in the run folder stays whole: open it only when
+   your part lacks something you need.
+4. For a task: the builder's report, then the files the task owns
    (`git diff` shows the uncommitted change).
-4. For `final`: the whole change on the branch (`git diff <base>...HEAD`,
+5. For `final`: the whole change on the branch (`git diff <base>...HEAD`,
    where your brief gives the base), and the acceptance criteria.
 
 ## Process

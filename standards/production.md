@@ -13,8 +13,9 @@ code is the goal. Do not cut a check to finish sooner.
 Every builder task follows this order. The order is the point: a test
 written after the code only proves the code does what it already does.
 
-1. Read your task in `plan.md`, the contracts above the task list, and the
-   reports your brief names.
+1. Read your part of the plan, which the command on your brief's `Read the
+   plan with:` line prints (your task, the design and the contracts), and
+   the reports your brief names.
 2. Write the test for the behaviour the task requires.
 3. Run it and watch it fail. Copy the command and its output into
    `## Test first (failing)` in your report. It must fail because the

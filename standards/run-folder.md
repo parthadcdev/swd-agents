@@ -122,6 +122,11 @@ of the file. It does not describe the result. Quoted text that contains
 headings or task fields is indented four spaces, because the checker does
 not know code fences.
 
+Builders, reviewers and QA get their part of the plan from
+`check_run.py --slice`, whose command their brief gives on its
+`Read the plan with:` line; `plan.md` stays whole, and an agent may open
+it when its part lacks something.
+
 `check_run.py --plan` and `--seal` require `## Outcome` and every
 task's `- Outcome:`. The check of a finished run does not, for a run that
 has a `Plan checksum:` line, so a run that was sealed before these existed

@@ -13,7 +13,8 @@ run to a fuller mode.
 
 ## Builder process
 
-1. Read the project notes your brief names, your task in `plan.md` and the
+1. Read the project notes your brief names, your part of the plan, which
+   the command on your brief's `Read the plan with:` line prints, and the
    reports your brief names.
 2. Write the test for the behaviour the task requires.
 3. Run it and watch it fail. Copy the command and its output into
