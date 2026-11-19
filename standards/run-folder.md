@@ -408,6 +408,51 @@ the judge, whatever file is there. The judge never reads
 `reports/pr-feedback-*.md` or `pr-reply-*.md`; a brief quotes the items
 a question turns on.
 
+## Feedback reports and triage
+
+`swd-pr.py` writes the failing checks and new comments of a pull request to
+`reports/pr-feedback-<n>.md`. The sections come in this order, and a
+section with no items is left out: `## Failing checks`,
+`## Comments to address`, `## Set aside by triage`, and last, to the end of
+the file, `## From people outside the repository`.
+
+`## Set aside by triage` exists only when the user turned triage on for the
+project and something was set aside. When "already done" is above 0.7,
+the comment is set aside as already handled. Otherwise, when "wants a
+change" is below 0.3, it is set aside as asking for nothing. Everything
+else is addressed as before. Set-aside comments are listed under
+`## Set aside by triage`, which comes after `## Comments to address` and
+before the outside section, which stays last. Each item reads
+`<reason> (already done <x>, wants a change <y>): <the item's text>`.
+The summary line gains `<s> set aside by triage`, between the new comments
+and the outside count, and `/swd:follow` counts the section against it.
+
+Never sent: anything written by people outside the repository; code,
+diffs and the run folder; the body of a change request (a review that
+requests changes), whatever it says, which is always addressed as before;
+and a comment whose text is empty or only whitespace, which is also always
+addressed as before. The inline comments of a change request are sent and
+judged like any other. The body of a change request and a comment whose
+text is empty or only whitespace stay under `## Comments to address`
+unmarked.
+
+Every request sent is saved as `triage/pr-feedback-<n>-<i>.request.json`
+in the run folder, where `<i>` counts, from 1, the comments sent for that
+report, in report order, so items never sent leave no gap. The request file
+holds the exact bytes sent. The reply is saved beside it as
+`pr-feedback-<n>-<i>.answer.json` only when three things hold: the status
+was 200, the whole body was read within the 10-second deadline and within
+64 KiB, and the key does not appear in it. No other reply is saved. The
+`triage/` folder sits beside `reports/`, and no check reads it.
+
+On a failure the script prints
+`TypeSafe is not reachable (<failure>): comments are handled as usual`,
+and every comment it could not judge stays under `## Comments to address`,
+marked `(TypeSafe not reachable) `. The line comes before the summary
+line. The principal tells the user in one line that TypeSafe was not
+reachable and that the comments were handled as usual, then carries on
+with the normal process for every comment.
+
 ## Commits
 
 - A task commit has the subject `T<n>: <title>` and changes only that task's

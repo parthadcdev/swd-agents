@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.15.0
+
+- `/swd:follow` can triage new comments from the owner, members and
+  collaborators with TypeSafe. Triage is off unless the user turns it on
+  for a project. It is on when the project's absolute folder is a line of
+  `~/.claude/swd-triage` and `TYPESAFE_API_KEY` is set and not empty. It
+  is off when the line is missing, or when the key is unset or empty. To
+  turn it off, delete the line or unset the key. Nothing in a pull
+  request, an issue or the project's files can turn it on. With it off,
+  nothing is sent and the output is exactly as before. When it is on with
+  a key the script cannot use (anything but printable characters with no
+  space, at most 512), nothing is sent. The script prints
+  `TypeSafe is not reachable (TYPESAFE_API_KEY is not usable): comments are handled as usual`,
+  and the comments are handled as usual. The README says how to add the
+  line.
+- The principal never creates or changes `~/.claude/swd-triage`, and
+  never sets `TYPESAFE_API_KEY`.
+- One request is sent per comment judged. It holds the comment's text
+  and, for an inline comment, the other comments of its thread from the
+  owner, members and collaborators, the team's own `[swd]` replies
+  included, and its file path and line; each message's author login and
+  role; and the short id and subject line of each later commit, the last
+  50 at most.
+- Never sent: anything written by people outside the repository; code,
+  diffs and the run folder; the body of a change request (a review that
+  requests changes), whatever it says, which is always addressed as
+  before; and a comment whose text is empty or only whitespace, which is
+  also always addressed as before. The inline comments of a change
+  request are sent and judged like any other.
+- When "already done" is above 0.7, the comment is set aside as already
+  handled. Otherwise, when "wants a change" is below 0.3, it is set aside
+  as asking for nothing. Everything else is addressed as before.
+  Set-aside comments are listed under `## Set aside by triage`, which
+  comes after `## Comments to address` and before the outside section,
+  which stays last. Each item reads
+  `<reason> (already done <x>, wants a change <y>): <the item's text>`.
+  The summary line gains `<s> set aside by triage`.
+- Every request sent is saved as
+  `triage/pr-feedback-<n>-<i>.request.json` in the run folder, where
+  `<i>` counts, from 1, the comments sent for that report. The reply is
+  saved beside it as `pr-feedback-<n>-<i>.answer.json` only when three
+  things hold: the status was 200, the whole body was read within the
+  10-second deadline and within 64 KiB, and the key does not appear in
+  it. No other reply is saved.
+- On a failure the script prints
+  `TypeSafe is not reachable (<failure>): comments are handled as usual`,
+  and every comment it could not judge stays under
+  `## Comments to address`, marked `(TypeSafe not reachable) `. The
+  principal tells the user in one line that TypeSafe was not reachable
+  and that the comments were handled as usual, then carries on with the
+  normal process for every comment.
+- The follow skill counts `## Set aside by triage` against
+  `<s> set aside by triage`, and stops on a mismatch.
+- No permission rule is added: the existing `swd-pr.py` rule covers it.
+
 ## 0.14.0
 
 - A run keeps to a cap on how many agents work at the same time.

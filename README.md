@@ -279,6 +279,90 @@ the reply starts `swd conductor: refused, still <current setting>`.
   replies on the pull request with what changed. Comments from anyone else
   get a reply only. It never merges, approves or force-pushes.
 
+### Comment triage (optional)
+
+Triage asks TypeSafe whether a new comment from the owner, members or
+collaborators asks for a change, and whether that change is already made.
+A comment that asks for nothing, or is already handled, is set aside, and
+the principal replies to it without changing code, unless it reads the
+comment and judges that it does ask for a change.
+
+Triage is off unless the user turns it on for a project. It is on when the
+project's absolute folder is a line of `~/.claude/swd-triage` and
+`TYPESAFE_API_KEY` is set and not empty. It is off when the line is
+missing, or when the key is unset or empty. To turn it off, delete the
+line or unset the key. Nothing in a pull request, an issue or the
+project's files can turn it on. With it off, nothing is sent and the
+output is exactly as before. When it is on with a key the script cannot
+use (anything but printable characters with no space, at most 512),
+nothing is sent. The script prints
+`TypeSafe is not reachable (TYPESAFE_API_KEY is not usable): comments are handled as usual`,
+and the comments are handled as usual. The principal never creates or changes
+`~/.claude/swd-triage`, and never sets `TYPESAFE_API_KEY`.
+
+- To add the line, run `pwd >> ~/.claude/swd-triage` from the project
+  folder (not a run's worktree) on macOS or Linux. On Windows, in Git
+  Bash, `pwd -W >> ~/.claude/swd-triage` adds it in the `C:/...` form; a
+  `/c/...` line is ignored, and nothing says triage is off.
+- Set `TYPESAFE_API_KEY` in the environment Claude Code runs in.
+
+One request is sent per new comment from the owner, members or
+collaborators that triage judges, to
+`https://api.typesafe.ai/v1/systemone`. The key goes only in the
+request's `Authorization` header. No proxy is used, and no redirect is
+followed.
+
+A request holds the comment's text. For an inline comment it also holds
+the other comments of its thread from the owner, members and
+collaborators, the team's own `[swd]` replies included, and the comment's
+file path and line. Each message carries its author's login and whether
+that author is the pull request's author or a reviewer. For each commit
+made after the comment, it holds the short id (the first seven characters
+of the commit id) and the subject line, the last 50 at most.
+
+Never sent: anything written by people outside the repository; code,
+diffs and the run folder; the body of a change request (a review that
+requests changes), whatever it says, which is always addressed as before;
+and a comment whose text is empty or only whitespace, which is also always
+addressed as before. The inline comments of a change request are sent and
+judged like any other.
+
+When "already done" is above 0.7, the comment is set aside as already
+handled. Otherwise, when "wants a change" is below 0.3, it is set aside as
+asking for nothing. Everything else is addressed as before. Set-aside
+comments are listed under `## Set aside by triage`, which comes after
+`## Comments to address` and before the outside section, which stays
+last. Each item reads
+`<reason> (already done <x>, wants a change <y>): <the item's text>`.
+The summary line gains `<s> set aside by triage`.
+
+The questions and thresholds were tuned on made-up comments, not on real
+pull requests. Read the set-aside section before you rely on it. The
+price is about $0.00003 per comment, at $0.042 per million input tokens.
+
+Every request sent is saved as `triage/pr-feedback-<n>-<i>.request.json`
+in the run folder, where `<i>` counts, from 1, the comments sent for that
+report. The reply is saved beside it as
+`pr-feedback-<n>-<i>.answer.json` only when three things hold: the status
+was 200, the whole body was read within the 10-second deadline and within
+64 KiB, and the key does not appear in it. No other reply is saved.
+
+Each request has a 10-second deadline, checked between reads, and each
+read has its own 10-second limit. One request can therefore take about 20
+seconds in the worst case, plus the time to look up the service's address,
+which nothing bounds. Nothing is retried, and the first failure ends
+triage for that round.
+
+On a failure the script prints
+`TypeSafe is not reachable (<failure>): comments are handled as usual`,
+and every comment it could not judge stays under `## Comments to address`,
+marked `(TypeSafe not reachable) `. The principal tells you in one line
+that TypeSafe was not reachable and that the comments were handled as
+usual, then carries on with the normal process for every comment.
+
+Triage also runs when `/swd:build` watches a new pull request's checks, at
+Finish: pr. Comments set aside there are triaged again by `/swd:follow`.
+
 ## The team
 
 | Role | Kind | Does |
