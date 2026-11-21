@@ -974,5 +974,171 @@ def stopped(command, rules):
                for form in (part, re.sub(r"^(?:\w+=\S*\s+)+", "", part)) for rule in rules)
 
 
+class CodeGraphRulesTest(unittest.TestCase):
+    """Contracts C2 and C3 of the code graph run. Never runs a real `codegraph`: the child's whole PATH is one temp
+    folder, holding a stub that records a run, or nothing."""
+    SUBCOMMANDS = ("init", "uninit", "index", "sync", "unlock", "install", "uninstall", "telemetry", "upgrade",
+                   "daemon", "daemons", "serve", "ui", "web")   # copied from C2; every check loops over it
+    ALLOW = "Bash(codegraph explore *)"
+    BARE = "Bash(codegraph)"   # `codegraph` typed alone starts the installer
+    ASK_RULES = [BARE] + [f"Bash(codegraph {sub} *)" for sub in SUBCOMMANDS]
+    HEADING = ("Ask rules, so Claude Code asks you before a command builds, changes or removes a code graph index, "
+               "or changes CodeGraph on this machine:")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name).resolve()
+        for name in ("home", "project", "bin", "cwd"):
+            (self.tmp / name).mkdir()
+        self.project, self.bin, self.cwd = self.tmp / "project", self.tmp / "bin", self.tmp / "cwd"
+        self.settings = self.project / ".claude" / "settings.local.json"
+        self.stub = self.bin / ("codegraph.exe" if os.name == "nt" else "codegraph")
+
+    def put_stub(self):
+        if os.name == "nt":
+            self.stub.write_bytes(b"")
+        else:
+            self.stub.write_text('#!/bin/sh\necho ran >> "$0.ran"\nexit 3\n', encoding="utf-8")
+            self.stub.chmod(0o755)
+
+    def run_setup(self, *args, stub=True, index="dir"):
+        """Run setup in a child whose PATH is only self.bin; first make .codegraph a "dir", a "file" or absent (None)
+        and the stub present or not."""
+        path = self.project / ".codegraph"
+        if path.is_dir():
+            path.rmdir()
+        path.unlink(missing_ok=True)
+        if index == "dir":
+            path.mkdir()
+        elif index == "file":
+            path.write_text("not a directory", encoding="utf-8")
+        if stub:
+            self.put_stub()
+        elif self.stub.exists():
+            self.stub.unlink()
+        env = {**os.environ, "PATH": str(self.bin), "HOME": str(self.tmp / "home"), "USERPROFILE": str(self.tmp / "home")}
+        result = subprocess.run([sys.executable, str(SCRIPT), *args, str(self.project)], capture_output=True, text=True,
+                                encoding="utf-8", env=env, cwd=self.cwd)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertFalse((self.bin / "codegraph.ran").exists())   # nothing ever runs the stub
+        return result
+
+    def written(self):
+        return json.loads(self.settings.read_text(encoding="utf-8"))["permissions"]
+
+    def written_rules(self):
+        """Run setup with a code graph and return the allow and ask rules it wrote, so the matching tests check the
+        script's rules, not this class's copy of them."""
+        self.assertEqual(self.run_setup().returncode, 0)
+        permissions = self.written()
+        return permissions["allow"], permissions["ask"]
+
+    def test_print_lists_the_allow_rule_and_every_ask_rule_before_the_deny_block(self):
+        result = self.run_setup("--print")
+        self.assertEqual(result.returncode, 0)
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines.count("  " + self.ALLOW), 1)
+        self.assertLess(lines.index("  " + ASK[-1]), lines.index(self.HEADING))
+        heading = lines.index(self.HEADING)
+        end = heading + 1 + len(self.ASK_RULES)
+        self.assertEqual(lines[heading + 1:end], ["  " + rule for rule in self.ASK_RULES])
+        self.assertEqual(lines[end], DENY_HEADING)
+        self.assertIn("is missing", result.stdout)
+
+    def test_the_written_file_holds_them_after_the_existing_rules(self):
+        result = self.run_setup()
+        self.assertEqual(result.returncode, 0)
+        permissions = self.written()
+        self.assertEqual(permissions["allow"].count(self.ALLOW), 1)
+        self.assertEqual(permissions["allow"][-1], self.ALLOW)
+        self.assertEqual(permissions["ask"], ASK + self.ASK_RULES)
+        self.assertEqual(permissions["ask"][len(ASK)], self.BARE)
+        self.assertEqual(permissions["deny"], DENY)
+        total = len(permissions["allow"]) + len(permissions["ask"]) + len(permissions["deny"])
+        self.assertIn(f"setup: {total} rules added", result.stdout)
+
+    def test_a_command_that_already_allows_explore_does_not_add_the_rule_twice(self):
+        shown = self.run_setup("--print", "--command", "codegraph explore")
+        self.assertEqual(shown.stdout.splitlines().count("  " + self.ALLOW), 1)
+        result = self.run_setup("--command", "codegraph explore")
+        self.assertEqual(result.returncode, 0)
+        permissions = self.written()
+        self.assertEqual(permissions["allow"].count(self.ALLOW), 1)
+        self.assertEqual(permissions["ask"], ASK + self.ASK_RULES)
+        total = len(permissions["allow"]) + len(permissions["ask"]) + len(permissions["deny"])   # the file was empty
+        self.assertIn(f"setup: {total} rules added", result.stdout)
+        self.assertIn(f"is missing {total} of the rules above", shown.stdout)
+
+    def test_print_after_setup_says_in_place_and_a_second_run_changes_nothing(self):
+        self.run_setup()
+        before = self.settings.read_bytes()
+        self.assertIn("In place:", self.run_setup("--print").stdout)
+        second = self.run_setup()
+        self.assertEqual((second.returncode, second.stdout), (0, "setup: nothing to add\n"))
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_project_set_up_before_the_index_is_missing_only_the_code_graph_rules(self):
+        self.run_setup(index=None)
+        new = 1 + len(self.ASK_RULES)
+        result = self.run_setup("--print")
+        self.assertIn(f"is missing {new} of the rules above", result.stdout)
+        self.assertEqual(self.run_setup().stdout.split()[1:3], [str(new), "rules"])
+        self.assertIn(self.ALLOW, self.written()["allow"])
+
+    def test_each_ask_rule_covers_the_bare_subcommand(self):
+        allow, ask = self.written_rules()
+        for sub in self.SUBCOMMANDS:
+            with self.subTest(sub=sub):
+                self.assertTrue(stopped(f"codegraph {sub}", ask))
+                self.assertFalse(allowed(f"codegraph {sub}", allow))
+
+    def test_each_subcommand_asks_with_arguments_and_after_an_assignment_and_is_not_allowed(self):
+        allow, ask = self.written_rules()
+        for sub in self.SUBCOMMANDS:
+            for command in (f"codegraph {sub}", f"codegraph {sub} --force", f"codegraph {sub} --mcp",
+                            f"X=1 codegraph {sub}"):
+                with self.subTest(command=command):
+                    self.assertTrue(stopped(command, ask))
+                    self.assertFalse(allowed(command, allow))
+        for command in ("codegraph status", "codegraph explorer"):   # not allowed either
+            with self.subTest(command=command):
+                self.assertFalse(allowed(command, allow))
+
+    def test_bare_codegraph_is_stopped_and_not_allowed(self):
+        allow, ask = self.written_rules()
+        self.assertIn(self.BARE, ask)
+        self.assertTrue(stopped("codegraph", ask))
+        self.assertFalse(allowed("codegraph", allow))
+        for command in ("codegraph explore", 'codegraph explore -p /x "q"'):   # Bash(codegraph) matches neither
+            with self.subTest(command=command):
+                self.assertTrue(allowed(command, allow))
+                self.assertFalse(stopped(command, ask))
+
+    def test_the_docstring_states_no_count_and_no_nothing_else_for_codegraph(self):
+        doc = module().__doc__
+        start = doc.index("When the project has a code graph")
+        paragraph = " ".join(doc[start:doc.index("No rule lets an agent build, sync or remove an index.", start)].split())
+        self.assertNotIn("nothing else", paragraph)
+        self.assertIsNone(re.search(r"\d|\b(?:ten|eleven|twelve|thirteen|fourteen|fifteen)\b", paragraph))
+        self.assertIn("does not build or sync it", paragraph)
+        self.assertIn("`codegraph` typed alone, which starts the installer", paragraph)
+
+    def test_without_a_code_graph_the_output_and_the_file_are_those_of_a_project_with_neither(self):
+        def outcome(**case):
+            self.settings.unlink(missing_ok=True)
+            shown = self.run_setup("--print", **case).stdout
+            ran = self.run_setup(**case).stdout
+            return shown, ran, self.settings.read_text(encoding="utf-8")
+
+        baseline = outcome(stub=False, index=None)
+        # Not a bare "codegraph": the plugin's own folder here may be named for it.
+        self.assertNotIn("Bash(codegraph", "".join(baseline))
+        self.assertNotIn("code graph", "".join(baseline))
+        for case in ({"stub": True, "index": None}, {"stub": False, "index": "dir"}, {"stub": True, "index": "file"}):
+            with self.subTest(case=case):
+                self.assertEqual(outcome(**case), baseline)
+
+
 if __name__ == "__main__":
     unittest.main()

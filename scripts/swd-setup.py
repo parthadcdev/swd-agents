@@ -21,6 +21,12 @@ nobody can answer, so such a command does not run. Three deny rules make Claude 
 plain ways of running the plugin's hook, swd-mode.py, by name; a deny rule refuses, it does not
 ask. Ask and deny rules name the file up to its dot, so a compiled copy in __pycache__ is caught
 too. They match command text only, so they are not a hard boundary.
+When the project has a code graph (a .codegraph/ directory in it and a codegraph command on PATH), setup
+also allows `codegraph explore` (`Bash(codegraph explore *)`), which reads the index and does not build or
+sync it. It asks before `codegraph` typed alone, which starts the installer, and before each codegraph
+subcommand that creates, changes or removes an index, starts a background process or server, or changes
+CodeGraph on the machine. Without a code graph none of these rules is written or listed.
+No rule lets an agent build, sync or remove an index.
 Setup adds missing rules to `permissions.allow`, `permissions.ask` and `permissions.deny`, and
 removes from `permissions.allow` only the rules an earlier version of the plugin wrote, which
 --print lists first; every other rule, the user's own included, is kept in order.
@@ -48,6 +54,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -77,6 +84,23 @@ ASK = ["Bash(python3 *swd-setup.*)", "Bash(python *swd-setup.*)", "Bash(py *swd-
 # They match text, not the file, so a renamed copy or another letter case gets past them; they are not a hard boundary.
 # `python *` does not match `python3` (the space is part of the rule); `py *` covers `py -3`.
 DENY = ["Bash(python3 *swd-mode.*)", "Bash(python *swd-mode.*)", "Bash(py *swd-mode.*)"]
+
+CODEGRAPH_ALLOW = ["Bash(codegraph explore *)"]
+# The subcommands that create, change or remove an index, start a process that outlives the command or keeps serving,
+# or change the machine, hidden ones (serve, ui) and aliases (daemons, web) included. Read from CodeGraph 1.6.2's
+# installed source, @colbymchenry/codegraph-darwin-arm64/lib/dist/bin/codegraph.js, where commander registers every
+# subcommand; a later version may add others that no rule covers. `Bash(codegraph)` comes first: that file runs the
+# installer, as `codegraph install` does, when `codegraph` is typed alone, and a user's `Bash(codegraph *)` matches
+# that too. It has no wildcard, so it matches only the bare command, never `codegraph explore`.
+# One rule per subcommand covers both forms: the Claude Code permissions docs, "Wildcard patterns", say a trailing ` *`,
+# with a space before it, also matches the bare command (`Bash(npm run *)` matches `npm run`), so `codegraph sync *`
+# matches `codegraph sync` as well as `codegraph sync --force`. Ask, not deny: ask beats allow, so a user's broader
+# `Bash(codegraph *)` cannot let an unattended agent index, yet the user can still run these in an attended session.
+CODEGRAPH_ASK = ["Bash(codegraph)"] + [f"Bash(codegraph {sub} *)" for sub in
+                 ("init", "uninit", "index", "sync", "unlock", "install", "uninstall", "telemetry", "upgrade",
+                  "daemon", "daemons", "serve", "ui", "web")]
+CODEGRAPH_ASK_HEADING = ("Ask rules, so Claude Code asks you before a command builds, changes or removes a code graph "
+                         "index, or changes CodeGraph on this machine:")
 
 NOTES = "the test command in .swd/project.md"
 WHY = ("a rule's first word must be the command's own name, with no '*' in it, and the command may hold no control "
@@ -282,6 +306,10 @@ def main(argv=None):
         print(refused, file=sys.stderr)
         return 2
     settings = project / ".claude" / "settings.local.json"
+    ask = ASK
+    if (project / ".codegraph").is_dir() and shutil.which("codegraph") is not None:
+        # A --command or the test command may already have produced the allow rule; it keeps that place, once.
+        wanted, ask = list(dict.fromkeys(wanted + CODEGRAPH_ALLOW)), ASK + CODEGRAPH_ASK
 
     data = {}
     if settings.exists():
@@ -296,7 +324,7 @@ def main(argv=None):
         # A rule this run wants is never old, or it would be removed and added again on every run.
         old = [rule for rule in earlier_rules(permissions.get("allow", []), roots) if rule not in wanted_set]
         missing = {}
-        for key, rules_wanted in (("allow", wanted), ("ask", ASK), ("deny", DENY)):
+        for key, rules_wanted in (("allow", wanted), ("ask", ask), ("deny", DENY)):
             have = {rule for rule in permissions.get(key, []) if isinstance(rule, str)}   # entries may be unhashable
             missing[key] = [rule for rule in rules_wanted if rule not in have]
         added = sum(len(rules_missing) for rules_missing in missing.values())
@@ -306,6 +334,7 @@ def main(argv=None):
         for heading, listed in ((None, wanted),
                                 ("Ask rules, so Claude Code asks you before a command runs the setup or queue script,"
                                  " or names SWD_UNATTENDED:", ASK),
+                                (CODEGRAPH_ASK_HEADING, ask[len(ASK):]),
                                 ("Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:", DENY),
                                 ("Rules an earlier version of the plugin wrote, which setup removes:", old if valid else [])):
             if heading and listed:
