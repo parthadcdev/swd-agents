@@ -8,6 +8,7 @@
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
     python3 check_run.py --slice <who> <run_dir>   print one role's part of plan.md: builder:T1, review:T1, review:final or qa
     python3 check_run.py --cap                 print how many agents may work at once, from SWD_PARALLEL or total memory (no run folder)
+    python3 check_run.py --codegraph <path>     print whether the project has a code graph (a .codegraph/ directory and codegraph on PATH); runs nothing, writes nothing
 
 A run /swd:queue started has SWD_UNATTENDED set to the model the queue started it on; the seal takes the
 model from it, not from the 'Conductor:' line.
@@ -23,6 +24,8 @@ import hashlib
 import os
 import posixpath
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -720,6 +723,22 @@ def cap_main():
     return 0
 
 
+def codegraph_main(path):
+    """--codegraph: print `Code graph: yes (<folder>)` or why not. Runs nothing, writes nothing."""
+    path = path.resolve()
+    project = path.parents[2] if path.parent.name in ("runs", "worktrees") and path.parent.parent.name == ".swd" else path
+    folder = shlex.quote(project.as_posix())
+    if not project.as_posix().isprintable():
+        print("Code graph: none (the project folder's path holds a character that cannot be printed on one line)")
+    elif not (project / ".codegraph").is_dir():
+        print(f"Code graph: none (no .codegraph/ directory in {folder})")
+    elif shutil.which("codegraph") is None:
+        print("Code graph: none (codegraph is not on PATH)")
+    else:
+        print(f"Code graph: yes ({folder})")
+    return 0
+
+
 def slice_main(who, path):
     """--slice: print one role's part of plan.md. Errors go to standard error, one line, exit 1."""
     match = re.fullmatch(r"(builder|review):(T\d+)", who)
@@ -757,14 +776,19 @@ def main(argv=None):
     parser.add_argument("--finish", action="store_true", help="check the run was delivered and cleaned up")
     parser.add_argument("--slice", metavar="WHO", help="print one role's part of plan.md: builder:T<n>, review:T<n>, review:final or qa")
     parser.add_argument("--cap", action="store_true", help="print how many agents may work at once, from SWD_PARALLEL or total memory; needs no path")
+    parser.add_argument("--codegraph", action="store_true", help="print whether the project has a code graph: a .codegraph/ directory in the project folder and a codegraph command on PATH")
     parser.add_argument("path", nargs="?", type=Path, help="a run folder, or a project folder")
     args = parser.parse_args(argv)
     if args.cap:
-        if args.plan or args.seal or args.task is not None or args.finish or args.slice is not None:
+        if args.plan or args.seal or args.task is not None or args.finish or args.slice is not None or args.codegraph:
             parser.error("--cap takes no other mode")
         return cap_main()  # first: reads no run folder
     if args.path is None:
         parser.error("the following arguments are required: path")
+    if args.codegraph:
+        if args.plan or args.seal or args.task is not None or args.finish or args.slice is not None:
+            parser.error("--codegraph takes no other mode")
+        return codegraph_main(args.path)
     if args.slice is not None:
         return slice_main(args.slice, args.path)  # before every other mode: reads only plan.md
 

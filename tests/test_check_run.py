@@ -1606,5 +1606,103 @@ class CapTest(unittest.TestCase):
                     self.assertEqual(sorted(p.name for p in run.iterdir()), ["decisions.md", "plan.md"])
 
 
+class CodeGraphTest(unittest.TestCase):
+    """--codegraph: whether the project has a code graph. PATH is one temp folder holding a stub, never a real codegraph."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name).resolve()
+        self.bin = self.tmp / "bin"
+        self.bin.mkdir()
+        self.cwd = self.tmp / "cwd"
+        self.cwd.mkdir()
+
+    def stub(self):
+        if os.name == "nt":
+            (self.bin / "codegraph.exe").write_bytes(b"")
+        else:
+            (self.bin / "codegraph").write_text('#!/bin/sh\necho ran >> "$0.ran"\nexit 3\n', encoding="utf-8")
+            (self.bin / "codegraph").chmod(0o755)
+
+    def project(self, name="shop", index=True):
+        project = self.tmp / name
+        (project / ".swd" / "runs" / "r1").mkdir(parents=True)
+        (project / ".swd" / "worktrees" / "r1").mkdir(parents=True)
+        if index:
+            (project / ".codegraph").mkdir()
+        return project
+
+    def run_cg(self, *args):
+        env = {**os.environ, "PATH": str(self.bin)}
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "check_run.py"), *map(str, args)],
+                              capture_output=True, text=True, encoding="utf-8", env=env, cwd=self.cwd)
+
+    def assertLine(self, result, line):
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, line + "\n", ""))
+        self.assertFalse((self.bin / "codegraph.ran").exists())
+
+    def test_yes_for_a_run_folder_a_worktree_and_the_project(self):
+        self.stub()
+        project = self.project()
+        line = f"Code graph: yes ({project.as_posix()})"
+        for path in (project / ".swd" / "runs" / "r1", project / ".swd" / "worktrees" / "r1", project):
+            with self.subTest(path=path):
+                self.assertLine(self.run_cg("--codegraph", path), line)
+
+    def test_no_index_directory(self):
+        self.stub()
+        project = self.project(index=False)
+        self.assertLine(self.run_cg("--codegraph", project), f"Code graph: none (no .codegraph/ directory in {project.as_posix()})")
+        self.assertEqual(sorted(p.name for p in project.iterdir()), [".swd"])
+
+    def test_codegraph_that_is_a_file_is_no_index(self):
+        self.stub()
+        project = self.project(index=False)
+        (project / ".codegraph").write_text("", encoding="utf-8")
+        self.assertLine(self.run_cg("--codegraph", project), f"Code graph: none (no .codegraph/ directory in {project.as_posix()})")
+
+    def test_an_index_only_in_a_parent_folder_is_not_used(self):
+        self.stub()
+        (self.tmp / ".codegraph").mkdir()
+        project = self.project(index=False)
+        self.assertLine(self.run_cg("--codegraph", project), f"Code graph: none (no .codegraph/ directory in {project.as_posix()})")
+
+    def test_command_not_on_path(self):
+        project = self.project()
+        self.assertLine(self.run_cg("--codegraph", project / ".swd" / "runs" / "r1"), "Code graph: none (codegraph is not on PATH)")
+
+    def test_a_space_in_the_folder_name_is_quoted(self):
+        self.stub()
+        project = self.project("my shop")
+        self.assertLine(self.run_cg("--codegraph", project), f"Code graph: yes ('{project.as_posix()}')")
+
+    @unittest.skipIf(os.name == "nt", "a newline cannot be in a Windows file name")
+    def test_a_newline_in_the_folder_name(self):
+        self.stub()
+        project = self.project("a\nb")
+        self.assertLine(self.run_cg("--codegraph", project / ".swd" / "runs" / "r1"),
+                        "Code graph: none (the project folder's path holds a character that cannot be printed on one line)")
+
+    def test_mode_clashes_are_refused(self):
+        self.stub()
+        project = self.project()
+        cases = [("--cap takes no other mode", ["--cap", "--codegraph"])]
+        cases += [("--codegraph takes no other mode", ["--codegraph", *mode])
+                  for mode in (["--plan"], ["--seal"], ["--task", "T1"], ["--finish"], ["--slice", "qa"])]
+        for message, args in cases:
+            with self.subTest(args=args):
+                result = self.run_cg(*args, project)
+                self.assertEqual((result.returncode, result.stdout), (2, ""))
+                self.assertTrue(result.stderr.endswith(f"check_run.py: error: {message}\n"), result.stderr)
+        self.assertEqual(sorted(p.name for p in project.iterdir()), [".codegraph", ".swd"])
+        self.assertFalse((self.bin / "codegraph.ran").exists())
+
+    def test_no_path_is_refused(self):
+        result = self.run_cg("--codegraph")
+        self.assertEqual((result.returncode, result.stdout), (2, ""))
+        self.assertTrue(result.stderr.endswith("the following arguments are required: path\n"), result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
