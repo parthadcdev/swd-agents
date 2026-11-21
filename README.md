@@ -531,6 +531,40 @@ Two files in `.swd/` outlive runs:
 - `findings.md`: defects the team noticed and did not fix, as a checklist.
   Give one to `/swd:build` as the requirement to have it fixed.
 
+## Code graph (optional)
+
+CodeGraph is optional: swd works the same without it.
+
+When the project folder has a `.codegraph/` index and `codegraph` is on
+PATH, the architect, the builders and the two reviewers explore code with
+`codegraph explore` first, and fall back to searching and reading files
+when it finds nothing useful. The index describes the project folder on
+its branch, not the run's worktree, so an agent reads the worktree's own
+file before it changes or judges it. swd never builds, updates or removes
+an index: indexing is your decision.
+
+`/swd:setup` then allows `codegraph explore`, which reads the index and
+does not build or sync it. It asks before `codegraph` typed alone, which
+starts CodeGraph's installer, and before every subcommand that builds,
+changes or removes an index, starts a background process or server, or
+changes CodeGraph on this machine; the setup skill lists them. It writes
+these rules only when the project has a code graph. The rules name
+`codegraph` as you type it, not where it is installed, so a full path such
+as `/opt/homebrew/bin/codegraph init` matches none of setup's rules and is
+held like any command they do not allow. Two more limits: an
+option typed before the subcommand, such as `codegraph --no-color sync`,
+matches no ask rule, so under a broader rule of your own such as
+`Bash(codegraph *)` it runs without asking; and when CodeGraph's program
+files are missing, any `codegraph` command, `explore` included, downloads
+them from GitHub.
+
+Run `/swd:setup` again after you build an index in a project or install
+`codegraph`: until then the rules are not in place, `/swd:queue` sends you
+to setup, and agents cannot run `codegraph explore`.
+
+A real `codegraph` command may send your own CodeGraph telemetry, as you
+have set it up; swd does not change that setting.
+
 ## Keeping a run to your machine's memory
 
 Agents running side by side each hold a model session and, in a builder's

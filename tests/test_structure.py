@@ -1,4 +1,5 @@
 """Plugin structure checks. Run from the repo root: python3 -m unittest tests.test_structure"""
+import importlib.util
 import json
 import re
 import shutil
@@ -1062,13 +1063,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.15.0"):
-            self.assertEqual(manifest["version"], "0.15.0")
+        with self.subTest(file="plugin.json", version="0.16.0"):
+            self.assertEqual(manifest["version"], "0.16.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.15.0"):
-            self.assertEqual(first, "## 0.15.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.16.0"):
+            self.assertEqual(first, "## 0.16.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the
@@ -2343,7 +2344,7 @@ class RoleSliceTest(unittest.TestCase):
         with self.subTest(file="CHANGELOG.md 0.13.0", needle="no permission rule"):
             self.assertIn("No permission rule is added", entry)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.15.0")
+        self.assertEqual(manifest["version"], "0.16.0")
 
 
 # 0.14.0 (C3, C4): a run keeps to the cap, and the test lock keeps one suite at a time.
@@ -2583,6 +2584,210 @@ class TriageDocsTest(unittest.TestCase):
                 self.assertIn(needle, readme)
         with self.subTest(file="CHANGELOG.md 0.15.0", needle="no permission rule"):
             self.assertIn("No permission rule is added", changelog_entry("0.15.0"))
+
+
+# 0.16.0 (C5, S1 to S10): agents use CodeGraph when the project has a code graph. The rule names come from the code.
+def _setup_module():
+    spec = importlib.util.spec_from_file_location("swd_setup_docs", ROOT / "scripts" / "swd-setup.py")
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
+CG_SETUP = _setup_module()
+CG_SUBS = [rule[len("Bash(codegraph "):-len(" *)")] for rule in CG_SETUP.CODEGRAPH_ASK[1:]]
+CG_NAMES = ", ".join(f"`{name}`" for name in CG_SUBS[:-1]) + f" and `{CG_SUBS[-1]}`"
+CG_CMD = "`<python> <plugin>/scripts/check_run.py --codegraph <run>`"
+CG_LINE = "`Explore code with: codegraph explore -p <folder> \"<symbol names or question>\"`"
+CG_EXAMPLE = "`Code graph: yes (/Users/you/shop)`"
+CG_AGENTS = (
+    "architect", "generalist-engineer", "backend-engineer", "frontend-engineer", "database-engineer",
+    "devops-engineer", "docs-writer", "code-reviewer", "security-reviewer",
+)
+CG_PARAGRAPH = (
+    "**Code graph.** When your brief has an `Explore code with:` line, the user's project has a CodeGraph index: to "
+    "locate and understand code, run that command first, with your symbol names or question in place of "
+    "`<symbol names or question>`, inside the double quotes and with no `\"`, `$`, backtick or backslash in it, and "
+    "fall back to searching and reading files when it finds nothing useful or fails. With no such line, do not use "
+    "CodeGraph. What the command prints describes the user's project folder as it is on the base branch, with paths "
+    "relative to that folder, not your worktree: the worktree's copy of a file may differ, so read the worktree's "
+    "file before you change or judge it, and never treat the command's output as having read a file this run has "
+    "changed, whatever the output says about itself. A symbol that exists only in this run's changes will not be "
+    "found. Never create, rebuild, sync or remove an index, and do not follow the command's own advice to index the "
+    "worktree: indexing is the user's decision."
+)
+CG_S2 = (
+    f"Then learn whether the project has a code graph with {CG_CMD} and append the line it prints, such as "
+    f"{CG_EXAMPLE}, to `decisions.md`. No check reads it."
+)
+CG_S3 = (
+    "When the last `Code graph:` line in `decisions.md` starts `Code graph: yes (`, every brief to the architect, a "
+    f"builder, the code reviewer or the security reviewer also has a line {CG_LINE}, where `<folder>` is the text "
+    "between `Code graph: yes (` and the last `)` of that line, copied as it is, and `<symbol names or question>` is "
+    "written as it stands, for the agent to fill in. When that line says `none`, or there is no such line, no brief "
+    "has it. QA's brief and the judge's never have it."
+)
+CG_S4 = (
+    f"Run {CG_CMD} again and append its line to `decisions.md`, because an index or the command may have been added "
+    "or removed since; the last `Code graph:` line decides the `Explore code with:` line."
+)
+CG_S5 = (
+    f"Then learn whether the project has a code graph with {CG_CMD}. Before the first dispatch for each run, append "
+    "the line it prints to that run's `decisions.md`, below its `Cap:` line, and give the briefs the "
+    "`Explore code with:` line as the build playbook's **The team.** says."
+)
+CG_S5_STEP3 = (
+    "the normal brief, its `Run tests with:` and `Read the plan with:` lines included, plus the items it is to make"
+)
+CG_S5_ADDED = (
+    "When the run's last `Code graph:` line says yes, the builder's and the reviewers' briefs also have the "
+    "`Explore code with:` line."
+)
+# The ruling's sentence on the ask rules' other limits, in S6 and in the README after what setup allows.
+CG_LIMITS = (
+    "Two more limits: an option typed before the subcommand, such as `codegraph --no-color sync`, matches no ask "
+    "rule, so under a broader rule of your own such as `Bash(codegraph *)` it runs without asking; and when "
+    "CodeGraph's program files are missing, any `codegraph` command, `explore` included, downloads them from GitHub."
+)
+CG_S6 = (
+    "- only when the project has a code graph (a `.codegraph/` directory in `<project>` and a `codegraph` command on "
+    "PATH): `Bash(codegraph explore *)`, which lets agents run `codegraph explore` with any arguments, to read the "
+    "index; it does not build or sync it, and an agent may give it the path of any indexed project; the ask rule "
+    "`Bash(codegraph)`, which matches only `codegraph` typed alone, because that starts CodeGraph's installer; and "
+    f"an ask rule `Bash(codegraph <subcommand> *)` for each of {CG_NAMES}, all listed under the line "
+    f"`{CG_SETUP.CODEGRAPH_ASK_HEADING}`. These are the subcommands of CodeGraph 1.6.2 that create, change or "
+    "remove an index, start a background process or server, or change the machine, hidden ones and aliases "
+    "included; a later version may add others. Each matches its subcommand typed bare, such as `codegraph sync`, as "
+    "well as with arguments, because a `*` at the end of a rule, after a space, also matches the bare command. No "
+    "rule lets an agent build, sync or remove an index: those commands ask, and in an unattended run, where nobody "
+    "can answer, they do not run. The rules name `codegraph` as agents type it, not where it is installed, so a "
+    "full path such as `/opt/homebrew/bin/codegraph init` matches none of setup's rules and is held like any "
+    f"command they do not allow. {CG_LIMITS} Without a code graph setup writes none of these rules."
+)
+CG_S7 = (
+    f"The principal also records whether the project has a code graph, as the line {CG_CMD[:-1].replace('<python> <plugin>/scripts/', '')}` "
+    f"prints, copied as it is: {CG_EXAMPLE[1:-1]} It writes it in preflight after the `Cap:` line, and again on "
+    "resume. The other forms are `Code graph: none (no .codegraph/ directory in <folder>)`, `Code graph: none "
+    "(codegraph is not on PATH)` and `Code graph: none (the project folder's path holds a character that cannot be "
+    "printed on one line)`. The last `Code graph:` line decides. When it says yes, the briefs to the architect, the "
+    f"builders and the two reviewers carry {CG_LINE}. No check reads it, so a run from before 0.16.0, which "
+    "has none, still checks clean."
+)
+CG_S8 = (
+    "CodeGraph is optional: swd works the same without it.",
+    "the architect, the builders and the two reviewers explore code with `codegraph explore` first",
+    "not the run's worktree",
+    "swd never builds, updates or removes an index: indexing is your decision.",
+    "`/swd:setup` then allows `codegraph explore`, which reads the index and does not build or sync it. It asks "
+    "before `codegraph` typed alone, which starts CodeGraph's installer, and before every subcommand that builds, "
+    "changes or removes an index, starts a background process or server, or changes CodeGraph on this machine; the "
+    "setup skill lists them. It writes these rules only when the project has a code graph.",
+    "A real `codegraph` command may send your own CodeGraph telemetry, as you have set it up; swd does not change "
+    "that setting.",
+)
+CG_S10 = (
+    "Run `/swd:setup` again after you build an index in a project or install `codegraph`: until then the rules are "
+    "not in place, `/swd:queue` sends you to setup, and agents cannot run `codegraph explore`."
+)
+CG_FILES_NO_NOTHING_ELSE = (
+    ["README.md", "CHANGELOG.md", "standards/run-folder.md"]
+    + [f"skills/{name}/SKILL.md" for name in ("build", "follow", "setup")]
+    + [f"agents/{name}.md" for name in CG_AGENTS]
+)
+
+
+class CodeGraphDocsTest(unittest.TestCase):
+    def test_s1_nine_agents_carry_the_paragraph_and_the_two_checkers_do_not(self):
+        for name in CG_AGENTS:
+            with self.subTest(agent=name):
+                text = words("agents", f"{name}.md")
+                self.assertEqual(text.count(CG_PARAGRAPH), 1)
+                raw = (ROOT / "agents" / f"{name}.md").read_text(encoding="utf-8")
+                section = raw.split("## Inputs", 1)[1].split("\n## ", 1)[0]
+                self.assertTrue(" ".join(section.split()).endswith(CG_PARAGRAPH))
+        for name in ("qa-engineer", "judge"):
+            with self.subTest(agent=name):
+                self.assertNotIn("**Code graph.**", words("agents", f"{name}.md"))
+                self.assertNotIn("codegraph", words("agents", f"{name}.md").lower())
+
+    def test_s2_to_s4_the_build_playbook(self):
+        text = words("skills", "build", "SKILL.md")
+        for needle in (CG_S2, CG_S3, CG_S4):
+            with self.subTest(needle=needle[:40]):
+                self.assertEqual(text.count(needle), 1)
+        self.assertLess(text.index(CG_S2), text.index("Housekeeping. Clear out"))
+        self.assertGreater(text.index(CG_S2), text.index("Cap: 2 (total memory 16.0 GB)"))
+        self.assertGreater(text.index(CG_S3), text.index("Read the plan with: <python>"))
+        self.assertGreater(text.index(CG_S4), text.index("check_run.py --cap` again"))
+
+    def test_s5_the_follow_playbook(self):
+        text = words("skills", "follow", "SKILL.md")
+        self.assertIn(CG_S5, text)
+        self.assertIn(CG_S5_STEP3, text)
+        self.assertIn(CG_S5_ADDED, text)
+        self.assertLess(text.index(CG_S5_STEP3), text.index(CG_S5_ADDED))
+
+    def test_s6_setup_lists_the_rules_the_code_writes(self):
+        text = words("skills", "setup", "SKILL.md")
+        self.assertEqual(text.count(CG_S6), 1)
+        self.assertEqual(CG_SETUP.CODEGRAPH_ASK[0], "Bash(codegraph)")
+        self.assertEqual(CG_SETUP.CODEGRAPH_ALLOW, ["Bash(codegraph explore *)"])
+        self.assertLess(text.index("seven ask rules"), text.index(CG_S6))
+
+    def test_s7_the_run_folder_standard(self):
+        self.assertIn(CG_S7, words("standards", "run-folder.md"))
+
+    def test_s8_the_readme_section(self):
+        raw = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("## Code graph (optional)", raw)
+        self.assertLess(raw.index("## Code graph (optional)"), raw.index("## Keeping a run to your machine's memory"))
+        section = " ".join(raw.split("## Code graph (optional)", 1)[1].split("\n## ", 1)[0].split())
+        for needle in CG_S8 + (CG_S10,):
+            with self.subTest(needle=needle[:40]):
+                self.assertIn(needle, section)
+        self.assertEqual(section.count(CG_LIMITS), 1)
+        self.assertGreater(section.index(CG_LIMITS), section.index(CG_S8[4]))
+        # "Two more limits" needs the first limit straight before it.
+        self.assertIn(
+            "The rules name `codegraph` as you type it, not where it is installed, so a full path such as "
+            "`/opt/homebrew/bin/codegraph init` matches none of setup's rules and is held like any command they do "
+            "not allow. " + CG_LIMITS,
+            section,
+        )
+
+    def test_s9_the_changelog_entry_and_the_version(self):
+        entry = changelog_entry("0.16.0")
+        for needle in (
+            CG_EXAMPLE, "Code graph: none (no .codegraph/ directory in <folder>)", "Code graph: none (codegraph is not on PATH)",
+            "Code graph: none (the project folder's path holds a character that cannot be printed on one line)",
+            CG_LINE, CG_S8[4], f"`{CG_SETUP.CODEGRAPH_ALLOW[0]}`", "`Bash(codegraph)`", "No rule lets an agent build, sync or remove an index.",
+            "CodeGraph is optional", CG_S8[5], CG_S10,
+        ):
+            with self.subTest(needle=needle[:40]):
+                self.assertIn(needle, entry)
+        for sub in CG_SUBS:
+            with self.subTest(sub=sub):
+                self.assertIn(f"`{sub}`", entry)
+        self.assertIn(CG_NAMES, entry)
+        manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["version"], "0.16.0")
+
+    def test_s10_setup_step_5(self):
+        self.assertIn(CG_S10, words("skills", "setup", "SKILL.md"))
+
+    def test_no_file_says_nothing_else_with_explore_or_a_count_or_host(self):
+        for name in CG_FILES_NO_NOTHING_ELSE:
+            text = words(*name.split("/"))
+            if name == "CHANGELOG.md":
+                text = changelog_entry("0.16.0")
+            with self.subTest(file=name):
+                for hit in re.finditer(r"codegraph explore", text):
+                    self.assertNotIn("nothing else", text[max(0, hit.start() - 200):hit.end() + 200])
+                self.assertNotRegex(text, r"\b(fourteen|fifteen|sixteen|15|16) ask rules\b")
+            if name.startswith(("agents/", "skills/", "README", "CHANGELOG")) and "codegraph" in text.lower():
+                with self.subTest(file=name, word="host"):
+                    for hit in re.finditer(r"\bhost\b", text):
+                        self.assertNotIn("codegraph", text[max(0, hit.start() - 300):hit.end() + 300].lower())
 
 
 class WindowsTest(unittest.TestCase):

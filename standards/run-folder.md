@@ -212,6 +212,21 @@ overrides it. Any other value, a longer number included, is ignored with
 one line on standard error. No check reads it, so a run from before 0.14.0, which has
 none, still checks clean.
 
+The principal also records whether the project has a code graph, as the
+line `check_run.py --codegraph <run>` prints, copied as it is:
+
+    Code graph: yes (/Users/you/shop)
+
+It writes it in preflight after the `Cap:` line, and again on resume. The
+other forms are `Code graph: none (no .codegraph/ directory in <folder>)`,
+`Code graph: none (codegraph is not on PATH)` and
+`Code graph: none (the project folder's path holds a character that cannot be printed on one line)`.
+The last `Code graph:` line decides. When it says yes, the briefs to the
+architect, the builders and the two reviewers carry
+`Explore code with: codegraph explore -p <folder> "<symbol names or question>"`.
+No check reads it, so a run from before 0.16.0, which has none, still
+checks clean.
+
 When there is a cap, `swd-test.py` also takes a lock on
 `.swd/test.lock` in the project before it runs a test command and keeps it
 until the evidence is written, so only one test suite runs at a time for

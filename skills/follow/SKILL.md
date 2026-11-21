@@ -93,6 +93,12 @@ run `/swd:queue` started stops as blocked.
    as `Cap: 2 (total memory 16.0 GB)`, to that run's `decisions.md`, below
    any `Conductor:` line you must append first. Keep to the cap as the
    build playbook's **The cap.** says.
+
+   Then learn whether the project has a code graph with
+   `<python> <plugin>/scripts/check_run.py --codegraph <run>`. Before the
+   first dispatch for each run, append the line it prints to that run's
+   `decisions.md`, below its `Cap:` line, and give the briefs the
+   `Explore code with:` line as the build playbook's **The team.** says.
 2. For each, ask what its pull request needs, waiting up to five minutes
    for checks that are still running:
 
@@ -205,7 +211,9 @@ every comment, the ones marked `(TypeSafe not reachable) ` included.
    triage`, quote it whole as you would any item, its reason and numbers
    included, after `Make these changes:`. The brief has no `Fix:` line and does not
    name the feedback report, so the outside section is not put in
-   front of a builder.
+   front of a builder. When the run's last `Code graph:` line says yes,
+   the builder's and the reviewers' briefs also have the
+   `Explore code with:` line.
    Test-first, the `check_run.py --task` check, the reviews for the run's
    mode (with their `Read the plan with:` lines) and the commit all work exactly as in the build playbook's Fix
    loop. Set the Agent tool's `model` and `effort` on every dispatch, as

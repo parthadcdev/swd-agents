@@ -105,6 +105,35 @@ paths with forward slashes.
      `SWD_UNATTENDED` is written out plainly, not every command that
      names the variable: a quoted or escaped spelling, or a name built
      when the command runs, gets past it;
+   - only when the project has a code graph (a `.codegraph/` directory in
+     `<project>` and a `codegraph` command on PATH):
+     `Bash(codegraph explore *)`, which lets agents run
+     `codegraph explore` with any arguments, to read the index; it does
+     not build or sync it, and an agent may give it the path of any
+     indexed project; the ask rule `Bash(codegraph)`, which matches only
+     `codegraph` typed alone, because that starts CodeGraph's installer;
+     and an ask rule `Bash(codegraph <subcommand> *)` for each of `init`,
+     `uninit`, `index`, `sync`, `unlock`, `install`, `uninstall`,
+     `telemetry`, `upgrade`, `daemon`, `daemons`, `serve`, `ui` and `web`,
+     all listed under the line
+     `Ask rules, so Claude Code asks you before a command builds, changes or removes a code graph index, or changes CodeGraph on this machine:`.
+     These are the subcommands of CodeGraph 1.6.2 that create, change or
+     remove an index, start a background process or server, or change the
+     machine, hidden ones and aliases included; a later version may add
+     others. Each matches its subcommand typed bare, such as
+     `codegraph sync`, as well as with arguments, because a `*` at the end
+     of a rule, after a space, also matches the bare command. No rule lets
+     an agent build, sync or remove an index: those commands ask, and in
+     an unattended run, where nobody can answer, they do not run. The
+     rules name `codegraph` as agents type it, not where it is installed,
+     so a full path such as `/opt/homebrew/bin/codegraph init` matches
+     none of setup's rules and is held like any command they do not
+     allow. Two more limits: an option typed before the subcommand, such
+     as `codegraph --no-color sync`, matches no ask rule, so under a
+     broader rule of your own such as `Bash(codegraph *)` it runs without
+     asking; and when CodeGraph's program files are missing, any
+     `codegraph` command, `explore` included, downloads them from GitHub.
+     Without a code graph setup writes none of these rules.
    - three deny rules, `Bash(<name> *swd-mode.*)` for each of the three
      names (`py` for `py -3`), listed under the line
      `Deny rules, so Claude Code refuses the plain ways of running the plugin's hook by name:`.
@@ -208,7 +237,10 @@ paths with forward slashes.
    the first run adds the project's test command if it was not known
    yet, and that it must be run again after each plugin update, because
    the allow rules name the plugin's version folder; until it is,
-   `/swd:queue` sends the user here.
+   `/swd:queue` sends the user here. Run `/swd:setup` again after you
+   build an index in a project or install `codegraph`: until then the
+   rules are not in place, `/swd:queue` sends you to setup, and agents
+   cannot run `codegraph explore`.
 
 Do not edit the settings file yourself, and do not add rules beyond what
 the script writes.

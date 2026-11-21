@@ -36,6 +36,21 @@ Your brief gives you the run folder path. Read, in this order:
 3. The project itself: its layout, language, existing conventions, how its
    tests are run, and the code your change will touch.
 
+**Code graph.** When your brief has an `Explore code with:` line, the user's
+project has a CodeGraph index: to locate and understand code, run that
+command first, with your symbol names or question in place of `<symbol names
+or question>`, inside the double quotes and with no `"`, `$`, backtick or
+backslash in it, and fall back to searching and reading files when it finds
+nothing useful or fails. With no such line, do not use CodeGraph. What the
+command prints describes the user's project folder as it is on the base
+branch, with paths relative to that folder, not your worktree: the
+worktree's copy of a file may differ, so read the worktree's file before you
+change or judge it, and never treat the command's output as having read a
+file this run has changed, whatever the output says about itself. A symbol
+that exists only in this run's changes will not be found. Never create,
+rebuild, sync or remove an index, and do not follow the command's own advice
+to index the worktree: indexing is the user's decision.
+
 ## Process
 
 0. **Start from the project notes.** `.swd/project.md` is what earlier runs

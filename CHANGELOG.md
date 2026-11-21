@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.16.0
+
+- Agents use CodeGraph when the project has a code graph. CodeGraph is
+  optional: swd works the same without it. In preflight, and again on
+  resume, the principal runs `check_run.py --codegraph <run>` and appends
+  the line it prints to `decisions.md`, such as
+  `Code graph: yes (/Users/you/shop)`. The other forms are
+  `Code graph: none (no .codegraph/ directory in <folder>)`,
+  `Code graph: none (codegraph is not on PATH)` and
+  `Code graph: none (the project folder's path holds a character that cannot be printed on one line)`.
+  The last `Code graph:` line decides. No check reads it, and the command
+  runs nothing and writes nothing.
+- When it says yes, the briefs to the architect, the builders and the two
+  reviewers carry a line
+  `Explore code with: codegraph explore -p <folder> "<symbol names or question>"`.
+  QA's brief and the judge's never have it. The agents run it first to
+  locate and understand code, and fall back to searching and reading files.
+  The index describes the project folder on its branch, not the run's
+  worktree. swd never builds, updates or removes an index.
+- `/swd:setup` then allows `codegraph explore`, which reads the index and
+  does not build or sync it. It asks before `codegraph` typed alone, which
+  starts CodeGraph's installer, and before every subcommand that builds,
+  changes or removes an index, starts a background process or server, or
+  changes CodeGraph on this machine; the setup skill lists them. It writes
+  these rules only when the project has a code graph. The rules are the
+  allow rule `Bash(codegraph explore *)` and the ask rules
+  `Bash(codegraph)`, which matches only `codegraph` typed alone,
+  and `Bash(codegraph <subcommand> *)` for each of `init`, `uninit`,
+  `index`, `sync`, `unlock`, `install`, `uninstall`, `telemetry`,
+  `upgrade`, `daemon`, `daemons`, `serve`, `ui` and `web`, which also
+  match the subcommand typed bare. No rule lets an agent build, sync or
+  remove an index.
+- Run `/swd:setup` again after you build an index in a project or install `codegraph`: until then the rules are not in place, `/swd:queue` sends you to setup, and agents cannot run `codegraph explore`.
+- A real `codegraph` command may send your own CodeGraph telemetry, as you have set it up; swd does not change that setting.
+
 ## 0.15.0
 
 - `/swd:follow` can triage new comments from the owner, members and

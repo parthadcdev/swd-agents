@@ -157,6 +157,15 @@ which prints only that agent's part of `plan.md`: `<who>` is
 `builder:<task id>` for a builder, `review:<task id>` for a code or
 security review of one task, `review:final` for a review of the whole
 change, quick mode's included, and `qa` for final QA.
+When the last `Code graph:` line in `decisions.md` starts
+`Code graph: yes (`, every brief to the architect, a builder, the code
+reviewer or the security reviewer also has a line
+`Explore code with: codegraph explore -p <folder> "<symbol names or question>"`,
+where `<folder>` is the text between `Code graph: yes (` and the last `)`
+of that line, copied as it is, and `<symbol names or question>` is written
+as it stands, for the agent to fill in. When that line says `none`, or
+there is no such line, no brief has it. QA's brief and the judge's never
+have it.
 
 **The cap.** The cap is the most agents you have working at the same
 time, set from the machine's total memory so that a run does not exhaust a
@@ -241,6 +250,11 @@ Work through the sections below in order.
    Then learn the cap with `<python> <plugin>/scripts/check_run.py --cap`
    and append the line it prints, such as `Cap: 2 (total memory 16.0 GB)`,
    to `decisions.md`. No check reads it.
+
+   Then learn whether the project has a code graph with
+   `<python> <plugin>/scripts/check_run.py --codegraph <run>` and append
+   the line it prints, such as `Code graph: yes (/Users/you/shop)`, to
+   `decisions.md`. No check reads it.
 6. Housekeeping. Clear out what earlier runs left behind:
 
    ```bash
@@ -908,7 +922,10 @@ merging and pushing a branch that was left for them.
    holds it to the `review` and `final` rows and the floor. Run
    `<python> <plugin>/scripts/check_run.py --cap` again and append its line
    to `decisions.md`, because the machine or `SWD_PARALLEL` may have
-   changed.
+   changed. Run `<python> <plugin>/scripts/check_run.py --codegraph <run>`
+   again and append its line to `decisions.md`, because an index or the
+   command may have been added or removed since; the last `Code graph:`
+   line decides the `Explore code with:` line.
 2. For each task that is `in-progress`, run `git -C <work> status --short`
    on its files. Keep half-finished edits in place and set the task back to
    `todo`; the builder will pick up from them. Do not reset its attempt
