@@ -54,6 +54,8 @@ CONDUCTORS = ("Fable 5.2", "Opus 5.5")
 SEAL_RE = re.compile(r"^Plan checksum: ([0-9a-f]{64})\s*$", re.M)
 STAFFING_SEAL_RE = re.compile(r"^Staffing checksum: ([0-9a-f]{64})\s*$", re.M)
 FIELD_RE = re.compile(r"^- (%s): (.*)$" % "|".join(TASK_FIELDS))
+TRUST_RE = re.compile(r"^- Trust boundary: (.*)$")
+TRUST_VALUE_RE = re.compile(r"yes \(.*\S.*\)")
 ACTIVITY_RE = re.compile(r"^- \d{2}:\d{2}:\d{2} (\S+)( .*)?$")
 COMMIT_RE = re.compile(r"^([TW]\d+):")
 
@@ -69,7 +71,7 @@ def parse_plan(text):
     for number, line in enumerate(text.splitlines(), 1):
         header = TASK_RE.match(line)
         if header:
-            current = {"id": header.group(1), "title": header.group(2).strip()}
+            current = {"id": header.group(1), "title": header.group(2).strip(), "trust": None}
             raw[current["id"]] = {}
             tasks.append(current)
             continue
@@ -78,6 +80,9 @@ def parse_plan(text):
             if TASK_LIKE_RE.match(line):
                 problems.append(f"plan.md line {number}: a task heading must be '### T<n>: <title>'")
             continue
+        trust = TRUST_RE.match(line)
+        if trust and current:
+            current["trust"] = trust.group(1).strip()  # the last line counts
         field = FIELD_RE.match(line)
         if field and current:
             raw[current["id"]][field.group(1)] = field.group(2).strip()
@@ -99,6 +104,18 @@ def parse_plan(text):
         if wave and task["wave"] is None:
             problems.append(f"plan.md: {task['id']} Wave must be a number, got '{wave}'")
     return tasks, problems
+
+
+def trust_problems(tasks):
+    """One problem per task whose '- Trust boundary:' line is missing or not 'no' or 'yes (<what it touches>)'."""
+    problems = []
+    for task in tasks:
+        value = task["trust"]
+        if value is None:
+            problems.append(f"plan.md: {task['id']} is missing '- Trust boundary:'; write '- Trust boundary: no' or '- Trust boundary: yes (<what it touches>)'")
+        elif value != "no" and not TRUST_VALUE_RE.fullmatch(value):
+            problems.append(f"plan.md: {task['id']} '- Trust boundary:' must be 'no' or 'yes (<what it touches>)', got '{value}'")
+    return problems
 
 
 def parse_ledger(text):
@@ -536,9 +553,13 @@ def check_run(run_dir, repo_dir):
     if mode == "production":
         for task in tasks:
             if task["role"] in BUILDERS:
-                required |= {f"{task['id']}-code-reviewer.md", f"{task['id']}-security-reviewer.md"}
+                required.add(f"{task['id']}-code-reviewer.md")
+                if task["trust"] != "no":  # None, a run from before the line: today's rule
+                    required.add(f"{task['id']}-security-reviewer.md")
         if len(tasks) > 1:  # with one task, its own reviews already covered the whole change
             required |= {"final-code-reviewer.md", "final-security-reviewer.md"}
+        elif tasks and tasks[0]["trust"] == "no":  # ...unless it skipped its security review
+            required.add("final-security-reviewer.md")
     else:
         required.add("final-code-reviewer.md")  # a prototype's only review
     present = set()
@@ -885,7 +906,7 @@ def main(argv=None):
     if args.finish:
         problems = check_finish(run_dir, project_dir)
     elif args.seal:
-        problems = (check_plan(run_dir) + check_conductor(run_dir) + check_finish_choice(run_dir)
+        problems = (check_plan(run_dir) + trust_problems(load_plan(run_dir)[0]) + check_conductor(run_dir) + check_finish_choice(run_dir)
                     + check_staffing(run_dir) + check_judge(run_dir, unattended=unattended))
         if not problems:
             print(f"sealed plan.md: {seal_plan(run_dir)}")
@@ -893,7 +914,7 @@ def main(argv=None):
     elif args.task:
         problems = unsealed + check_task(run_dir, repo_dir, args.task)
     elif args.plan:
-        problems = check_plan(run_dir) + check_conductor(run_dir)
+        problems = check_plan(run_dir) + trust_problems(load_plan(run_dir)[0]) + check_conductor(run_dir)
         size = (run_dir / "context.md").stat().st_size if (run_dir / "context.md").is_file() else 0
         if size > CONTEXT_LIMIT:
             problems.append(f"context.md: {size} bytes, over the limit of {CONTEXT_LIMIT}; send the scout back to shorten it")

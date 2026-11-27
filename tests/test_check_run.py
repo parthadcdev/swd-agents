@@ -29,6 +29,7 @@ OK
 - Depends: none
 - Check: `python3 -m unittest tests.test_a`
 - Outcome: a.py exists
+- Trust boundary: yes (reads a.py input)
 
 ### T2: Second thing
 - Role: backend-engineer
@@ -37,6 +38,7 @@ OK
 - Depends: T1
 - Check: `python3 -m unittest tests.test_b`
 - Outcome: b.py exists
+- Trust boundary: yes (reads b.py input)
 """
 
 LEDGER = """| Task | Role | Status | Attempts |
@@ -887,6 +889,137 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual(seal.returncode, 1)
         self.assertEqual((run / "decisions.md").read_text(encoding="utf-8"), before)
 
+    # --- the trust boundary line ---------------------------------------------------------------
+
+    def set_trust(self, run, first, second=None):
+        """Rewrite each task's Trust boundary line; None removes it."""
+        text = re.sub(r"^- Trust boundary: .*\n", "", (run / "plan.md").read_text(encoding="utf-8"), flags=re.M)
+        for task, value in (("### T1:", first), ("### T2:", second)):
+            if value is not None and task in text:
+                head, rest = text.split(task, 1)
+                body, sep, tail = rest.partition("\n\n")
+                text = f"{head}{task}{body}\n- Trust boundary: {value}{sep}{tail}"
+        (run / "plan.md").write_text(text, encoding="utf-8")
+
+    MISSING = "plan.md: T1 is missing '- Trust boundary:'; write '- Trust boundary: no' or '- Trust boundary: yes (<what it touches>)'"
+
+    def bad(self, task, got):
+        return f"plan.md: {task} '- Trust boundary:' must be 'no' or 'yes (<what it touches>)', got '{got}'"
+
+    def test_trust_problems_missing_and_bad_values_in_task_order(self):
+        repo, run = make_run(self.tmp)
+        self.set_trust(run, None, "maybe")
+        tasks, plan_problems = self.cr.parse_plan((run / "plan.md").read_text(encoding="utf-8"))
+        self.assertEqual(plan_problems, [])
+        self.assertEqual([t["trust"] for t in tasks], [None, "maybe"])
+        self.assertEqual(self.cr.trust_problems(tasks), [self.MISSING, self.bad("T2", "maybe")])
+        self.assertEqual(self.cr.check_plan(run), [])
+
+    def test_trust_values_accepted_and_refused(self):
+        for value, ok in (("no", True), ("yes (the login form)", True), ("  no  ", True), ("yes (a) (b)", True),
+                          ("No", False), ("yes", False), ("yes ()", False), ("yes (  )", False), ("maybe", False), ("no (x)", False)):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.set_trust(run, value, "no")
+                tasks, _ = self.cr.parse_plan((run / "plan.md").read_text(encoding="utf-8"))
+                self.assertEqual(self.cr.trust_problems(tasks), [] if ok else [self.bad("T1", value.strip())])
+
+    def test_the_last_trust_line_of_a_task_counts(self):
+        repo, run = make_run(self.tmp)
+        replace(run / "plan.md", "- Trust boundary: yes (reads a.py input)\n",
+                "- Trust boundary: maybe\n- Trust boundary: no\n")
+        tasks, _ = self.cr.parse_plan((run / "plan.md").read_text(encoding="utf-8"))
+        self.assertEqual((tasks[0]["trust"], self.cr.trust_problems(tasks)), ("no", []))
+        replace(run / "plan.md", "- Trust boundary: no\n", "- Trust boundary: no\n- Trust boundary: \n")
+        tasks, _ = self.cr.parse_plan((run / "plan.md").read_text(encoding="utf-8"))
+        self.assertEqual(self.cr.trust_problems(tasks), [self.bad("T1", "")])
+
+    def test_trust_line_belongs_to_its_own_task(self):
+        repo, run = make_run(self.tmp)
+        self.set_trust(run, None, "no")
+        tasks, _ = self.cr.parse_plan((run / "plan.md").read_text(encoding="utf-8"))
+        self.assertEqual([t["trust"] for t in tasks], [None, "no"])
+
+    def test_plan_and_seal_refuse_a_missing_or_bad_trust_line(self):
+        for first, second, expected in ((None, "no", [self.MISSING]),
+                                        ("maybe", "no", [self.bad("T1", "maybe")]),
+                                        ("no", "yes", [self.bad("T2", "yes")]),
+                                        (None, "No", [self.MISSING, self.bad("T2", "No")])):
+            with self.subTest(first=first, second=second), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.set_trust(run, first, second)
+                plan = self.cli("--plan", str(run))
+                self.assertEqual((plan.returncode, plan.stdout.splitlines()), (1, expected))
+                before = (run / "decisions.md").read_text(encoding="utf-8")
+                seal = self.cli("--seal", str(run))
+                self.assertEqual((seal.returncode, seal.stdout.splitlines()), (1, expected))
+                self.assertEqual((run / "decisions.md").read_text(encoding="utf-8"), before)
+                self.assertNotIn("Plan checksum: ", before)
+
+    def test_plan_and_seal_accept_the_line_on_every_task(self):
+        repo, run = make_run(self.tmp)
+        self.set_trust(run, "no", "yes (opens a socket)")
+        self.assertEqual((self.cli("--plan", str(run)).returncode, self.cli("--plan", str(run)).stdout), (0, ""))
+        self.assertEqual(self.cli("--seal", str(run)).returncode, 0)
+
+    def test_a_sealed_plan_without_the_line_is_not_held_to_it_after_the_seal(self):
+        repo, run = make_run(self.tmp)
+        self.set_trust(run, None, None)
+        self.cr.seal_plan(run)
+        self.assertEqual(self.cli("--task", "T1", str(run)).stdout, "")
+        self.assertEqual(self.problems(repo, run), [])
+        done = self.cli(str(run))
+        self.assertEqual((done.returncode, done.stdout), (0, ""))
+        self.assertEqual(self.cli("--plan", str(run)).stdout.splitlines(), [self.MISSING, self.MISSING.replace("T1", "T2")])
+
+    def test_a_task_marked_no_needs_no_security_report_but_a_present_one_is_read(self):
+        repo, run = make_run(self.tmp)
+        self.set_trust(run, "yes (x)", "no")
+        (run / "reports" / "T2-security-reviewer.md").unlink()
+        self.assertEqual(self.problems(repo, run), [])
+        (run / "reports" / "T2-security-reviewer.md").write_text("Verdict: fail\n\n## Findings\n- broken\n", encoding="utf-8")
+        self.assertProblem(self.problems(repo, run), "T2-security-reviewer.md", "Verdict")
+
+    def test_a_task_marked_yes_or_without_a_line_still_needs_its_security_report(self):
+        for value in ("yes (x)", None):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.set_trust(run, "no", value)
+                (run / "reports" / "T2-security-reviewer.md").unlink()
+                self.assertProblem(self.problems(repo, run), "missing", "T2-security-reviewer.md")
+
+    def test_two_tasks_marked_no_still_need_the_final_reviews(self):
+        for name in ("final-code-reviewer.md", "final-security-reviewer.md"):
+            with self.subTest(report=name), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp)
+                self.set_trust(run, "no", "no")
+                for task in ("T1", "T2"):
+                    (run / "reports" / f"{task}-security-reviewer.md").unlink()
+                self.assertEqual(self.problems(repo, run), [])
+                (run / "reports" / name).unlink()
+                self.assertProblem(self.problems(repo, run), "missing", name)
+
+    def test_one_task_marked_no_needs_the_final_security_review(self):
+        repo, run = make_run(self.tmp, single=True)
+        self.set_trust(run, "no")
+        (run / "reports" / "T1-security-reviewer.md").unlink()
+        self.assertProblem(self.problems(repo, run), "missing", "final-security-reviewer.md")
+        self.assertNotIn("final-code-reviewer", " ".join(self.problems(repo, run)))
+        (run / "reports" / "final-security-reviewer.md").write_text(CHECKER_REPORT, encoding="utf-8")
+        self.assertEqual(self.problems(repo, run), [])
+
+    def test_one_task_marked_yes_or_without_a_line_needs_no_final_security_review(self):
+        for value in ("yes (x)", None):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo, run = make_run(tmp, single=True)
+                self.set_trust(run, value)
+                self.assertEqual(self.problems(repo, run), [])
+
+    def test_the_mark_changes_nothing_outside_production(self):
+        repo, run = make_run(self.tmp, mode="prototype", single=True)
+        self.set_trust(run, "no")
+        self.assertEqual(self.problems(repo, run), [])
+
     def test_other_plan_rules_still_reach_a_finished_run_without_outcome(self):
         repo, run = self.old_run()
         replace(run / "plan.md", "- Check: `python3 -m unittest tests.test_b`\n", "")
@@ -1359,6 +1492,7 @@ PERFORMANCE-LINE
 - Depends: none
 - Check: `true`
 - Outcome: TASK1-LINE
+- Trust boundary: no
 
 #### Detail of T1
 TASK1-DETAIL
@@ -1370,6 +1504,7 @@ TASK1-DETAIL
 - Depends: none
 - Check: `true`
 - Outcome: TASK2-LINE
+- Trust boundary: yes (TRUST2-LINE)
 """
 
 QUICK_PLAN = """# Plan: quick
@@ -1386,6 +1521,7 @@ OUTCOME-LINE
 - Depends: none
 - Check: `true`
 - Outcome: TASK1-LINE
+- Trust boundary: no
 """
 
 
@@ -1433,6 +1569,16 @@ class SliceTest(unittest.TestCase):
         self.assertSlice(self.slice("review:final"),
                          ["OUTCOME-LINE", "CONTRACT-LINE", "PERFORMANCE-LINE", "TASK1-LINE", "TASK1-DETAIL", "TASK2-LINE"],
                          ["DESIGN-LINE", "## Tasks"])
+
+    def test_builder_and_review_slices_print_the_trust_boundary_line(self):
+        for who, line, other in (("builder:T1", "- Trust boundary: no", "TRUST2-LINE"),
+                                 ("review:T1", "- Trust boundary: no", "TRUST2-LINE"),
+                                 ("builder:T2", "- Trust boundary: yes (TRUST2-LINE)", "- Trust boundary: no"),
+                                 ("review:T2", "- Trust boundary: yes (TRUST2-LINE)", "- Trust boundary: no")):
+            with self.subTest(who=who):
+                out = self.slice(who).stdout
+                self.assertIn(line + "\n", out)
+                self.assertNotIn(other, out)
 
     def test_qa_slice(self):
         self.assertSlice(self.slice("qa"), ["OUTCOME-LINE"],
