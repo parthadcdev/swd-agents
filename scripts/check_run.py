@@ -7,6 +7,7 @@
     python3 check_run.py <run_dir>             check a finished run (a sealed run is not asked for '## Outcome'; an unsealed one is) and, in a run /swd:queue started, a sealed plan
     python3 check_run.py --finish <run_dir>    check the run was delivered and cleaned up
     python3 check_run.py --slice <who> <run_dir>   print one role's part of plan.md: builder:T1, review:T1, review:final or qa
+    python3 check_run.py --standards <role> <run_dir>   print one role's part of standards.md: architect, builder, code-reviewer, security-reviewer, qa, judge or scout
     python3 check_run.py --cap                 print how many agents may work at once, from SWD_PARALLEL or total memory (no run folder)
     python3 check_run.py --codegraph <path>     print whether the project has a code graph (a .codegraph/ directory and codegraph on PATH); runs nothing, writes nothing
 
@@ -762,6 +763,71 @@ def slice_main(who, path):
     return 0
 
 
+CONTEXT_LIMIT = 16000  # bytes of the scout's context.md as stored
+STANDARDS_ROLES = ("architect", "builder", "code-reviewer", "security-reviewer", "qa", "judge", "scout")
+_W = tuple(r for r in STANDARDS_ROLES if r != "scout")
+_RC = ("architect", "builder", "code-reviewer", "security-reviewer", "qa")
+_CHECKERS = ("code-reviewer", "security-reviewer", "qa")
+STANDARDS_SECTIONS = {
+    **{("standard", h): _W for h in ("Priority", "Builder process", "Testing", "Review", "Security", "Performance", "Docs", "Commits")},
+    ("models", "Every agent"): STANDARDS_ROLES,
+    ("models", "The principal: model and effort for each dispatch"): ("judge",),
+    ("run-folder", "Who writes what"): STANDARDS_ROLES,
+    ("run-folder", "Where to work"): _RC + ("scout",),
+    ("run-folder", "spec.md"): ("architect", "judge"),
+    ("run-folder", "plan.md"): ("architect",) + _CHECKERS + ("judge",),
+    ("run-folder", "context.md"): ("architect", "scout"),
+    **{("run-folder", h): () for h in ("ledger.md", "activity.md", "decisions.md", "staffing.md", "Feedback reports and triage")},
+    ("run-folder", "Builder reports"): ("builder",) + _CHECKERS,
+    ("run-folder", "Checker reports"): _CHECKERS + ("judge",),
+    ("run-folder", "Judge reports"): ("judge",),
+    ("run-folder", "Commits"): _RC,
+}
+STANDARDS_DOCS = {"Engineering standard": "standard", "Model guidance": "models", "Run folder format": "run-folder"}
+
+
+def split_standards(text):
+    """standards.md as (doc, heading, lines) pieces in file order; fenced lines never start a heading."""
+    parts, doc, fenced = [(None, None, [])], None, False
+    for line in text.splitlines(keepends=True):
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced and line.startswith("# "):
+            doc = STANDARDS_DOCS.get(line[2:].split(":")[0].strip())
+            parts.append((doc, None, []))
+        elif not fenced and line.startswith("## "):
+            parts.append((doc, line[3:].strip(), []))
+        parts[-1][2].append(line)
+    return [p for p in parts if p[2]]
+
+
+def standards_for(text, role):
+    """The sections `role` takes; a section the table does not know goes to every role."""
+    parts = split_standards(text)
+    takes = lambda doc, heading: doc is None or role in STANDARDS_SECTIONS.get((doc, heading), (role,))
+    docs = {d for d, h, _ in parts if h is not None and takes(d, h)}
+    return "".join("".join(lines) for d, h, lines in parts
+                   if (d in docs if h is None and d is not None else takes(d, h)))
+
+
+def standards_main(role, path):
+    """--standards: print one role's part of standards.md. Errors go to standard error, one line, exit 1."""
+    if role not in STANDARDS_ROLES:
+        print(f"--standards: '{role}' is not one of {', '.join(STANDARDS_ROLES)}", file=sys.stderr)
+        return 1
+    path = path.resolve()
+    run_dir = path if path.parent.name == "runs" and path.parent.parent.name == ".swd" else latest_run(path)
+    if run_dir is None or not run_dir.is_dir():
+        print("no run folder found under .swd/runs/", file=sys.stderr)
+        return 1
+    text = read(run_dir / "standards.md")
+    if text is None:
+        print("missing standards.md", file=sys.stderr)
+        return 1
+    sys.stdout.write(standards_for(text, role))
+    return 0
+
+
 def latest_run(repo_dir):
     runs = repo_dir / ".swd" / "runs"
     folders = sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []
@@ -777,8 +843,16 @@ def main(argv=None):
     parser.add_argument("--slice", metavar="WHO", help="print one role's part of plan.md: builder:T<n>, review:T<n>, review:final or qa")
     parser.add_argument("--cap", action="store_true", help="print how many agents may work at once, from SWD_PARALLEL or total memory; needs no path")
     parser.add_argument("--codegraph", action="store_true", help="print whether the project has a code graph: a .codegraph/ directory in the project folder and a codegraph command on PATH")
+    parser.add_argument("--standards", metavar="ROLE", help="print one role's part of standards.md: " + ", ".join(STANDARDS_ROLES))
     parser.add_argument("path", nargs="?", type=Path, help="a run folder, or a project folder")
     args = parser.parse_args(argv)
+    if args.standards is not None:
+        if args.plan or args.seal or args.task is not None or args.finish or args.slice is not None or args.cap or args.codegraph:
+            print("--standards takes no other mode", file=sys.stderr)  # not parser.error: one line, not two
+            return 2
+        if args.path is None:
+            parser.error("the following arguments are required: path")
+        return standards_main(args.standards, args.path)
     if args.cap:
         if args.plan or args.seal or args.task is not None or args.finish or args.slice is not None or args.codegraph:
             parser.error("--cap takes no other mode")
@@ -820,6 +894,9 @@ def main(argv=None):
         problems = unsealed + check_task(run_dir, repo_dir, args.task)
     elif args.plan:
         problems = check_plan(run_dir) + check_conductor(run_dir)
+        size = (run_dir / "context.md").stat().st_size if (run_dir / "context.md").is_file() else 0
+        if size > CONTEXT_LIMIT:
+            problems.append(f"context.md: {size} bytes, over the limit of {CONTEXT_LIMIT}; send the scout back to shorten it")
     else:
         problems = unsealed + check_run(run_dir, repo_dir)
     for problem in problems:

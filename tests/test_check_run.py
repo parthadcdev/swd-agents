@@ -1704,5 +1704,134 @@ class CodeGraphTest(unittest.TestCase):
         self.assertTrue(result.stderr.endswith("the following arguments are required: path\n"), result.stderr)
 
 
+class StandardsTest(unittest.TestCase):
+    """--standards <role>: one role's part of standards.md, split by the table in check_run."""
+
+    MODES = ("production", "prototype", "quick")
+
+    def setUp(self):
+        import check_run
+        self.cr = check_run
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+
+    def standards_text(self, mode):
+        return "".join((ROOT / "standards" / f"{name}.md").read_text(encoding="utf-8") for name in (mode, "models", "run-folder"))
+
+    def run_with(self, text):
+        run = self.tmp / ".swd" / "runs" / "2026-01-01-x"
+        run.mkdir(parents=True, exist_ok=True)
+        if text is not None:
+            (run / "standards.md").write_text(text, encoding="utf-8")
+        return run
+
+    def cli(self, *args):
+        return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, encoding="utf-8")
+
+    def test_every_role_exits_0_within_its_share(self):
+        for mode in self.MODES:
+            text = self.standards_text(mode)
+            run = self.run_with(text)
+            for role in self.cr.STANDARDS_ROLES:
+                with self.subTest(mode=mode, role=role):
+                    result = self.cli("--standards", role, str(run))
+                    self.assertEqual((result.returncode, result.stderr), (0, ""))
+                    share = len(result.stdout.encode()) / len(text.encode())
+                    self.assertLessEqual(share, 0.5 if role in ("builder", "code-reviewer", "security-reviewer", "qa") else 0.6)
+
+    def test_each_role_has_its_sections(self):
+        wanted = {"builder": ["## Builder process", "## Builder reports"],
+                  "code-reviewer": ["## Checker reports", "## Review"],
+                  "security-reviewer": ["## Checker reports", "## Review", "## Security"],
+                  "qa": ["## Checker reports", "## Review"],
+                  "architect": ["## plan.md"], "judge": ["## Judge reports"]}
+        for mode in self.MODES:
+            run = self.run_with(self.standards_text(mode))
+            for role, headings in wanted.items():
+                out = self.cli("--standards", role, str(run)).stdout
+                for heading in headings:
+                    with self.subTest(mode=mode, role=role, heading=heading):
+                        self.assertIn("\n" + heading + "\n", out)
+
+    def test_every_heading_is_in_the_table(self):
+        for path in sorted((ROOT / "standards").glob("*.md")):
+            for doc, heading, _ in self.cr.split_standards(path.read_text(encoding="utf-8")):
+                if heading is not None:
+                    with self.subTest(file=path.name, heading=heading):
+                        self.assertIn((doc, heading), self.cr.STANDARDS_SECTIONS)
+        for key, roles in self.cr.STANDARDS_SECTIONS.items():
+            self.assertTrue(set(roles) <= set(self.cr.STANDARDS_ROLES), key)
+
+    def test_every_fence_in_the_standards_is_closed(self):
+        # an open fence would fold every later heading into one section, hiding it from roles
+        for path in sorted((ROOT / "standards").glob("*.md")):
+            with self.subTest(file=path.name):
+                fences = [l for l in path.read_text(encoding="utf-8").splitlines() if l.startswith("```")]
+                self.assertEqual(len(fences) % 2, 0)
+
+    def test_fenced_headings_are_text_and_pieces_rebuild_the_file(self):
+        text = "# Run folder format\nintro\n## plan.md\n```markdown\n# Plan: x\n## Outcome\n```\ntail\n"
+        parts = self.cr.split_standards(text)
+        self.assertEqual([(d, h) for d, h, _ in parts], [("run-folder", None), ("run-folder", "plan.md")])
+        self.assertEqual("".join("".join(l) for _, _, l in parts), text)
+
+    def test_unknown_section_goes_to_every_role(self):
+        text = "# Run folder format\nintro\n## Who writes what\nA\n## Brand new\nB\n## ledger.md\nL\n# Odd title\nO\n"
+        for role in self.cr.STANDARDS_ROLES:
+            with self.subTest(role=role):
+                out = self.cr.standards_for(text, role)
+                self.assertIn("## Brand new\nB\n", out)
+                self.assertIn("# Odd title\nO\n", out)
+                self.assertNotIn("## ledger.md", out)
+
+    def test_preamble_only_with_a_section_taken(self):
+        text = "# Run folder format\nintro\n## ledger.md\nL\n"
+        self.assertEqual(self.cr.standards_for(text, "builder"), "")
+        self.assertEqual(self.cr.standards_for("before\n" + text, "builder"), "before\n")
+
+    def test_errors_are_one_line_on_stderr(self):
+        run = self.run_with(self.standards_text("production"))
+        empty = self.tmp / "empty"
+        empty.mkdir()
+        bare = self.tmp / "bare"
+        (bare / ".swd" / "runs" / "2026-01-01-y").mkdir(parents=True)
+        cases = [(("nope", str(run)), "--standards: 'nope' is not one of architect, builder, code-reviewer, security-reviewer, qa, judge, scout", 1),
+                 (("qa", str(empty)), "no run folder found under .swd/runs/", 1),
+                 (("qa", str(bare)), "missing standards.md", 1)]
+        for args, line, code in cases:
+            with self.subTest(args=args):
+                result = self.cli("--standards", *args)
+                self.assertEqual((result.returncode, result.stdout, result.stderr), (code, "", line + "\n"))
+        for mode in (["--plan"], ["--seal"], ["--task", "T1"], ["--finish"], ["--slice", "qa"], ["--cap"], ["--codegraph"]):
+            with self.subTest(mode=mode):
+                result = self.cli("--standards", "qa", *mode, str(run))
+                self.assertEqual((result.returncode, result.stdout, result.stderr), (2, "", "--standards takes no other mode\n"))
+
+    def test_project_folder_uses_latest_run(self):
+        self.run_with(self.standards_text("production"))
+        result = self.cli("--standards", "scout", str(self.tmp))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("## Where to work", result.stdout)
+
+
+class ContextLimitTest(unittest.TestCase):
+    def test_plan_reports_only_a_context_over_the_limit(self):
+        import check_run
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, run = make_run(tmp)
+            def plan_lines(*mode):
+                result = subprocess.run([sys.executable, str(SCRIPT), *mode, str(run)], capture_output=True, text=True, encoding="utf-8")
+                return [l for l in result.stdout.splitlines() if l.startswith("context.md")]
+            self.assertEqual(plan_lines("--plan"), [])
+            (run / "context.md").write_bytes(b"x" * check_run.CONTEXT_LIMIT)
+            self.assertEqual(plan_lines("--plan"), [])
+            (run / "context.md").write_bytes(b"x" * (check_run.CONTEXT_LIMIT + 1))
+            self.assertEqual(plan_lines("--plan"), ["context.md: 16001 bytes, over the limit of 16000; send the scout back to shorten it"])
+            for mode in (("--task", "T1"), ("--seal",), ()):
+                with self.subTest(mode=mode):
+                    self.assertEqual(plan_lines(*mode), [])
+
+
 if __name__ == "__main__":
     unittest.main()
