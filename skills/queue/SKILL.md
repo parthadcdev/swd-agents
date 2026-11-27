@@ -50,6 +50,11 @@ Finish: pr
   the commands a run executes, which has not been tried on a live
   Claude Code; if it does not, the run judges the plan by itself and
   goes on, as in 0.10.0.
+- An unattended run stops as blocked after the second rejection of its plan,
+  and the item is marked `- [!]`. The judge's verdicts count, or, on Fable
+  5.2, the run's own judging, from the start of the run, amendments after
+  the gate included. The first rejection goes back to the architect as
+  before.
 - The queue runs one item at a time, so it adds nothing to the cap. Each
   run learns the cap in its own Preflight and keeps to it. `SWD_PARALLEL`
   set where the queue starts reaches every run.

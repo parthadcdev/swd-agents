@@ -105,6 +105,42 @@ line sits below the last `Plan checksum:` line, and in a run
 of those lines is a `Judge plan:` line saying the plan holds; a seal
 after a change to `staffing.md` alone needs none.
 
+**What the verdicts do.** A judge's report on a plan has two sections
+after its verdict, `## Blocking` and `## Notes`, and its verdict is that
+the plan does not hold only when `## Blocking` has an item. Send the
+blocking items to the architect. Give the notes to the architect or to the
+builders, as you see fit; a note never sends a plan back. When you judge
+the plan yourself on Fable 5.2, give every objection in one pass, as
+blocking items and notes in the same way, and only a blocking item sends
+the plan back. When a plan is judged again after an amendment, add
+`Earlier verdict: reports/judge-<n>.md` to the judge's brief: the last
+report on this run's plan that did not hold. Put what the amendment
+changed on a line of its own beside it, `Amendment changed: <the tasks and
+plan sections the amendment changed>`, taken from the architect's report; it
+names what changed and states no answer. When no earlier report on this
+run's plan did not hold, the brief has neither line and the judge judges the
+whole plan. Rejections are counted from
+the start of the run, amendments after the gate included, and the count is
+never reset: a plan is rejected each time the judge's verdict is that it
+does not hold or, on Fable 5.2, your own judging finds that it does not.
+Sending the plan back for your own reading of a command, when you are not
+on Fable 5.2, is not a rejection. After the second rejection the next step is the user, not the architect. In
+a run you attend, stop and show the user the open blocking items. In an
+unattended run, one `/swd:queue` started, set every task in the ledger that
+is not `done` to `blocked` when the ledger exists, log `blocked` with
+`<python> <plugin>/scripts/swd-log.py <run> blocked the plan was rejected twice`,
+and stop, leaving the run unfinished. So where the sentences above send a
+plan that does not hold back to the architect, in "goes back to the
+architect with what it named", in "a plan it says does not hold goes back
+to the architect", and in the seal's unattended message that the last
+`Judge plan:` line "does not say 'the plan holds'", that sending back holds
+for the first rejection only. The rest of them still holds after it: in a
+`/swd:queue` run you never overrule the judge's verdict on the plan, and
+the seal still refuses a plan the judge did not say holds. No check counts the
+rejections: keep the count yourself, from the `Judge plan:` and
+`Plan judged:` lines in `decisions.md` and your own rejections, which you
+record there.
+
 **Where things are.** `<plugin>` means `${CLAUDE_PLUGIN_ROOT}`, the plugin
 root, two directories above this skill's base directory. `<python>` is the
 command `check` printed: the text between `python: ` and ` (Python`.
@@ -165,6 +201,10 @@ which prints only that agent's part of `standards.md`: `<role>` is
 It goes in every brief to the architect, a builder (`builder`), the code
 reviewer, the security reviewer, QA (`qa`) and the scout. The judge's brief
 has no `Read the standards with:` line, because the judge has no shell.
+Before each judge dispatch, write the judge's part of the standards to the
+run folder with
+`<python> <plugin>/scripts/check_run.py --standards judge <run> > <run>/standards-judge.md`;
+the judge reads that file in place of `standards.md`.
 When the last `Code graph:` line in `decisions.md` starts
 `Code graph: yes (`, every brief to the architect, a builder, the code
 reviewer or the security reviewer also has a line
@@ -182,7 +222,7 @@ time, set from the machine's total memory so that a run does not exhaust a
 small machine. The last `Cap:` line in `decisions.md` is the cap.
 `Cap: none` means dispatch as this playbook says. With a number, wherever
 the playbook sends several Agent calls in one message (a wave's builders, a
-task's two reviewers, fixes, the final checks), put at most the cap Agent
+task's reviewers, fixes, the final checks), put at most the cap Agent
 calls in one message, and send the next group only when every agent of the
 one before has returned. The cap counts every agent of the run that is
 still working, whatever it is doing, so do not send a task's reviewers
@@ -404,7 +444,8 @@ until you do. The plan has not changed, so this seal needs no new
    section showing the finished result as it will really appear (the
    command and what it prints, or the changed text), and one task, `T1`, in
    wave 1, with the builder role that fits, the files it may change, its
-   check command and its `- Outcome:`. Nothing else belongs in a quick plan.
+   check command, its `- Trust boundary:` line and its `- Outcome:`.
+   Nothing else belongs in a quick plan.
 2. Check the plan:
 
    ```bash
@@ -422,12 +463,19 @@ until you do. The plan has not changed, so this seal needs no new
    you write your own `Plan judged:` line. Before each judge dispatch,
    choose the lowest `n` with no `reports/judge-<n>.md`; a reply that
    starts `No verdict` did not reach the judge, whatever file is there.
+   A second judging of the plan, after an amendment, has `Earlier verdict:`
+   and `Amendment changed:` in its brief when an earlier judging did not
+   hold (**What the verdicts do.**).
    A verdict that the plan holds never replaces your own reading of the
    commands below; a command that fails your reading sends the plan back
    to the architect, whatever the verdict. Does the `## Outcome` section,
    taken as the finished result, satisfy every acceptance criterion? Do
    the tasks' `- Outcome:` lines add up to it, with nothing in it that no
-   task produces? Does it show the result, or only describe it?
+   task produces? Does it show the result, or only describe it? Is each
+   task's `- Trust boundary:` line right for the files it may change and
+   what the spec asks of it? A `no` on a task that touches a trust boundary
+   (authentication, permissions, secrets, input that reaches a query or a
+   shell, payments) means the plan does not hold.
 
    Then read every command a checker will run. They are of two kinds, and
    every command is one or the other.
@@ -462,7 +510,8 @@ until you do. The plan has not changed, so this seal needs no new
    reading, send the architect back with the criterion, the gap
    or the command named (in quick mode, correct the plan yourself), then
    check and judge again (with the Fable judge first when you are not on
-   Fable 5.2). When the plan holds, append
+   Fable 5.2). A plan is rejected only as **What the verdicts do.** counts
+   rejections, and that paragraph says what the second one does. When the plan holds, append
    `Plan judged: <one sentence>` to `decisions.md`.
 5. **Staff the plan.** Decide the model and effort for every task, for
    the reviews and for the final checks, and write `<run>/staffing.md`
@@ -558,11 +607,14 @@ Fable 5.2), append a new `Plan judged:` line, add or change the
 `staffing.md` rows for the tasks the amendment added or changed, then
 seal again: the checker refuses to seal an amended plan unless a
 `Plan judged:` line sits below the last `Plan checksum:` line. A change to
-`staffing.md` alone is sealed again without one.
+`staffing.md` alone is sealed again without one. The amendment has the
+`- Trust boundary:` line on every task, done tasks included, or the seal
+refuses it.
 
 This is the only planned stop. After it, you stop only for the reasons
 under Never, when the seal refuses a plan as **The Fable judge.** says,
-and when you are not on an accepted model (**Your model**).
+after the second rejection of the plan (**What the verdicts do.**), and
+when you are not on an accepted model (**Your model**).
 
 ## Build
 
@@ -671,11 +723,22 @@ What happens next depends on the mode.
 
 **Production mode:**
 
-3. Set the task `in-review` and dispatch `swd:code-reviewer` and
+3. Set the task `in-review` and read its `- Trust boundary:` line in the
+   plan. For `yes`, dispatch `swd:code-reviewer` and
    `swd:security-reviewer` in one message, each with the run folder path
    and the task id, so they review in parallel (one after the other when
-   the cap is 1).
-4. When both verdicts are `pass`, commit the task's files and set it `done`:
+   the cap is 1). For `no`, dispatch `swd:code-reviewer` alone. A task
+   whose plan has no `- Trust boundary:` line (a run from before 0.18.0)
+   gets both reviewers, as for `yes`. When a code review of a `no` task, a
+   fix review included, has a `## Trust boundary not in the plan` section,
+   dispatch `swd:security-reviewer` for that task at once, and send any fix
+   for it only once that report is back, so that the security reviewer
+   reads a tree nobody is editing and its report is there when step 4 reads
+   every review the task got. A later code review that leaves the section out,
+   which overwrites the report that had it, does not take that security
+   review back.
+4. When every review the task got has `Verdict: pass`, commit the task's
+   files and set it `done`:
 
    ```bash
    git -C <work> add -- <the task's files that changed> && git -C <work> commit -m "T2: <title>"
@@ -721,7 +784,8 @@ What happens next depends on the mode.
 ## Fix loop
 
 Any failure, from a test, a reviewer or QA, becomes a fix. The run is not
-finished while a test fails or a finding is open.
+finished while a test fails or a finding is open; a low finding on a pass,
+recorded as a `Finding:` line, is not open.
 
 - **Send the fix to the owner.** Dispatch the builder role that owns the
   failing code, with the normal brief plus the report to fix:
@@ -731,16 +795,43 @@ finished while a test fails or a finding is open.
   ```
 
   Increment the task's `Attempts`, set it `in-progress`, log a `fix` line,
-  and re-check the result exactly as in Build. Fixes for unrelated failures
+  and re-check the result exactly as in Build, except that only the
+  reviewers the next two bullets name review it. The security review that
+  Build's step 3 gives a `no` task whose code review reported a trust
+  boundary the plan missed is not one that rule leaves out. Fixes for unrelated failures
   go out together, at most the cap of them in one message. If a check failed and the task's row is below `opus`, or you move a
   task already on `opus` up, change its row in `staffing.md` and seal
   again before you dispatch, as "Model and effort per dispatch" says.
+- **After a fix, only the reviewer who asked for it reviews again.** Brief
+  it as for the task, plus `Review the fix for: reports/T<n>-<reviewer>.md`
+  (or `reports/final-<reviewer>.md` for a final review), the report whose
+  findings the fix answers, and, when the task is already committed,
+  `Diff since: <the commit the reviewer reviewed>`; with no `Diff since:`
+  line it reviews the uncommitted diff. It reviews the fix, not the task
+  again. The security reviewer also reviews every fix to a task marked
+  `yes`, and a fix that changes a file at a trust boundary, and the other
+  reviewer also reviews a fix when you judge it larger than the finding;
+  each gets the same two lines. A
+  reviewer whose verdict was `pass` keeps it.
+- **A fix no reviewer asked for is reviewed too.** A fix that answers a
+  failed test run of a wave or of the final check, or a failed final QA, has
+  no reviewer's report to answer. The code reviewer reviews it, briefed as
+  above with `Review the fix for:` naming the evidence file or the QA report
+  that failed, and the security reviewer reviews it too when its task is
+  marked `yes` or it changes a file at a trust boundary.
+- **A low finding on a passing review does not start a fix round.** Record
+  it as a `Finding:` line in `decisions.md`, saying what is wrong, where,
+  and why it was left. Fix it now only when the task is going back to its
+  builder anyway, or when the finding is at a trust boundary and the fix is
+  small. A medium, high or critical finding on a pass is ruled on as
+  before.
 - **Counting.** `Attempts` counts every dispatch of a task's builder: the
   first build is 1 and each fix adds 1, whatever the failure was.
 - **Three fixes, then re-plan.** When a task still fails and its
   `Attempts` reaches 4 (the build and three fixes), stop patching. Dispatch
   `swd:architect` with the failing reports, its `Read the standards with:`
-  line included, and ask for a root-cause re-plan. Check the amended plan with `<python> <plugin>/scripts/check_run.py --plan <run>`, then judge the amended plan (with the Fable judge first when you are not on Fable 5.2), staff and seal it as the Gate describes, add any new
+  line included, and ask for a root-cause re-plan, with the
+  `- Trust boundary:` line on every task, done tasks included. Check the amended plan with `<python> <plugin>/scripts/check_run.py --plan <run>`, then judge the amended plan (with the Fable judge first when you are not on Fable 5.2), staff and seal it as the Gate describes, add any new
   tasks to the ledger, and build them.
   A task the re-plan adds in place of a task that failed starts on the
   model the failed task had reached, not on `sonnet` again.
@@ -804,9 +895,13 @@ is lost; the user reads `decisions.md` in the final report.
    user input that reaches a query or a shell, or payments.
 
    In production mode, when the plan has only one task, dispatch final QA
-   alone. That task's own code and security reviews already covered the
-   whole change, so final reviews would repeat them.
-2. Send any failure through the Fix loop, then repeat step 1.
+   and `swd:security-reviewer` with `final` and the base commit, and no
+   final code review: that task's own code review already covered the whole
+   change. Skip the final security review, and dispatch final QA alone,
+   only when that task was marked `yes` and was security-reviewed.
+2. Send any failure through the Fix loop, then repeat step 1: final QA
+   again, and each final review only as the Fix loop's rules on who reviews
+   a fix again say, a fix no reviewer asked for included.
 3. Copy the run's findings to the project's backlog, `.swd/findings.md`:
 
    ```bash
@@ -942,7 +1037,10 @@ merging and pushing a branch that was left for them.
    `<plugin>/standards/models.md`, and write the file if the plan is sealed
    again. A run sealed before 0.8.1 has no `Staffing checksum:` line, so its
    `staffing.md` is not compared until the run is sealed again; that seal
-   holds it to the `review` and `final` rows and the floor. Run
+   holds it to the `review` and `final` rows and the floor. A run from
+   before 0.18.0 has no `- Trust boundary:` lines: its tasks get both
+   reviewers, and when its plan is amended the amendment adds the line to
+   every task, because the seal needs it. Run
    `<python> <plugin>/scripts/check_run.py --cap` again and append its line
    to `decisions.md`, because the machine or `SWD_PARALLEL` may have
    changed. Run `<python> <plugin>/scripts/check_run.py --codegraph <run>`

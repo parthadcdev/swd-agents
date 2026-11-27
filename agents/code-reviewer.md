@@ -67,6 +67,19 @@ to index the worktree: indexing is the user's decision.
    - has tests that would fail if the behaviour broke;
    - follows the project's existing conventions;
    - changes only the files the task owns.
+
+   When your brief has a `Review the fix for:` line, you review a fix, not
+   the task again. Read the report it names. Hold the fix to each finding in
+   that report, against the uncommitted diff, or against `git diff <commit>`
+   when your brief has `Diff since: <commit>`, and check whether the fix
+   broke what it touches.
+
+   If the task's `- Trust boundary:` line in your part of the plan says
+   `no`, and the diff touches a trust boundary (authentication, permissions,
+   secrets, input that reaches a query or a shell, payments) anyway, add a
+   section `## Trust boundary not in the plan` to your report, naming the
+   file and line and the boundary. With no such boundary, or when the line
+   says `yes`, leave the section out.
 3. **Check performance** as `standards.md` requires. Fail the patterns it
    lists as rejected.
 4. **Run the task's check command** yourself and confirm it passes. If you
@@ -110,7 +123,10 @@ to index the worktree: indexing is the user's decision.
    shows changed and the first did not is a finding that names the file
    and the command, and it fails the run.
 6. Decide. Fail for anything that is wrong, unsafe, untested or below the
-   standard. Do not fail for style preferences the project does not share.
+   standard. The one exception is a low finding, one that changes no
+   behaviour and breaks no rule of the standard: it does not by itself fail
+   a review, and the report still lists it with its severity. Every other
+   finding fails the review. Do not fail for style preferences the project does not share.
 
 ## Report
 
@@ -119,8 +135,8 @@ Write your report in the run folder in the checker format from
 `reports/final-code-reviewer.md` for `final`.
 
 It has a line `Verdict: pass` or `Verdict: fail`, and `## Findings`. Each
-finding gives the file and line, what is wrong, and what to change. With no
-findings, write "None."
+finding gives a severity (critical, high, medium, low), the file and line,
+what is wrong, and what to change. With no findings, write "None."
 
 Your final message to the principal is the verdict and the report path.
 

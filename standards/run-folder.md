@@ -15,6 +15,7 @@ report in `reports/` must say `Verdict: pass`.
 | `requirement.md` | Principal | The requirement verbatim, plus the user's answers to clarifying questions |
 | `spec.md` | Principal | What will be built, acceptance criteria, assumptions, delivery mode and why |
 | `standards.md` | Principal | The engineering bar for this run, the model guidance, then this document |
+| `standards-judge.md` | Principal | The judge's part of `standards.md`, written with `check_run.py --standards judge` before a judge dispatch; the judge reads it in place of `standards.md` |
 | `context.md` | Scout | Where in the project the requirement lands: files, line ranges, what changes with them. Read by the architect |
 | `plan.md` | Architect | Outcome, design, contracts, test command, task list in waves |
 | `staffing.md` | Principal | The agent, model and effort for each task, for the reviews and for the final check |
@@ -135,6 +136,7 @@ $ python3 -c "from shop.cart import total; print(total([(100, 2)], discount_perc
 - Depends: none
 - Check: `python3 -m unittest tests.test_cart`
 - Outcome: `total([(100, 2)], discount_percent=10)` returns `180.0`
+- Trust boundary: no
 ```
 
 The `## Outcome` section is required. It shows the finished result as it
@@ -154,6 +156,12 @@ has a `Plan checksum:` line, so a run that was sealed before these existed
 still checks clean; a run never sealed is held to them. When a sealed run's
 plan is amended, the amendment adds them, because the plan is sealed again.
 
+`check_run.py --plan` and `--seal` also require the `- Trust boundary:` line
+on every task and refuse a value that is neither; `--task` and the check of
+a finished run do not, so a run from before 0.18.0 still checks clean. When
+a sealed run's plan is amended, the amendment adds the line to every task,
+done tasks included.
+
 Rules for tasks:
 
 - The heading is `### T<n>: <title>`. Ids are unique.
@@ -170,6 +178,13 @@ Rules for tasks:
 - `Check` is the command that proves the task is done.
 - `Outcome` is one line saying what observably exists or happens once the
   task is done.
+- A `- Trust boundary:` line, besides the six fields, on every task in every
+  mode: `- Trust boundary: no` or `- Trust boundary: yes (<what it touches>)`.
+  A trust boundary is authentication, permissions, secrets, input that
+  reaches a query or a shell, or payments. The value, stripped, is exactly
+  `no`, or `yes` followed by text in parentheses; anything else (`No`,
+  `yes`, `yes ()`, `maybe`) is refused. When a task has the line twice, the
+  last counts.
 
 ## ledger.md
 
@@ -405,7 +420,7 @@ A checker report has a verdict line and a findings section:
 Verdict: fail
 
 ## Findings
-- shop/cart.py:14 — apply_discount subtracts the percent as an amount. Multiply by (1 - percent / 100).
+- high, shop/cart.py:14 — apply_discount subtracts the percent as an amount. Multiply by (1 - percent / 100).
 ```
 
 The verdict line is exactly `Verdict: pass` or `Verdict: fail`, and a report
@@ -437,6 +452,39 @@ sentence, not `pass` or `fail`, and `check_run.py` does not read it.
 The `Verdict: ` line is the first line and the only line that starts with
 `Verdict:`. On the plan it is `Verdict: the plan holds` or
 `Verdict: the plan does not hold: <what must change>`.
+
+A report on a plan has two more sections after `## Reasoning`, `## Blocking`
+then `## Notes`, each a list of `- ` items or `None.`:
+
+    ## Blocking
+    - <what makes the plan not hold, and what must change>
+
+    ## Notes
+    - <anything else>
+
+The verdict is `Verdict: the plan does not hold: <what must change>` exactly
+when `## Blocking` has an item, and `Verdict: the plan holds` otherwise. A
+report on a ruling has neither section. The brief of a second judging of the
+plan has `Earlier verdict: reports/judge-<n>.md`, the last report on this
+run's plan that did not hold, and, on a line of its own beside it,
+`Amendment changed: <the tasks and plan sections the amendment changed>`,
+taken from the architect's report; it states no answer. When no earlier
+report on the plan did not hold, the brief has neither line and the judge
+judges the whole plan.
+
+The judge reads the plan, not the codebase: `spec.md`, `plan.md`,
+`context.md` when there is one, and `standards-judge.md`, which the
+principal writes before each judge dispatch with
+`check_run.py --standards judge <run> > <run>/standards-judge.md`; it reads
+`standards.md` when that file is not there.
+
+After the second report on a run's plan that does not hold (the judge's,
+or, on Fable 5.2, the principal's own judging), counted from the start of
+the run, amendments after the gate included, the next step is the user, not
+the architect: an attended run stops and shows the user the open blocking
+items; an unattended run sets its tasks `blocked`, logs `blocked` and
+stops. The refusal above still refuses the seal; only its sending the plan
+back to the architect holds for the first rejection only.
 
 Before each judge dispatch, choose the lowest `n` with no
 `reports/judge-<n>.md`; a reply that starts `No verdict` did not reach

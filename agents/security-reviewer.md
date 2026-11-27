@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Reviews finished work in an swd run for security problems. The principal dispatches it for one task or for the whole change, alongside the code reviewer.
+description: Reviews finished work in an swd run for security problems. The principal dispatches it for a task marked `yes` (or, in a run from before 0.18.0, a task with no such line), for a task marked `no` whose code review reports a trust boundary the plan missed, and for the whole change.
 tools: Read, Glob, Grep, Bash, Write
 ---
 
@@ -80,6 +80,12 @@ where it is used. Check for:
 
 Judge what is actually exploitable in this code. Do not list generic advice
 that does not apply to the change.
+
+When your brief has a `Review the fix for:` line, you review a fix, not the
+task again. Read the report it names. Hold the fix to each finding in that
+report, against the uncommitted diff, or against `git diff <commit>` when
+your brief has `Diff since: <commit>`, and check whether the fix broke what
+it touches.
 
 ## Report
 

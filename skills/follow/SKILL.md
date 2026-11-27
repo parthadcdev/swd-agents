@@ -69,6 +69,10 @@ that plan, the build playbook's rule holds: a follow-up you attend
 judges by itself and goes on, and one whose seal refuses the plan as a
 run `/swd:queue` started stops as blocked.
 
+The build playbook's paragraph **What the verdicts do.**, on what a judge's
+verdicts do and on the two rejections, applies to every follow-up too: a
+re-planned run's plan counts its rejections from the start of the run.
+
 ## Steps
 
 1. Find the runs to follow: every run folder whose last `Finish:` line in
@@ -223,7 +227,11 @@ every comment, the ones marked `(TypeSafe not reachable) ` included.
    `<plugin>/standards/models.md` says: the task's row in the run's
    `staffing.md` for its builder and the `review` row for its reviewers (the `final` row in a quick run),
    where there are such rows, your own choice by that rule where there are
-   not.
+   not. A change for a pull request item gets the reviews the build
+   playbook's Build steps give its task for the run's mode, by the task's
+   `- Trust boundary:` line; a fix after one of those reviews follows that
+   playbook's Fix loop rules on who reviews a fix again and on a low finding
+   on a pass.
    If a change is in a file no task owns, send the architect to add a
    task with the same quoted items, never the report. A re-plan started
    from a follow round passes the architect the builder and reviewer
@@ -242,7 +250,10 @@ every comment, the ones marked `(TypeSafe not reachable) ` included.
    rename such a row and take any `|` out of a note. A change to `staffing.md` without an amended plan is
    sealed again without a new `Plan judged:` line. A finished task's row
    says what a fix to it is dispatched at, and a fix after a failed check
-   is staffed as `<plugin>/standards/models.md` says.
+   is staffed as `<plugin>/standards/models.md` says. A run from before
+   0.18.0 has no `- Trust boundary:` lines, its tasks get both reviewers,
+   and the seal needs the lines when its plan is amended: have the
+   architect add the line to every task in the same amendment.
 4. **Keep the records.** Update the ledger and log every dispatch, verdict
    and commit with `<python> <plugin>/scripts/swd-log.py`, as the build
    playbook shows. When the fixes are in, log `done` again and

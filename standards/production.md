@@ -58,11 +58,34 @@ Every task is reviewed by the code reviewer before it is committed. A task
 whose report lacks the failing and passing test output is rejected without
 further review.
 
+A task marked `- Trust boundary: no` in the plan gets the code review only.
+When its diff touches a trust boundary anyway, the code reviewer says so
+under `## Trust boundary not in the plan` and the task gets a security
+review before it is committed, whatever later fix reviews say.
+
+After a fix only the reviewer who asked for it reviews again, and only the
+fix. The security reviewer also reviews every fix to a task marked `yes`,
+and a fix that changes a file at a trust boundary, and the other reviewer
+also reviews a fix when the principal judges it larger than the finding. A
+reviewer whose verdict was `pass` keeps it.
+
+A low finding on a passing review does not start a fix round: it goes to the
+backlog as a `Finding:`, except that it is fixed at once when the task goes
+back to its builder anyway or when it is at a trust boundary and the fix is
+small. Medium and higher findings on a pass are ruled on as before.
+
+A fix that no reviewer asked for, because it answers a failed test run or a
+failed final QA, is reviewed by the code reviewer, and by the security
+reviewer too when its task is marked `yes` or it changes a file at a trust
+boundary.
+
 ## Security
 
-Every task and the whole change get a security review. Builders validate
-input at trust boundaries, never put secrets in code or logs, and never
-build queries or shell commands by joining strings with user input.
+Every task marked `- Trust boundary: yes` gets a security review, and so
+does the whole change, unless the plan's one task was marked `yes` and was
+security-reviewed. Builders validate input at trust boundaries, never put
+secrets in code or logs, and never build queries or shell commands by
+joining strings with user input.
 
 ## Performance
 

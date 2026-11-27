@@ -432,7 +432,8 @@ GATE_SEAL = (
 )
 GATE_STOP = (
     "This is the only planned stop. After it, you stop only for the reasons under Never, when the seal "
-    "refuses a plan as **The Fable judge.** says, and when you are not on an accepted model (**Your model**)."
+    "refuses a plan as **The Fable judge.** says, after the second rejection of the plan (**What the verdicts "
+    "do.**), and when you are not on an accepted model (**Your model**)."
 )
 # C4's three refusal lines, as check_run.py prints them for a run /swd:queue started on Opus 5.5.
 UNATTENDED_REFUSAL = (
@@ -3078,6 +3079,343 @@ class ScoutPath018Test(unittest.TestCase):
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn("## 0.17.0", changelog)
         self.assertEqual(changelog.count("## 0.18.0"), 1)
+
+
+# 0.18.0 (T3): the review loop (rules B2 to B5) and the judging loop (rules C6 to C10) in the playbooks, the
+# agents and the standards. Each needle is a statement spec.md makes, no more and no less.
+TRUST_BOUNDARIES = "authentication, permissions, secrets, input that reaches a query or a shell, payments"
+FIX_REVIEW_018 = (
+    "When your brief has a `Review the fix for:` line, you review a fix, not the task again. Read the report it "
+    "names. Hold the fix to each finding in that report, against the uncommitted diff, or against "
+    "`git diff <commit>` when your brief has `Diff since: <commit>`, and check whether the fix broke what it touches."
+)
+JUDGE_PARAGRAPH_018 = (
+    "**What the verdicts do.** A judge's report on a plan has two sections after its verdict, `## Blocking` and "
+    "`## Notes`, and its verdict is that the plan does not hold only when `## Blocking` has an item. Send the "
+    "blocking items to the architect. Give the notes to the architect or to the builders, as you see fit; a note "
+    "never sends a plan back."
+)
+BUILD_018 = (
+    # the cap and the team
+    "a wave's builders, a task's reviewers, fixes, the final checks",
+    "Before each judge dispatch, write the judge's part of the standards to the run folder with "
+    "`<python> <plugin>/scripts/check_run.py --standards judge <run> > <run>/standards-judge.md`; the judge reads "
+    "that file in place of `standards.md`.",
+    # C6 to C8, in a paragraph of their own
+    JUDGE_PARAGRAPH_018,
+    "When you judge the plan yourself on Fable 5.2, give every objection in one pass, as blocking items and notes "
+    "in the same way, and only a blocking item sends the plan back.",
+    "When a plan is judged again after an amendment, add `Earlier verdict: reports/judge-<n>.md` to the judge's "
+    "brief: the last report on this run's plan that did not hold. Put what the amendment changed on a line of its "
+    "own beside it, `Amendment changed: <the tasks and plan sections the amendment changed>`, taken from the "
+    "architect's report; it names what changed and states no answer.",
+    "When no earlier report on this run's plan did not hold, the brief has neither line and the judge judges the "
+    "whole plan.",
+    "Rejections are counted from the start of the run, amendments after the gate included, and the count is never "
+    "reset: a plan is rejected each time the judge's verdict is that it does not hold or, on Fable 5.2, your own "
+    "judging finds that it does not.",
+    "Sending the plan back for your own reading of a command, when you are not on Fable 5.2, is not a rejection.",
+    "After the second rejection the next step is the user, not the architect.",
+    "In a run you attend, stop and show the user the open blocking items.",
+    "In an unattended run, one `/swd:queue` started, set every task in the ledger that is not `done` to `blocked` "
+    "when the ledger exists, log `blocked` with "
+    "`<python> <plugin>/scripts/swd-log.py <run> blocked the plan was rejected twice`, and stop, leaving the run "
+    "unfinished.",
+    "So where the sentences above send a plan that does not hold back to the architect, in \"goes back to the "
+    "architect with what it named\", in \"a plan it says does not hold goes back to the architect\", and in the "
+    "seal's unattended message that the last `Judge plan:` line \"does not say 'the plan holds'\", that sending back "
+    "holds for the first rejection only.",
+    "The rest of them still holds after it: in a `/swd:queue` run you never overrule the judge's verdict on the "
+    "plan, and the seal still refuses a plan the judge did not say holds.",
+    "No check counts the rejections: keep the count yourself, from the `Judge plan:` and `Plan judged:` lines in "
+    "`decisions.md` and your own rejections, which you record there.",
+    # Design
+    "its check command, its `- Trust boundary:` line and its `- Outcome:`",
+    "Is each task's `- Trust boundary:` line right for the files it may change and what the spec asks of it? A `no` "
+    "on a task that touches a trust boundary (" + TRUST_BOUNDARIES + ") means the plan does not hold.",
+    "A second judging of the plan, after an amendment, has `Earlier verdict:` and `Amendment changed:` in its "
+    "brief when an earlier judging did not hold (**What the verdicts do.**).",
+    "A plan is rejected only as **What the verdicts do.** counts rejections, and that paragraph says what the "
+    "second one does.",
+    "The amendment has the `- Trust boundary:` line on every task, done tasks included, or the seal refuses it.",
+    # Production steps
+    "Set the task `in-review` and read its `- Trust boundary:` line in the plan. For `yes`, dispatch "
+    "`swd:code-reviewer` and `swd:security-reviewer` in one message, each with the run folder path and the task "
+    "id, so they review in parallel (one after the other when the cap is 1). For `no`, dispatch "
+    "`swd:code-reviewer` alone.",
+    "A task whose plan has no `- Trust boundary:` line (a run from before 0.18.0) gets both reviewers, as for `yes`.",
+    "When a code review of a `no` task, a fix review included, has a `## Trust boundary not in the plan` section, "
+    "dispatch `swd:security-reviewer` for that task at once, and send any fix for it only once that report is back, "
+    "so that the security reviewer reads a tree nobody is editing and its report is there when step 4 reads every "
+    "review the task got. A later code review that leaves the section out, which "
+    "overwrites the report that had it, does not take that security review back.",
+    "When every review the task got has `Verdict: pass`, commit the task's files and set it `done`:",
+    # Fix loop
+    "or a finding is open; a low finding on a pass, recorded as a `Finding:` line, is not open.",
+    "re-check the result exactly as in Build, except that only the reviewers the next two bullets name review it. "
+    "The security review that Build's step 3 gives a `no` task whose code review reported a trust boundary the plan "
+    "missed is not one that rule leaves out.",
+    "**After a fix, only the reviewer who asked for it reviews again.**",
+    "Brief it as for the task, plus `Review the fix for: reports/T<n>-<reviewer>.md` (or "
+    "`reports/final-<reviewer>.md` for a final review), the report whose findings the fix answers, and, when the "
+    "task is already committed, `Diff since: <the commit the reviewer reviewed>`; with no `Diff since:` line it "
+    "reviews the uncommitted diff. It reviews the fix, not the task again.",
+    "The security reviewer also reviews every fix to a task marked `yes`, and a fix that changes a file at a trust "
+    "boundary, and the other reviewer also reviews a fix when you judge it larger than the finding; each gets the "
+    "same two lines.",
+    "A reviewer whose verdict was `pass` keeps it.",
+    "**A fix no reviewer asked for is reviewed too.** A fix that answers a failed test run of a wave or of the "
+    "final check, or a failed final QA, has no reviewer's report to answer. The code reviewer reviews it, briefed "
+    "as above with `Review the fix for:` naming the evidence file or the QA report that failed, and the security "
+    "reviewer reviews it too when its task is marked `yes` or it changes a file at a trust boundary.",
+    "**A low finding on a passing review does not start a fix round.** Record it as a `Finding:` line in "
+    "`decisions.md`, saying what is wrong, where, and why it was left.",
+    "Fix it now only when the task is going back to its builder anyway, or when the finding is at a trust boundary "
+    "and the fix is small.",
+    "A medium, high or critical finding on a pass is ruled on as before.",
+    "ask for a root-cause re-plan, with the `- Trust boundary:` line on every task, done tasks included.",
+    # Final verification and resume
+    "In production mode, when the plan has only one task, dispatch final QA and `swd:security-reviewer` with "
+    "`final` and the base commit, and no final code review: that task's own code review already covered the whole "
+    "change. Skip the final security review, and dispatch final QA alone, only when that task was marked `yes` and "
+    "was security-reviewed.",
+    "then repeat step 1: final QA again, and each final review only as the Fix loop's rules on who reviews a fix "
+    "again say, a fix no reviewer asked for included.",
+    "A run from before 0.18.0 has no `- Trust boundary:` lines: its tasks get both reviewers, and when its plan is "
+    "amended the amendment adds the line to every task, because the seal needs it.",
+)
+BUILD_STALE_018 = (
+    "a task's two reviewers",
+    "That task's own code and security reviews already covered the whole change, so final reviews would repeat them.",
+    "When both verdicts are `pass`, commit the task's files",
+    # T3 fix: the old quoting lifted the ban on overruling the judge after the first rejection.
+    "\"never overrule the judge's verdict on the plan: a plan it says does not hold goes back to the architect\"",
+    "A plan that does not hold is a rejection, and **What the verdicts do.**",
+    "The security reviewer also reviews the fix when it changes a file at a trust boundary,",
+)
+FOLLOW_018 = (
+    "A change for a pull request item gets the reviews the build playbook's Build steps give its task for the "
+    "run's mode, by the task's `- Trust boundary:` line; a fix after one of those reviews follows that playbook's "
+    "Fix loop rules on who reviews a fix again and on a low finding on a pass.",
+    "A run from before 0.18.0 has no `- Trust boundary:` lines, its tasks get both reviewers, and the seal needs "
+    "the lines when its plan is amended: have the architect add the line to every task in the same amendment.",
+    "The build playbook's paragraph **What the verdicts do.**, on what a judge's verdicts do and on the two "
+    "rejections, applies to every follow-up too: a re-planned run's plan counts its rejections from the start of "
+    "the run.",
+)
+QUEUE_018 = (
+    "An unattended run stops as blocked after the second rejection of its plan, and the item is marked `- [!]`.",
+    "The first rejection goes back to the architect as before.",
+)
+JUDGE_018 = (
+    "For a plan it reads the run folder and opens a project file only to settle a claim the verdict turns on; for "
+    "a ruling it reads the run folder and the code.",
+    "Earlier verdict: reports/judge-<n>.md Amendment changed: <the tasks and plan sections the amendment changed, "
+    "from the architect's report>",
+    "On a plan, read `spec.md`, `plan.md`, `context.md` when there is one, and `standards-judge.md`.",
+    "`standards-judge.md` is your part of the standards, which the principal writes in the run folder; read it in "
+    "place of `standards.md`, and read `standards.md` only when `standards-judge.md` is not there.",
+    "Open a project file only to settle a claim the verdict turns on: the project notes, for the commands they "
+    "list, the script or config a command names, and code at a trust boundary. Do not explore.",
+    "`context.md` is a map the scout wrote after reading the requirement. A file with no trust-boundary note in it "
+    "is not shown to hold none: when you check a task's `- Trust boundary: no`, do not take a missing note as "
+    "evidence.",
+    "does each task's `- Trust boundary:` line match what the plan and the spec show;",
+    "**Judge a plan again.** When your brief has an `Earlier verdict:` line, the plan was amended after that "
+    "report, and the `Amendment changed:` line names the tasks and plan sections the amendment changed; it states "
+    "no answer. Check that each blocking item of that report is closed. Read the parts that line names, and raise "
+    "a new blocking item only in them.",
+    "Read every command again in every pass, whatever the amendment changed: a command that breaks these limits is "
+    "blocking wherever it is.",
+    "Read every task's `- Trust boundary:` line again in every pass too: a `no` on a task that touches a trust "
+    "boundary is blocking wherever it is.",
+    "**Give every objection in one pass.** On a plan, put each objection under `## Blocking`, something that makes "
+    "the plan not hold, or under `## Notes`, anything else. The verdict is "
+    "`Verdict: the plan does not hold: <what must change>` exactly when `## Blocking` has an item, and "
+    "`Verdict: the plan holds` otherwise.",
+    "A report on a plan has two more sections after `## Reasoning`, `## Blocking` then `## Notes`, each a list of "
+    "`- ` items or `None.`:",
+    "## Blocking - <what makes the plan not hold, and what must change> ## Notes - <anything else>",
+    "A report on a ruling has neither section.",
+)
+JUDGE_STALE_018 = (
+    "Reads the run folder and the project",
+    "whatever in the run folder and the project decides it: `standards.md`, `spec.md`",
+)
+LOW_FINDING_018 = (
+    "Fail for anything that is wrong, unsafe, untested or below the standard. The one exception is a low finding, "
+    "one that changes no behaviour and breaks no rule of the standard: it does not by itself fail a review, and "
+    "the report still lists it with its severity. Every other finding fails the review."
+)
+REVIEWER_TASK_018 = (
+    "If the task's `- Trust boundary:` line in your part of the plan says `no`, and the diff touches a trust "
+    "boundary (" + TRUST_BOUNDARIES + ") anyway, add a section `## Trust boundary not in the plan` to your report, "
+    "naming the file and line and the boundary. With no such boundary, or when the line says `yes`, leave the "
+    "section out.",
+    FIX_REVIEW_018,
+    LOW_FINDING_018,
+)
+PRODUCTION_018 = (
+    "A task marked `- Trust boundary: no` in the plan gets the code review only. When its diff touches a trust "
+    "boundary anyway, the code reviewer says so under `## Trust boundary not in the plan` and the task gets a "
+    "security review before it is committed, whatever later fix reviews say.",
+    "After a fix only the reviewer who asked for it reviews again, and only the fix. The security reviewer also "
+    "reviews every fix to a task marked `yes`, and a fix that changes a file at a trust boundary, and the other "
+    "reviewer also reviews a fix when the principal judges it larger than the finding. A reviewer whose verdict "
+    "was `pass` keeps it.",
+    "A low finding on a passing review does not start a fix round: it goes to the backlog as a `Finding:`, except "
+    "that it is fixed at once when the task goes back to its builder anyway or when it is at a trust boundary and "
+    "the fix is small. Medium and higher findings on a pass are ruled on as before.",
+    "A fix that no reviewer asked for, because it answers a failed test run or a failed final QA, is reviewed by "
+    "the code reviewer, and by the security reviewer too when its task is marked `yes` or it changes a file at a "
+    "trust boundary.",
+    "Every task marked `- Trust boundary: yes` gets a security review, and so does the whole change, unless the "
+    "plan's one task was marked `yes` and was security-reviewed.",
+)
+RUN_FOLDER_018 = (
+    "| `standards-judge.md` | Principal | The judge's part of `standards.md`, written with "
+    "`check_run.py --standards judge` before a judge dispatch; the judge reads it in place of `standards.md` |",
+    "- Trust boundary: no",
+    "- A `- Trust boundary:` line, besides the six fields, on every task in every mode: `- Trust boundary: no` or "
+    "`- Trust boundary: yes (<what it touches>)`. A trust boundary is authentication, permissions, secrets, input "
+    "that reaches a query or a shell, or payments. The value, stripped, is exactly `no`, or `yes` followed by text "
+    "in parentheses; anything else (`No`, `yes`, `yes ()`, `maybe`) is refused. When a task has the line twice, "
+    "the last counts.",
+    "`check_run.py --plan` and `--seal` also require the `- Trust boundary:` line on every task and refuse a value "
+    "that is neither; `--task` and the check of a finished run do not, so a run from before 0.18.0 still checks "
+    "clean. When a sealed run's plan is amended, the amendment adds the line to every task, done tasks included.",
+    "A report on a plan has two more sections after `## Reasoning`, `## Blocking` then `## Notes`, each a list of "
+    "`- ` items or `None.`:",
+    "The verdict is `Verdict: the plan does not hold: <what must change>` exactly when `## Blocking` has an item, "
+    "and `Verdict: the plan holds` otherwise. A report on a ruling has neither section.",
+    "The brief of a second judging of the plan has `Earlier verdict: reports/judge-<n>.md`, the last report on "
+    "this run's plan that did not hold, and, on a line of its own beside it, `Amendment changed: <the tasks and "
+    "plan sections the amendment changed>`, taken from the architect's report; it states no answer. When no "
+    "earlier report on the plan did not hold, the brief has neither line and the judge judges the whole plan.",
+    "The judge reads the plan, not the codebase: `spec.md`, `plan.md`, `context.md` when there is one, and "
+    "`standards-judge.md`, which the principal writes before each judge dispatch with "
+    "`check_run.py --standards judge <run> > <run>/standards-judge.md`; it reads `standards.md` when that file is "
+    "not there.",
+    "After the second report on a run's plan that does not hold (the judge's, or, on Fable 5.2, the principal's own "
+    "judging), counted from the start of the run, amendments after the gate included, the next step is the user, "
+    "not the architect: an attended run stops and shows the user the open blocking items; an unattended run sets "
+    "its tasks `blocked`, logs `blocked` and stops. The refusal above still refuses the seal; only its sending the "
+    "plan back to the architect holds for the first rejection only.",
+    "- high, shop/cart.py:14 — apply_discount subtracts the percent as an amount.",
+)
+STALE_STANDARDS_018 = {
+    "production.md": ("Every task and the whole change get a security review.",),
+}
+
+
+class LoopRules018Test(unittest.TestCase):
+    def assertIn(self, needle, text, msg=None):
+        # The files are long: say which needle is missing, not the whole file.
+        self.assertTrue(needle in text, msg or f"missing: {needle[:120]!r}")
+
+    def assertNotIn(self, needle, text, msg=None):
+        self.assertFalse(needle in text, msg or f"still there: {needle[:120]!r}")
+
+    def test_the_build_playbook(self):
+        build = words("skills", "build", "SKILL.md")
+        for needle in BUILD_018:
+            with self.subTest(needle=needle[:60]):
+                self.assertIn(needle, build)
+        for stale in BUILD_STALE_018:
+            with self.subTest(absent=stale[:60]):
+                self.assertNotIn(" ".join(stale.split()), build)
+        with self.subTest(order="the new paragraph is right after The Fable judge."):
+            self.assertIn(FABLE_JUDGE_BUILD + " " + JUDGE_PARAGRAPH_018, build)
+            self.assertLess(build.find("**What the verdicts do.**"), build.find("**Where things are.**"))
+        with self.subTest(order="the judge's standards file is written before a judge dispatch is described"):
+            self.assertIn("The judge's brief has no `Read the standards with:` line, because the judge has no shell. "
+                          "Before each judge dispatch,", build)
+        with self.subTest(order="production steps and fix loop"):
+            self.assertLess(build.find("## Build"), build.find("read its `- Trust boundary:` line"))
+            self.assertLess(build.find("read its `- Trust boundary:` line"), build.find("## Fix loop"))
+            self.assertLess(build.find("## Fix loop"), build.find("**After a fix, only the reviewer who asked"))
+            self.assertLess(build.find("**After a fix, only the reviewer who asked"), build.find("## Final verification"))
+        with self.subTest(kept="only one task"):
+            self.assertIn("only one task", build)
+
+    def test_the_follow_and_queue_playbooks(self):
+        follow = words("skills", "follow", "SKILL.md")
+        queue = words("skills", "queue", "SKILL.md")
+        for name, text, needles in (("follow", follow, FOLLOW_018), ("queue", queue, QUEUE_018)):
+            for needle in needles:
+                with self.subTest(file=name, needle=needle[:60]):
+                    self.assertIn(needle, text)
+        with self.subTest(file="follow", order="after The Fable judge. paragraph"):
+            self.assertIn(FABLE_JUDGE_FOLLOW + " The build playbook's paragraph **What the verdicts do.**", follow)
+
+    def test_the_judge(self):
+        judge = words("agents", "judge.md")
+        for needle in JUDGE_018:
+            with self.subTest(needle=needle[:60]):
+                self.assertIn(needle, judge)
+        for stale in JUDGE_STALE_018:
+            with self.subTest(absent=stale[:60]):
+                self.assertNotIn(stale, judge)
+        description = frontmatter(ROOT / "agents" / "judge.md")["description"]
+        with self.subTest(description="the judge does not read the codebase for a plan"):
+            self.assertNotIn("Reads the run folder and the project", description)
+            self.assertIn("opens a project file only to settle a claim the verdict turns on", description)
+        with self.subTest(report="the plan sections come after the existing form, which is unchanged"):
+            self.assertLess(judge.find("<what in the run folder and the project decides it, by file and line>"),
+                            judge.find("## Blocking - <what makes"))
+        with self.subTest(kept="the model check comes before anything is read"):
+            self.assertLess(judge.find("`No verdict: not on Fable 5.2.`"), judge.find("`standards-judge.md`"))
+
+    def test_the_reviewers(self):
+        code = words("agents", "code-reviewer.md")
+        security = words("agents", "security-reviewer.md")
+        for needle in REVIEWER_TASK_018:
+            with self.subTest(file="code-reviewer", needle=needle[:60]):
+                self.assertIn(needle, code)
+        with self.subTest(file="security-reviewer", needle="the fix review"):
+            self.assertIn(FIX_REVIEW_018, security)
+        with self.subTest(file="security-reviewer", absent="a section for a missed boundary"):
+            self.assertNotIn("## Trust boundary not in the plan", security)
+        with self.subTest(file="code-reviewer", needle="severity"):
+            self.assertIn("Each finding gives a severity (critical, high, medium, low), the file and line, what is "
+                          "wrong, and what to change.", code)
+        description = frontmatter(ROOT / "agents" / "security-reviewer.md")["description"]
+        with self.subTest(file="security-reviewer", description=description[:40]):
+            self.assertNotIn("alongside the code reviewer", description)
+            self.assertIn("for a task marked `yes` (or, in a run from before 0.18.0, a task with no such line), for a "
+                          "task marked `no` whose code review reports a trust boundary the plan missed, and for the "
+                          "whole change", description)
+
+    def test_the_standards(self):
+        production = words("standards", "production.md")
+        for needle in PRODUCTION_018:
+            with self.subTest(file="production.md", needle=needle[:60]):
+                self.assertIn(needle, production)
+        for stale in STALE_STANDARDS_018["production.md"]:
+            with self.subTest(file="production.md", absent=stale[:60]):
+                self.assertNotIn(stale, production)
+        run_folder = words("standards", "run-folder.md")
+        for needle in RUN_FOLDER_018:
+            with self.subTest(file="run-folder.md", needle=needle[:60]):
+                self.assertIn(needle, run_folder)
+        with self.subTest(file="run-folder.md", needle="the new rules are under existing headings"):
+            self.assertLess(run_folder.find("## Judge reports"), run_folder.find("`Earlier verdict: reports/judge-<n>.md`"))
+            self.assertLess(run_folder.find("## Judge reports"), run_folder.find("the next step is the user"))
+            self.assertLess(run_folder.find("## plan.md"), run_folder.find("`- Trust boundary:` line, besides the six fields"))
+            self.assertLess(run_folder.find("## plan.md"), run_folder.find("- Trust boundary: no"))
+            self.assertLess(run_folder.find("## Who writes what"), run_folder.find("| `standards-judge.md` |"))
+
+    def test_the_example_plan_has_the_trust_boundary_line_and_checks_clean(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import check_run
+        text = (ROOT / "standards" / "run-folder.md").read_text(encoding="utf-8")
+        plan = text[text.index("## plan.md\n"):]
+        example = plan.split("```markdown\n", 1)[1].split("\n```", 1)[0]
+        tasks, problems = check_run.parse_plan(example)
+        self.assertEqual(problems, [])
+        self.assertEqual(check_run.trust_problems(tasks), [])
+        self.assertEqual([t["trust"] for t in tasks], ["no"])
 
 
 class WindowsTest(unittest.TestCase):
