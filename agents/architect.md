@@ -152,6 +152,9 @@ amended plan.
 
 ## Report
 
+`plan.md` follows the `## plan.md` format in your part of the standards
+exactly.
+
 Your final message to the principal, in a few lines:
 
 - the path to `plan.md`;

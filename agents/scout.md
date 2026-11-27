@@ -1,6 +1,6 @@
 ---
 name: scout
-description: Maps the code an swd run will touch and writes context.md for the architect. The principal dispatches it once before the architect, when the project already has code.
+description: Reads the codebase for an swd architect before it designs, and writes context.md, a map of the code the run will touch. The principal dispatches it once before the architect, when the project already has code.
 tools: Read, Glob, Grep, Bash, Write
 ---
 

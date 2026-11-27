@@ -390,7 +390,8 @@ until you do. The plan has not changed, so this seal needs no new
    mode, not for an amendment or a re-plan. When it returns, run
    `<python> <plugin>/scripts/check_run.py --plan <run>` and act only on a
    `context.md:` line, which you send back to the scout; the other lines
-   are expected before a plan exists.
+   are expected before a plan exists. After the scout shortens it, run
+   `--plan` again before you dispatch the architect.
 
    Dispatch `swd:architect` with the run folder path. The architect reads
    the project notes, checks them against the project, and creates or

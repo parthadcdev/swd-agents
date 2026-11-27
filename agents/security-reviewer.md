@@ -59,6 +59,8 @@ to index the worktree: indexing is the user's decision.
 
 ## Process
 
+Hold the change to the `## Security` section of your part of the standards.
+
 Trace every place the change takes in data it does not control (user input,
 request bodies, files, environment, other services) and follow that data to
 where it is used. Check for:
