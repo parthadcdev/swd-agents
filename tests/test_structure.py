@@ -2951,7 +2951,8 @@ DIET_DOC = (
     "or a re-plan, and not by the follow skill",
     "opens a project file only for what `context.md` does not answer",
     "No saving from the scout has been measured yet.",
-    "The scout has the same shell as the other agents and no Edit tool; only its instructions hold it to writing "
+    "The scout has the same shell as the architect, the builders and the reviewers and no Edit tool; only its "
+    "instructions hold it to writing "
     "`context.md` alone.",
 )
 DIET_TEAM_ROW = "| Scout | Reads | Reads the codebase before the architect designs and writes `context.md`, on Sonnet |"
