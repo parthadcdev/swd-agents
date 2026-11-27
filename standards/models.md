@@ -38,6 +38,8 @@ Apply these as judgement to what each dispatch needs, except the two
 owner's rules, which are rules and not judgement calls. They are not a
 table to look up.
 
+- **The scout runs on `sonnet`, fixed, with no staffing row.** You
+  still choose the effort.
 - **Know what every agent runs on.** Subagents can be most of a run's
   cost. Set the model and the effort explicitly on every dispatch, and
   never leave either to a default.

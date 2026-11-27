@@ -136,6 +136,7 @@ absolute paths, and run git for the run as `git -C <work> ...`.
 **The team.** Dispatch specialists with the Agent tool, using these agent
 types:
 
+- Scouts: `swd:scout`
 - Designs: `swd:architect`
 - Builders: `swd:generalist-engineer`, `swd:backend-engineer`,
   `swd:frontend-engineer`, `swd:database-engineer`, `swd:devops-engineer`,
@@ -157,6 +158,13 @@ which prints only that agent's part of `plan.md`: `<who>` is
 `builder:<task id>` for a builder, `review:<task id>` for a code or
 security review of one task, `review:final` for a review of the whole
 change, quick mode's included, and `qa` for final QA.
+Briefs also have a line
+`Read the standards with: <python> <plugin>/scripts/check_run.py --standards <role> <run>`,
+which prints only that agent's part of `standards.md`: `<role>` is
+`builder` for a builder, `qa` for QA, and the agent's own name otherwise.
+It goes in every brief to the architect, a builder (`builder`), the code
+reviewer, the security reviewer, QA (`qa`) and the scout. The judge's brief
+has no `Read the standards with:` line, because the judge has no shell.
 When the last `Code graph:` line in `decisions.md` starts
 `Code graph: yes (`, every brief to the architect, a builder, the code
 reviewer or the security reviewer also has a line
@@ -166,6 +174,8 @@ of that line, copied as it is, and `<symbol names or question>` is written
 as it stands, for the agent to fill in. When that line says `none`, or
 there is no such line, no brief has it. QA's brief and the judge's never
 have it.
+The scout's brief has the `Explore code with:` line when the briefs to the
+architect, builders and reviewers do.
 
 **The cap.** The cap is the most agents you have working at the same
 time, set from the machine's total memory so that a run does not exhaust a
@@ -373,7 +383,16 @@ until you do. The plan has not changed, so this seal needs no new
 
 ## Design
 
-1. Dispatch `swd:architect` with the run folder path. The architect reads
+1. **The scout.** Before the architect, in production and prototype mode,
+   when the project already has code
+   (`git -C <work> ls-tree --name-only HEAD` lists an entry other than
+   `.gitignore` and `.swd`), dispatch `swd:scout` on `sonnet`. Not in quick
+   mode, not for an amendment or a re-plan. When it returns, run
+   `<python> <plugin>/scripts/check_run.py --plan <run>` and act only on a
+   `context.md:` line, which you send back to the scout; the other lines
+   are expected before a plan exists.
+
+   Dispatch `swd:architect` with the run folder path. The architect reads
    the project notes, checks them against the project, and creates or
    updates them; the plan check fails if they do not exist. The notes live
    at `<user's project folder>/.swd/project.md`, not in the worktree, so
@@ -393,7 +412,9 @@ until you do. The plan has not changed, so this seal needs no new
 
 3. If it prints problems, send them to the architect and repeat until it
    prints nothing. Do not edit `plan.md` yourself, except the one-task plan
-   you wrote in quick mode.
+   you wrote in quick mode. A `context.md:` line goes to the scout, never
+   to the architect, and does not send the plan back. A shortening
+   dispatch is not a re-plan.
 4. **Judge the plan** yourself, against `spec.md`, once the check
    prints nothing. When you are not on Fable 5.2, dispatch the judge on
    the plan (**The Fable judge.**) once the check prints nothing, before
@@ -615,6 +636,7 @@ Then, for each wave in order:
    Project notes: <absolute path of .swd/project.md>
    Run tests with: <python> <plugin>/scripts/swd-test.py <run> T2
    Read the plan with: <python> <plugin>/scripts/check_run.py --slice builder:T2 <run>
+   Read the standards with: <python> <plugin>/scripts/check_run.py --standards builder <run>
    Task: T2
    Goal: Expose the cart total over the API, so the checkout page in T3 has something to call.
    You own: src/api.py, tests/test_api.py
@@ -716,8 +738,8 @@ finished while a test fails or a finding is open.
   first build is 1 and each fix adds 1, whatever the failure was.
 - **Three fixes, then re-plan.** When a task still fails and its
   `Attempts` reaches 4 (the build and three fixes), stop patching. Dispatch
-  `swd:architect` with the failing reports and ask for a root-cause
-  re-plan. Check the amended plan with `<python> <plugin>/scripts/check_run.py --plan <run>`, then judge the amended plan (with the Fable judge first when you are not on Fable 5.2), staff and seal it as the Gate describes, add any new
+  `swd:architect` with the failing reports, its `Read the standards with:`
+  line included, and ask for a root-cause re-plan. Check the amended plan with `<python> <plugin>/scripts/check_run.py --plan <run>`, then judge the amended plan (with the Fable judge first when you are not on Fable 5.2), staff and seal it as the Gate describes, add any new
   tasks to the ledger, and build them.
   A task the re-plan adds in place of a task that failed starts on the
   model the failed task had reached, not on `sonnet` again.

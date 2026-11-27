@@ -29,8 +29,8 @@ plain form; do not conclude that you have no shell.
 Your brief gives you the run folder path, your task id, the files you own,
 and any earlier reports to read. Read:
 
-1. `standards.md` in the run folder: the engineering bar and the builder
-   process you must follow, and the report format.
+1. Your part of the standards: run the command on your brief's `Read the standards with:` line, once.
+   Read `standards.md` in the run folder whole only when your brief has no `Read the standards with:` line or that command fails.
 2. Your part of the plan: run the command on your brief's `Read the plan
    with:` line. `plan.md` in the run folder stays whole: open it only when
    your part lacks something you need.

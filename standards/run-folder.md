@@ -15,6 +15,7 @@ report in `reports/` must say `Verdict: pass`.
 | `requirement.md` | Principal | The requirement verbatim, plus the user's answers to clarifying questions |
 | `spec.md` | Principal | What will be built, acceptance criteria, assumptions, delivery mode and why |
 | `standards.md` | Principal | The engineering bar for this run, the model guidance, then this document |
+| `context.md` | Scout | Where in the project the requirement lands: files, line ranges, what changes with them. Read by the architect |
 | `plan.md` | Architect | Outcome, design, contracts, test command, task list in waves |
 | `staffing.md` | Principal | The agent, model and effort for each task, for the reviews and for the final check |
 | `ledger.md` | Principal only | One row per task: status, role, attempt count |
@@ -62,6 +63,10 @@ throwaway scripts) are not part of the project. Put them in `scratch/`
 inside the run folder, never in the worktree and never in the user's
 working copy.
 
+Agents get their part of the standards from `check_run.py --standards`,
+whose command their brief gives on its `Read the standards with:` line;
+`standards.md` stays whole.
+
 ## spec.md
 
 Must contain a mode line and an acceptance criteria section:
@@ -85,6 +90,22 @@ A `total()` function in `shop/cart.py`.
 ```
 
 The mode line is exactly `Mode: prototype` or `Mode: production`.
+
+## context.md
+
+The scout writes it before the architect, in a project that already has
+code, at most 16000 bytes. `check_run.py --plan` reports a bigger one. One
+entry per file, no approach and no tasks:
+
+```markdown
+# Context: cart total
+
+## shop/cart.py
+- Lines: 10-40, 88-95
+- What: subtotal() and apply_discount(), where total() will go.
+- Why: the spec adds total() to the cart.
+- Changes with it: tests/test_cart.py, README.md
+```
 
 ## plan.md
 

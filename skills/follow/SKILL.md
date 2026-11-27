@@ -213,7 +213,10 @@ every comment, the ones marked `(TypeSafe not reachable) ` included.
    name the feedback report, so the outside section is not put in
    front of a builder. When the run's last `Code graph:` line says yes,
    the builder's and the reviewers' briefs also have the
-   `Explore code with:` line.
+   `Explore code with:` line. The builder's and the reviewers' briefs, and a
+   re-plan's brief to the architect, always have the
+   `Read the standards with:` line, as the build
+   playbook's **The team.** says. Follow dispatches no scout.
    Test-first, the `check_run.py --task` check, the reviews for the run's
    mode (with their `Read the plan with:` lines) and the commit all work exactly as in the build playbook's Fix
    loop. Set the Agent tool's `model` and `effort` on every dispatch, as
