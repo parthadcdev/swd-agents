@@ -389,6 +389,23 @@ Builders, reviewers and QA get their part of the plan from
 `Read the plan with:` line; `plan.md` stays whole, and an agent may open
 it when its part lacks something.
 
+Every agent but the judge gets its part of the standards from
+`check_run.py --standards <role> <run>`, whose command its brief gives on
+its `Read the standards with:` line. The roles are architect, builder,
+code-reviewer, security-reviewer, qa, judge and scout, and `standards.md`
+is still written whole. The judge has no shell, so its brief has no such
+line and it reads `standards.md` whole.
+
+Before the architect designs, a scout on Sonnet reads the codebase and
+writes `context.md` in the run folder, at most 16000 bytes;
+`check_run.py --plan` reports a bigger one and the principal sends the
+scout back to shorten it. The scout is dispatched in production and
+prototype mode when the project already has code, not in quick mode, not
+for an amendment or a re-plan, and not by the follow skill. The architect
+starts from `context.md`, the project notes and the code graph, and opens a
+project file only for what `context.md` does not answer. No saving from
+the scout has been measured yet.
+
 ## Models
 
 - The principal runs on Fable 5.2, or on Fable 5.2 or Opus 5.5 in a

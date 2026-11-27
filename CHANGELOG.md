@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.17.0
+
+- Each agent reads its part of the standards, not the whole file. Measured
+  on this machine's transcripts, every agent read `standards.md` whole, 18
+  to 29 KB a read. Now the brief to the architect, a builder, the code
+  reviewer, the security reviewer, QA and the scout has a
+  `Read the standards with:` line, the command
+  `check_run.py --standards <role> <run>`. The roles are architect,
+  builder, code-reviewer, security-reviewer, qa, judge and scout.
+  `standards.md` is still written whole. The judge has no shell, so its
+  brief has no such line and it reads `standards.md` whole.
+- A scout on Sonnet reads the codebase and writes `context.md` in the run
+  folder before the architect designs. It is at most 16000 bytes;
+  `check_run.py --plan` reports a bigger one and the principal sends the
+  scout back to shorten it. The scout is dispatched in production and
+  prototype mode when the project already has code, not in quick mode, not
+  for an amendment or a re-plan, and not by the follow skill. The architect
+  starts from `context.md`, the project notes and the code graph, and opens
+  a project file only for what `context.md` does not answer. No saving from
+  the scout has been measured yet.
+- No permission rule is added.
+
 ## 0.16.0
 
 - Agents use CodeGraph when the project has a code graph. CodeGraph is

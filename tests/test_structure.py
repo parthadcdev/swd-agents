@@ -1063,13 +1063,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.16.0"):
-            self.assertEqual(manifest["version"], "0.16.0")
+        with self.subTest(file="plugin.json", version="0.17.0"):
+            self.assertEqual(manifest["version"], "0.17.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.16.0"):
-            self.assertEqual(first, "## 0.16.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.17.0"):
+            self.assertEqual(first, "## 0.17.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the
@@ -2344,7 +2344,7 @@ class RoleSliceTest(unittest.TestCase):
         with self.subTest(file="CHANGELOG.md 0.13.0", needle="no permission rule"):
             self.assertIn("No permission rule is added", entry)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.16.0")
+        self.assertEqual(manifest["version"], "0.17.0")
 
 
 # 0.14.0 (C3, C4): a run keeps to the cap, and the test lock keeps one suite at a time.
@@ -2770,7 +2770,7 @@ class CodeGraphDocsTest(unittest.TestCase):
                 self.assertIn(f"`{sub}`", entry)
         self.assertIn(CG_NAMES, entry)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.16.0")
+        self.assertEqual(manifest["version"], "0.17.0")
 
     def test_s10_setup_step_5(self):
         self.assertIn(CG_S10, words("skills", "setup", "SKILL.md"))
@@ -2925,6 +2925,36 @@ class StandardsSliceTest(unittest.TestCase):
         with self.subTest(file="models.md"):
             self.assertIn("The scout runs on `sonnet`, fixed, with no staffing row.", words("standards", "models.md"))
             self.assertIn("with no staffing row.** You still choose the effort.", words("standards", "models.md"))
+
+
+# 0.17.0 (T3): the README and the changelog say what the token diet changes.
+DIET_DOC = (
+    "`check_run.py --standards <role> <run>`",
+    "architect, builder, code-reviewer, security-reviewer, qa, judge and scout",
+    "`Read the standards with:` line",
+    "`standards.md` is still written whole",
+    "The judge has no shell, so its brief has no such line and it reads `standards.md` whole.",
+    "scout on Sonnet reads the codebase and writes `context.md`",
+    "at most 16000 bytes",
+    "`check_run.py --plan` reports a bigger one",
+    "in production and prototype mode when the project already has code, not in quick mode, not for an amendment "
+    "or a re-plan, and not by the follow skill",
+    "opens a project file only for what `context.md` does not answer",
+    "No saving from the scout has been measured yet.",
+)
+
+
+class TokenDietDocsTest(unittest.TestCase):
+    def test_the_docs_say_it_and_the_release_is_0_17_0(self):
+        entry = changelog_entry("0.17.0")
+        for name, text in (("README.md", words("README.md")), ("CHANGELOG.md 0.17.0", entry)):
+            for needle in DIET_DOC:
+                with self.subTest(file=name, needle=needle[:40]):
+                    self.assertIn(needle, text)
+        with self.subTest(file="CHANGELOG.md 0.17.0", needle="no permission rule"):
+            self.assertIn("No permission rule is added.", entry)
+        manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["version"], "0.17.0")
 
 
 class WindowsTest(unittest.TestCase):
