@@ -368,6 +368,7 @@ Finish: pr. Comments set aside there are triaged again by `/swd:follow`.
 | Role | Kind | Does |
 |---|---|---|
 | Principal engineer (`/swd:build`) | Coordinates | Clarifies, plans, judges the plan against the spec, chooses each agent's model and effort, dispatches, routes fixes, decides |
+| Scout | Reads | Reads the codebase before the architect designs and writes `context.md`, on Sonnet |
 | Architect | Designs | Design, contracts and the task list |
 | Backend engineer | Builds | APIs, services, business logic |
 | Frontend engineer | Builds | Pages, components, client-side logic |
@@ -403,8 +404,10 @@ scout back to shorten it. The scout is dispatched in production and
 prototype mode when the project already has code, not in quick mode, not
 for an amendment or a re-plan, and not by the follow skill. The architect
 starts from `context.md`, the project notes and the code graph, and opens a
-project file only for what `context.md` does not answer. No saving from
-the scout has been measured yet.
+project file only for what `context.md` does not answer. The scout has
+the same shell as the other agents and no Edit tool; only its
+instructions hold it to writing `context.md` alone. No saving from the
+scout has been measured yet.
 
 ## Models
 
@@ -553,7 +556,7 @@ Two files in `.swd/` outlive runs:
 CodeGraph is optional: swd works the same without it.
 
 When the project folder has a `.codegraph/` index and `codegraph` is on
-PATH, the architect, the builders and the two reviewers explore code with
+PATH, the architect, the scout, the builders and the two reviewers explore code with
 `codegraph explore` first, and fall back to searching and reading files
 when it finds nothing useful. The index describes the project folder on
 its branch, not the run's worktree, so an agent reads the worktree's own

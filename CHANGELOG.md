@@ -18,8 +18,10 @@
   prototype mode when the project already has code, not in quick mode, not
   for an amendment or a re-plan, and not by the follow skill. The architect
   starts from `context.md`, the project notes and the code graph, and opens
-  a project file only for what `context.md` does not answer. No saving from
-  the scout has been measured yet.
+  a project file only for what `context.md` does not answer. The scout has
+  the same shell as the other agents and no Edit tool; only its
+  instructions hold it to writing `context.md` alone. No saving from the
+  scout has been measured yet.
 - No permission rule is added.
 
 ## 0.16.0

@@ -2675,7 +2675,7 @@ CG_S7 = (
 )
 CG_S8 = (
     "CodeGraph is optional: swd works the same without it.",
-    "the architect, the builders and the two reviewers explore code with `codegraph explore` first",
+    "the architect, the scout, the builders and the two reviewers explore code with `codegraph explore` first",
     "not the run's worktree",
     "swd never builds, updates or removes an index: indexing is your decision.",
     "`/swd:setup` then allows `codegraph explore`, which reads the index and does not build or sync it. It asks "
@@ -2951,7 +2951,10 @@ DIET_DOC = (
     "or a re-plan, and not by the follow skill",
     "opens a project file only for what `context.md` does not answer",
     "No saving from the scout has been measured yet.",
+    "The scout has the same shell as the other agents and no Edit tool; only its instructions hold it to writing "
+    "`context.md` alone.",
 )
+DIET_TEAM_ROW = "| Scout | Reads | Reads the codebase before the architect designs and writes `context.md`, on Sonnet |"
 
 
 class TokenDietDocsTest(unittest.TestCase):
@@ -2963,6 +2966,8 @@ class TokenDietDocsTest(unittest.TestCase):
                     self.assertIn(needle, text)
         with self.subTest(file="CHANGELOG.md 0.17.0", needle="no permission rule"):
             self.assertIn("No permission rule is added.", entry)
+        with self.subTest(file="README.md", needle="team row"):
+            self.assertIn(DIET_TEAM_ROW, (ROOT / "README.md").read_text(encoding="utf-8"))
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["version"], "0.17.0")
 
