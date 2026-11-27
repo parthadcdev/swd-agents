@@ -395,7 +395,22 @@ Every agent but the judge gets its part of the standards from
 its `Read the standards with:` line. The roles are architect, builder,
 code-reviewer, security-reviewer, qa, judge and scout, and `standards.md`
 is still written whole. The judge has no shell, so its brief has no such
-line and it reads `standards.md` whole.
+line; it reads `standards-judge.md`, which the principal writes. On a plan
+it reads the plan, not the codebase: `spec.md`, `plan.md`, `context.md`
+when there is one, and `standards-judge.md`, and it opens a project file
+only to settle a claim its verdict turns on. It gives every objection in
+one pass, under `## Blocking` and `## Notes`, and when it judges a plan again
+its brief has an `Earlier verdict:` line. After two rejections of a run's
+plan the next step is you: an attended run stops and shows the open
+blocking items, and unattended, the run stops as blocked. Two rules
+narrow what the judge sees, and every command is still read in every
+pass: a second judging checks each earlier blocking item and raises a new
+one only in what the amendment changed, and a plan is read, not explored.
+In an unattended queue run on Opus 5.5 the judge's verdict is the only
+independent check on the plan before it is built, and the judge now
+starts from `context.md`, which the scout wrote after reading the
+requirement, and checks the plan's claims about code only for commands
+and trust boundaries.
 
 Before the architect designs, a scout on Sonnet reads the codebase and
 writes `context.md` in the run folder, at most 16000 bytes;
@@ -404,11 +419,38 @@ scout back to shorten it. The scout is dispatched in production and
 prototype mode when the project already has code, not in quick mode, not
 for an amendment or a re-plan, and not by the follow skill. The architect
 starts from `context.md`, the project notes and the code graph, and opens a
-project file only for what `context.md` does not answer. The scout has
-the same shell as the architect, the builders and the reviewers and no
-Edit tool; only its
-instructions hold it to writing `context.md` alone. No saving from the
-scout has been measured yet.
+project file only for what `context.md` does not answer. The scout
+reads `requirement.md`, which in a queue run can be GitHub issue text,
+with a shell, before any plan is judged, so `context.md` is a map for the
+architect, not evidence: the scout writes what the code shows, never what
+the requirement says about it, and the architect reads the code itself
+where the change touches a trust boundary. The scout has the same shell
+as the architect, the builders, the reviewers and QA, and no Edit tool;
+only its instructions hold it to writing `context.md` alone. No saving
+from the scout has been measured yet.
+
+Every task in `plan.md` has a `- Trust boundary:` line, `no` or
+`yes (<what it touches>)`, written in every mode and by every amendment.
+`--plan` and `--seal` refuse a plan without it or with another value;
+`--task` and the check of a finished run do not, so a finished run from
+before 0.18.0 is not held to it, and an amended one gets the line on every
+task. The line decides the reviews. In production there is a security
+review for a task only when its line says `yes`, and the security
+reviewer is also brought in for a task marked `no` when the code reviewer
+reports a trust boundary the plan missed: the code reviewer reports
+`## Trust boundary not in the plan` when a task marked `no` touches a
+boundary. Until 0.18.0 every production task had its own security review;
+the architect's `no` now removes it, and a wrong `no` that the code
+reviewer does not catch means a security problem is found at the end of the run, by the security review of the
+whole change, or missed. The whole change is always security-reviewed in
+production, unless the plan's one task was `yes`. After a fix, only the
+reviewer whose finding the fix answers reviews again, and only the fix,
+except that the security reviewer reviews a fix again when it changes a
+file at a trust boundary, and the other reviewer when the principal judges
+the fix larger than the finding. A low finding on a pass
+goes to the backlog, except that it is fixed at once when the task goes
+back to its builder anyway or when it is at a trust boundary and the fix
+is small.
 
 ## Models
 
@@ -456,7 +498,8 @@ scout has been measured yet.
   ruling that touches a trust boundary (permissions, secrets, or input
   that reaches a shell); and a ruling a builder or a checker disputes.
   Its brief holds the question, never the principal's answer; it reads
-  the run folder, runs nothing, and writes `reports/judge-<n>.md`. The
+  the run folder, runs nothing, and writes `reports/judge-<n>.md`; on a plan
+  it reads the plan, not the codebase (see The team). The
   principal records each verdict in `decisions.md` and follows it, or
   records why it overrules it (`Judge overruled:`). When the judge
   cannot be reached (the dispatch fails or is cut off, for example
@@ -518,8 +561,10 @@ it at the approval gate.
   the plan's outcome. No architect.
 - **Prototype / MVP:** fastest working result, fewest tokens, one review at
   the end.
-- **Production:** every task reviewed for quality and security, full suite
-  after every wave.
+- **Production:** every task reviewed for quality, and for security when its
+  `- Trust boundary:` line says `yes`; the whole change reviewed for
+  security unless the plan's one task was `yes`; full suite after every
+  wave.
 
 ## Git
 

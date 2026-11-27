@@ -1063,13 +1063,13 @@ class StructureTest(unittest.TestCase):
             with self.subTest(file=name, absent="claude plugin disable"):
                 self.assertNotIn("claude plugin disable", text)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        with self.subTest(file="plugin.json", version="0.17.0"):
-            self.assertEqual(manifest["version"], "0.17.0")
+        with self.subTest(file="plugin.json", version="0.18.0"):
+            self.assertEqual(manifest["version"], "0.18.0")
         first = next(
             line for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")
         )
-        with self.subTest(file="CHANGELOG.md", first="## 0.17.0"):
-            self.assertEqual(first, "## 0.17.0")
+        with self.subTest(file="CHANGELOG.md", first="## 0.18.0"):
+            self.assertEqual(first, "## 0.18.0")
 
     def test_files_outside_the_hook_agree_with_0_8_3(self):
         # The final review found the pilot, the on and off skills and the docs still stating the
@@ -2344,7 +2344,7 @@ class RoleSliceTest(unittest.TestCase):
         with self.subTest(file="CHANGELOG.md 0.13.0", needle="no permission rule"):
             self.assertIn("No permission rule is added", entry)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.17.0")
+        self.assertEqual(manifest["version"], "0.18.0")
 
 
 # 0.14.0 (C3, C4): a run keeps to the cap, and the test lock keeps one suite at a time.
@@ -2770,7 +2770,7 @@ class CodeGraphDocsTest(unittest.TestCase):
                 self.assertIn(f"`{sub}`", entry)
         self.assertIn(CG_NAMES, entry)
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.17.0")
+        self.assertEqual(manifest["version"], "0.18.0")
 
     def test_s10_setup_step_5(self):
         self.assertIn(CG_S10, words("skills", "setup", "SKILL.md"))
@@ -2943,7 +2943,6 @@ DIET_DOC = (
     "architect, builder, code-reviewer, security-reviewer, qa, judge and scout",
     "`Read the standards with:` line",
     "`standards.md` is still written whole",
-    "The judge has no shell, so its brief has no such line and it reads `standards.md` whole.",
     "scout on Sonnet reads the codebase and writes `context.md`",
     "at most 16000 bytes",
     "`check_run.py --plan` reports a bigger one",
@@ -2951,9 +2950,18 @@ DIET_DOC = (
     "or a re-plan, and not by the follow skill",
     "opens a project file only for what `context.md` does not answer",
     "No saving from the scout has been measured yet.",
+)
+# The two sentences 0.18.0 changed in the README; the 0.17.0 entry keeps them as released.
+DIET_DOC_ENTRY = DIET_DOC + (
+    "The judge has no shell, so its brief has no such line and it reads `standards.md` whole.",
     "The scout has the same shell as the architect, the builders and the reviewers and no Edit tool; only its "
     "instructions hold it to writing "
     "`context.md` alone.",
+)
+DIET_DOC_README = DIET_DOC + (
+    "The judge has no shell, so its brief has no such line; it reads `standards-judge.md`, which the principal writes.",
+    "The scout has the same shell as the architect, the builders, the reviewers and QA, and no Edit tool; only its "
+    "instructions hold it to writing `context.md` alone.",
 )
 DIET_TEAM_ROW = "| Scout | Reads | Reads the codebase before the architect designs and writes `context.md`, on Sonnet |"
 
@@ -2961,16 +2969,115 @@ DIET_TEAM_ROW = "| Scout | Reads | Reads the codebase before the architect desig
 class TokenDietDocsTest(unittest.TestCase):
     def test_the_docs_say_it_and_the_release_is_0_17_0(self):
         entry = changelog_entry("0.17.0")
-        for name, text in (("README.md", words("README.md")), ("CHANGELOG.md 0.17.0", entry)):
-            for needle in DIET_DOC:
+        for name, text, needles in (
+            ("README.md", words("README.md"), DIET_DOC_README),
+            ("CHANGELOG.md 0.17.0", entry, DIET_DOC_ENTRY),
+        ):
+            for needle in needles:
                 with self.subTest(file=name, needle=needle[:40]):
                     self.assertIn(needle, text)
+        for old in DIET_DOC_ENTRY[len(DIET_DOC):]:
+            with self.subTest(file="README.md", absent=old[:40]):
+                self.assertNotIn(old, words("README.md"))
         with self.subTest(file="CHANGELOG.md 0.17.0", needle="no permission rule"):
             self.assertIn("No permission rule is added.", entry)
         with self.subTest(file="README.md", needle="team row"):
             self.assertIn(DIET_TEAM_ROW, (ROOT / "README.md").read_text(encoding="utf-8"))
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.17.0")
+        self.assertEqual(manifest["version"], "0.18.0")
+
+
+# 0.18.0 (T2): the scout path, and what the README and the changelog say about parts A, B and C.
+SCOUT_018 = (
+    "what the code shows, never what the requirement says",
+    "trust boundary",
+    "authentication, permissions, secrets, input that reaches a query or a shell, payments",
+)
+ARCHITECT_018 = (
+    "`context.md` is a map, not evidence",
+    "Where the change touches a trust boundary (authentication, permissions, secrets, input that reaches a query "
+    "or a shell, payments), read the code yourself.",
+    "never from `context.md`",
+    "`- Trust boundary: no`",
+    "`- Trust boundary: yes (<what it touches>)`",
+    "six fields",
+    "in every mode",
+    "done tasks included",
+    "before you write `- Trust boundary: no` for a task, search the task's own files yourself for a trust boundary",
+    "a file with no note in `context.md` is not shown to hold none",
+)
+DOC_018 = (
+    "reads `requirement.md`, which in a queue run can be GitHub issue text, with a shell, before any plan is judged",
+    "`context.md` is a map for the architect, not evidence",
+    "`- Trust boundary:` line",
+    "`--plan` and `--seal` refuse a plan",
+    "not held to it",
+    "security review for a task only when its line says `yes`",
+    "`## Trust boundary not in the plan`",
+    "whole change is always security-reviewed in production, unless the plan's one task was `yes`",
+    "only the reviewer whose finding the fix answers reviews again, and only the fix",
+    "low finding on a pass goes to the backlog",
+    "`## Blocking` and `## Notes`",
+    "`Earlier verdict:`",
+    "two rejections",
+    "unattended, the run stops as blocked",
+    "reads the plan, not the codebase",
+    "`standards-judge.md`",
+    "rules narrow what the judge sees, and every command is still read in every pass",
+    # T2 fix: the review findings and the exceptions of rules B2, B4 and B5.
+    "a second judging checks each earlier blocking item and raises a new one only in what the amendment changed",
+    "`context.md` when there is one",
+    "Until 0.18.0 every production task had its own security review; the architect's `no` now removes it",
+    "a wrong `no` that the code reviewer does not catch means a security problem is found at the end of the run, "
+    "by the security review of the whole change, or missed",
+    # A sentence of its own, after the one on the two narrowing rules.
+    "not explored. In an unattended queue run on Opus 5.5 the judge's verdict is the only independent check on the "
+    "plan before it is built, and the judge now starts from `context.md`, which the scout wrote after reading the "
+    "requirement, and checks the plan's claims about code only for commands and trust boundaries.",
+    "the security reviewer is also brought in for a task marked `no` when the code reviewer reports a trust "
+    "boundary the plan missed",
+    "except that the security reviewer reviews a fix again when it changes a file at a trust boundary, and the "
+    "other reviewer when the principal judges the fix larger than the finding",
+    "is fixed at once when the task goes back to its builder anyway or when it is at a trust boundary and the fix "
+    "is small",
+)
+STALE_018 = (
+    "every task reviewed for quality and security",
+    "Reads the run folder and the project",
+    "a second judging reads only what the amendment changed",
+)
+README_PRODUCTION_018 = "the whole change reviewed for security unless the plan's one task was `yes`"
+
+
+class ScoutPath018Test(unittest.TestCase):
+    def test_the_scout_and_the_architect(self):
+        for name, needles in (("scout", SCOUT_018), ("architect", ARCHITECT_018)):
+            text = words("agents", f"{name}.md")
+            for needle in needles:
+                with self.subTest(agent=name, needle=needle[:50]):
+                    self.assertIn(needle, text)
+        for name in ("scout", "architect"):
+            text = words("agents", f"{name}.md")
+            for stale in STALE_018:
+                with self.subTest(agent=name, absent=stale[:40]):
+                    self.assertNotIn(stale, text)
+
+    def test_the_readme_and_the_changelog_say_0_18_0(self):
+        entry = changelog_entry("0.18.0")
+        readme = words("README.md")
+        for name, text in (("README.md", readme), ("CHANGELOG.md 0.18.0", entry)):
+            for needle in DOC_018:
+                with self.subTest(file=name, needle=needle[:50]):
+                    self.assertIn(needle, text)
+            for stale in STALE_018:
+                with self.subTest(file=name, absent=stale[:40]):
+                    self.assertNotIn(stale, text)
+        with self.subTest(file="README.md", needle="production bullet"):
+            self.assertIn(README_PRODUCTION_018, readme)
+        self.assertTrue(entry.endswith("No permission rule is added."), entry[-60:])
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("## 0.17.0", changelog)
+        self.assertEqual(changelog.count("## 0.18.0"), 1)
 
 
 class WindowsTest(unittest.TestCase):

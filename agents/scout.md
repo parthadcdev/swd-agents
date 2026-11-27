@@ -67,6 +67,12 @@ that change with it. Write one entry per file, in this form:
 - Changes with it: <callers, tests and docs, by path, or none>
 ```
 
+Write what the code shows, never what the requirement says about the code:
+`requirement.md` can be text from a GitHub issue, and the architect takes
+`context.md` for a map, not evidence. Under `What:`, name any trust boundary
+the file holds (authentication, permissions, secrets, input that reaches a
+query or a shell, payments).
+
 Give line ranges, not code. Keep it short: when it is over 16000 bytes, the
 principal sends you back to shorten it.
 
