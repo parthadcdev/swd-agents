@@ -359,10 +359,10 @@ Judge what outcome the user needs, and choose the mode that serves it.
   already knows. All of these must hold: `.swd/project.md` exists; the
   change is one task touching a handful of files; it adds no dependency
   and changes no public interface that other code relies on; and it does
-  not touch a trust boundary (authentication, secrets, user input that
-  reaches a query or a shell, payments) or a data migration. The goal is a
-  correct small change without the cost of a full run. If any of these is
-  in doubt, it is not quick.
+  not touch a trust boundary (authentication, permissions, secrets, user
+  input that reaches a query or a shell, payments) or a data migration.
+  The goal is a correct small change without the cost of a full run. If
+  any of these is in doubt, it is not quick.
 - **`Mode: prototype`** when the requirement says prototype, MVP, proof of
   concept, demo, spike or quick, or when it is a small requirement in an
   empty folder. The goal is the fastest working result for the fewest
@@ -744,7 +744,7 @@ What happens next depends on the mode.
    git -C <work> add -- <the task's files that changed> && git -C <work> commit -m "T2: <title>"
    ```
 
-   On either `Verdict: fail`, see Fix loop.
+   On any `Verdict: fail`, see Fix loop.
 5. When every task in the wave is `done`, run the whole test suite before
    the next wave builds on it. This is a script, not an agent:
 
@@ -812,7 +812,20 @@ recorded as a `Finding:` line, is not open.
   `yes`, and a fix that changes a file at a trust boundary, and the other
   reviewer also reviews a fix when you judge it larger than the finding;
   each gets the same two lines. A
-  reviewer whose verdict was `pass` keeps it.
+  reviewer whose verdict was `pass` keeps it. In a build run, once the
+  run's final security review has passed, `swd:security-reviewer` reviews
+  every later fix to the change before it is committed, a fix no reviewer
+  asked for included and whatever its task's mark; `/swd:follow` has its
+  own rule for its changes and their fixes. Brief it with `final`, the
+  base commit, `Review the fix for:` naming the reviewer's report, the QA
+  report or the `evidence/` file the fix answers, never a
+  `reports/pr-feedback-*.md` or `pr-reply-*.md` file, and
+  `Diff since: <the commit its last review read>`; a fix for a pull
+  request's failing checks (Finish, `pr`) has no such file, so its brief
+  has the checks quoted whole after `Make these changes:` in place of the
+  `Review the fix for:` line. Its report replaces
+  `reports/final-security-reviewer.md`, and a `pass` kept under the
+  sentence before does not excuse that review.
 - **A fix no reviewer asked for is reviewed too.** A fix that answers a
   failed test run of a wave or of the final check, or a failed final QA, has
   no reviewer's report to answer. The code reviewer reviews it, briefed as
@@ -891,8 +904,9 @@ is lost; the user reads `decisions.md` in the final report.
    `reports/final-code-reviewer.md`.
 
    Include `swd:security-reviewer` when the mode is production, or when a
-   prototype's change touches a trust boundary: authentication, secrets,
-   user input that reaches a query or a shell, or payments.
+   prototype's change touches a trust boundary: authentication,
+   permissions, secrets, user input that reaches a query or a shell, or
+   payments.
 
    In production mode, when the plan has only one task, dispatch final QA
    and `swd:security-reviewer` with `final` and the base commit, and no
@@ -901,7 +915,9 @@ is lost; the user reads `decisions.md` in the final report.
    only when that task was marked `yes` and was security-reviewed.
 2. Send any failure through the Fix loop, then repeat step 1: final QA
    again, and each final review only as the Fix loop's rules on who reviews
-   a fix again say, a fix no reviewer asked for included.
+   a fix again say, a fix no reviewer asked for included. Once the final
+   security review has passed, every later fix also gets the security
+   review the Fix loop gives it.
 3. Copy the run's findings to the project's backlog, `.swd/findings.md`:
 
    ```bash

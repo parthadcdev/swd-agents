@@ -79,13 +79,22 @@ failed final QA, is reviewed by the code reviewer, and by the security
 reviewer too when its task is marked `yes` or it changes a file at a trust
 boundary.
 
+In a build run, once the final security review has passed, every later fix,
+one no reviewer asked for included, is reviewed by the final security
+reviewer before it is committed, with `Diff since:` in its brief, whatever
+its task's mark; a reviewer keeping its `pass` does not excuse this.
+`/swd:follow` has its own rule, under `## Security`.
+
 ## Security
 
 Every task marked `- Trust boundary: yes` gets a security review, and so
 does the whole change, unless the plan's one task was marked `yes` and was
-security-reviewed. Builders validate input at trust boundaries, never put
-secrets in code or logs, and never build queries or shell commands by
-joining strings with user input.
+security-reviewed. In `/swd:follow`, which has no final verification,
+every change made for a pull request item, every fix to it and the change
+of a task the architect adds there gets a security review before it is
+committed, whatever its task's mark. Builders validate input at trust
+boundaries, never put secrets in code or logs, and never build queries or
+shell commands by joining strings with user input.
 
 ## Performance
 

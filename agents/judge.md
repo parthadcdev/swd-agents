@@ -35,10 +35,13 @@ these lines:
     Question: <the question, and the files it turns on; never the conductor's answer>
     Report: <run>/reports/judge-<n>.md
 
-When the plan is judged again after an amendment, the brief also has:
+When the plan is judged again after an amendment, and an earlier report on
+this run's plan did not hold, the brief also has:
 
     Earlier verdict: reports/judge-<n>.md
     Amendment changed: <the tasks and plan sections the amendment changed, from the architect's report>
+
+Otherwise it has neither line, and you judge the whole plan.
 
 Read the files the question turns on. `standards-judge.md` is your part of
 the standards, which the principal writes in the run folder; read it in

@@ -156,11 +156,13 @@ has a `Plan checksum:` line, so a run that was sealed before these existed
 still checks clean; a run never sealed is held to them. When a sealed run's
 plan is amended, the amendment adds them, because the plan is sealed again.
 
-`check_run.py --plan` and `--seal` also require the `- Trust boundary:` line
-on every task and refuse a value that is neither; `--task` and the check of
-a finished run do not, so a run from before 0.18.0 still checks clean. When
-a sealed run's plan is amended, the amendment adds the line to every task,
-done tasks included.
+`check_run.py --plan` also requires the `- Trust boundary:` line on every
+task and refuses a value that is neither. So does `--seal`, except on a plan
+unchanged since the last `Plan checksum:` line in `decisions.md`, so a run
+sealed before 0.18.0 is sealed again after a change to `staffing.md` alone.
+`--task` and the check of a finished run do not require it, so a run from
+before 0.18.0 still checks clean. When a sealed run's plan is amended, the
+amendment adds the line to every task, done tasks included.
 
 Rules for tasks:
 
@@ -476,15 +478,20 @@ The judge reads the plan, not the codebase: `spec.md`, `plan.md`,
 `context.md` when there is one, and `standards-judge.md`, which the
 principal writes before each judge dispatch with
 `check_run.py --standards judge <run> > <run>/standards-judge.md`; it reads
-`standards.md` when that file is not there.
+`standards.md` when that file is not there. It opens a project file only to
+settle a claim its verdict turns on: the project notes, for the commands
+they list, the script or config a command names, and code at a trust
+boundary.
 
-After the second report on a run's plan that does not hold (the judge's,
-or, on Fable 5.2, the principal's own judging), counted from the start of
-the run, amendments after the gate included, the next step is the user, not
-the architect: an attended run stops and shows the user the open blocking
-items; an unattended run sets its tasks `blocked`, logs `blocked` and
-stops. The refusal above still refuses the seal; only its sending the plan
-back to the architect holds for the first rejection only.
+After the second rejection of a run's plan (the judge's verdict that it
+does not hold, or, on Fable 5.2, the principal's own judging that finds it
+does not), counted from the start of the run, amendments after the gate
+included, the next step is the user, not the architect: an attended run
+stops and shows the user the open blocking items; an unattended run sets
+every task in the ledger that is not `done` to `blocked` when the ledger
+exists, logs `blocked` and stops. The refusal above still refuses the seal;
+only its sending the plan back to the architect holds for the first
+rejection only.
 
 Before each judge dispatch, choose the lowest `n` with no
 `reports/judge-<n>.md`; a reply that starts `No verdict` did not reach

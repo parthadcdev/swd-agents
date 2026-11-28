@@ -231,13 +231,35 @@ every comment, the ones marked `(TypeSafe not reachable) ` included.
    playbook's Build steps give its task for the run's mode, by the task's
    `- Trust boundary:` line; a fix after one of those reviews follows that
    playbook's Fix loop rules on who reviews a fix again and on a low finding
-   on a pass.
+   on a pass. In production mode, `swd:security-reviewer` also reviews
+   every change made for a pull request item before it is committed,
+   whatever its task's `- Trust boundary:` line, and every fix to that
+   change; so does the change of a task the architect adds in a follow
+   round. Brief it as for a review of its task: the three opening lines,
+   `Goal:`, `Read the plan with:` with `review:<task id>`,
+   `Read the standards with:`, `Explore code with:` when the code graph
+   says yes, and the task id, plus the items quoted whole after
+   `Make these changes:`, as the builder's brief has them. It has no
+   `Diff since:` line: the change is uncommitted when it is reviewed, so
+   the reviewer reviews `git diff`. A fix to that change adds
+   `Review the fix for:` naming the reviewer's report it answers or the
+   `evidence/` file of the failed test run. No line of the brief names
+   `reports/pr-feedback-*.md` or `pr-reply-*.md`. Its report is
+   `reports/<task id>-security-reviewer.md`, written over the earlier one;
+   for a task marked `yes` it is the security review the Build steps give
+   it, not a second one. Follow has no final verification, so no security
+   review of the whole change comes after it, and this rule takes the
+   place of the build playbook's rule for a fix after the final security
+   review has passed: a follow change in a delivered production run gets
+   one security review, this one, and `reports/final-security-reviewer.md`
+   is not rewritten.
    If a change is in a file no task owns, send the architect to add a
    task with the same quoted items, never the report. A re-plan started
    from a follow round passes the architect the builder and reviewer
    reports, never a `pr-feedback-*` file. Then check, judge, staff and
    seal the amended plan as the build playbook's Gate describes, and
-   build that task. A run from before 0.8.0
+   build that task, with the security review above in production mode,
+   whatever its mark. A run from before 0.8.0
    has no `## Outcome`, no `- Outcome:` lines and no `staffing.md`, and
    the seal needs all three: have the architect add the Outcome section
    and every task's `- Outcome:` in the same amendment, and write

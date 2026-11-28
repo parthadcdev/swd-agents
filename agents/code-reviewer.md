@@ -72,7 +72,9 @@ to index the worktree: indexing is the user's decision.
    the task again. Read the report it names. Hold the fix to each finding in
    that report, against the uncommitted diff, or against `git diff <commit>`
    when your brief has `Diff since: <commit>`, and check whether the fix
-   broke what it touches.
+   broke what it touches. When the file it names is another reviewer's
+   report, an evidence file or a QA report, review what the fix changed for
+   your own concerns, and check that the failure it names is gone.
 
    If the task's `- Trust boundary:` line in your part of the plan says
    `no`, and the diff touches a trust boundary (authentication, permissions,
