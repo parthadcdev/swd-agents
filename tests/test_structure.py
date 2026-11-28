@@ -3076,6 +3076,17 @@ DOC_018 = (
     "goes to the backlog as a `Finding:` line in `decisions.md`",
     "A medium or higher finding on a pass is ruled on as before.",
     "written in every mode, by the architect or, in quick mode, by the principal",
+    # T6: the rules committed after T4 (ea49e6e, T5), with their conditions (rule C7).
+    "except that `--seal` does not on a plan unchanged since the last `Plan checksum:` line",
+    "In production, outside `/swd:follow`, there is a security review for a task only when its line says `yes`",
+    "In `/swd:follow` in production mode, every change made for a pull request item and every fix to it gets a "
+    "security review before it is committed, whatever its task's mark",
+    "and so does the change of a task the architect adds there",
+    "`reports/final-security-reviewer.md` is not rewritten",
+    "once the final security review has passed, the security reviewer reviews every later fix before it is "
+    "committed, a fix no reviewer asked for included, whatever its task's mark",
+    "a reviewer keeping its `pass` does not excuse that review",
+    "never a `reports/pr-feedback-*.md` or `pr-reply-*.md` file",
 )
 STALE_018 = (
     "every task reviewed for quality and security",
@@ -3116,6 +3127,10 @@ class ScoutPath018Test(unittest.TestCase):
         with self.subTest(file="README.md", needle="production bullet"):
             self.assertIn(README_PRODUCTION_018, readme)
             self.assertIn("line says `yes` (or it has no such line, in a run from before 0.18.0)", readme)
+            # T6: the Production bullet's two exceptions.
+            self.assertIn("every change `/swd:follow` makes for a pull request item, and every fix to it, whatever "
+                          "its mark", readme)
+            self.assertIn("every fix after the final security review has passed", readme)
         with self.subTest(file="CHANGELOG.md 0.18.0", needle="queue marker caveat"):
             # skills/queue/SKILL.md:49-52; the README states it in its permissions section.
             self.assertIn("This rests on Claude Code passing the queue's marker on to the commands a run executes, "

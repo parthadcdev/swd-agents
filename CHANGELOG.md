@@ -14,16 +14,26 @@
 - Every task in `plan.md` has a `- Trust boundary:` line, `no` or
   `yes (<what it touches>)`, written in every mode, by the architect or, in
   quick mode, by the principal, and by every amendment, done tasks included.
-  `--plan` and `--seal` refuse a plan without it or with another value;
-  `--task` and the check of a finished run do not, so a finished run from
-  before 0.18.0 is not held to it.
-- The line decides the reviews. In production there is a security review for a
-  task only when its line says `yes` (a task with no line, in a run from before
-  0.18.0, gets both reviewers), and the security reviewer is also brought in
-  for a task marked `no` when the code reviewer reports a trust boundary the
-  plan missed: the code reviewer reports `## Trust boundary not in the plan`
-  when a task marked `no` touches a boundary, and that security review comes
-  before the task is committed, whatever a later fix review says. Until 0.18.0
+  `--plan` and `--seal` refuse a plan without it or with another value,
+  except that `--seal` does not on a plan unchanged since the last
+  `Plan checksum:` line in `decisions.md`, so a run sealed before 0.18.0 is
+  sealed again after a change to `staffing.md` alone; `--task` and the
+  check of a finished run do not, so a finished run from before 0.18.0 is
+  not held to it.
+- The line decides the reviews. In production, outside `/swd:follow`, there
+  is a security review for a task only when its line says `yes` (a task
+  with no line, in a run from before 0.18.0, gets both reviewers), and the
+  security reviewer is also brought in for a task marked `no` when the code
+  reviewer reports a trust boundary the plan missed: the code reviewer
+  reports `## Trust boundary not in the plan` when a task marked `no`
+  touches a boundary, and that security review comes before the task is
+  committed, whatever a later fix review says. In `/swd:follow` in
+  production mode, every change made for a pull request item and every fix
+  to it gets a security review before it is committed, whatever its task's
+  mark, and so does the change of a task the architect adds there. Follow
+  has no final verification, so that is one security review, written to
+  `reports/<task id>-security-reviewer.md`, and
+  `reports/final-security-reviewer.md` is not rewritten. Until 0.18.0
   every production task had its own security review; the architect's `no` now
   removes it, and a wrong `no` that the code reviewer does not catch is left to
   the security review of the whole change, at the end of the run. The whole
@@ -36,7 +46,17 @@
   marked `yes`. A fix no reviewer asked for, one that answers a failed test run
   of a wave or of the final check or a failed final QA, is reviewed by the code
   reviewer, and by the security reviewer too when its task is marked `yes` or
-  it changes a file at a trust boundary. A low finding that changes no
+  it changes a file at a trust boundary. In a build run, once the final
+  security review has passed, the security reviewer reviews every later fix
+  before it is committed, a fix no reviewer asked for included, whatever its
+  task's mark, and its report replaces `reports/final-security-reviewer.md`;
+  a reviewer keeping its `pass` does not excuse that review. Its brief names
+  the reviewer's report, the QA report or the `evidence/` file the fix
+  answers, never a `reports/pr-feedback-*.md` or `pr-reply-*.md` file; a
+  fix for a pull request's failing checks has no such file, so its brief
+  quotes the checks after `Make these changes:` instead. No line of a
+  follow security review's brief names those files either. A low finding
+  that changes no
   behaviour and breaks no rule of the standard does not by itself fail a code
   review. A low finding on a pass goes to the backlog as a `Finding:` line in
   `decisions.md`, except that it is fixed at once when the task goes back to
