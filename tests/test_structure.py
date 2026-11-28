@@ -3026,28 +3026,68 @@ DOC_018 = (
     "`standards-judge.md`",
     "rules narrow what the judge sees, and every command is still read in every pass",
     # T2 fix: the review findings and the exceptions of rules B2, B4 and B5.
-    "a second judging checks each earlier blocking item and raises a new one only in what the amendment changed",
+    # T4: the narrowing applies to a second judging with an `Earlier verdict:` line only (skills/build/SKILL.md).
+    "a second judging with an `Earlier verdict:` line checks each earlier blocking item and raises a new one only "
+    "in what the amendment changed",
     "`context.md` when there is one",
     "Until 0.18.0 every production task had its own security review; the architect's `no` now removes it",
-    "a wrong `no` that the code reviewer does not catch means a security problem is found at the end of the run, "
-    "by the security review of the whole change, or missed",
-    # A sentence of its own, after the one on the two narrowing rules.
-    "not explored. In an unattended queue run on Opus 5.5 the judge's verdict is the only independent check on the "
-    "plan before it is built, and the judge now starts from `context.md`, which the scout wrote after reading the "
-    "requirement, and checks the plan's claims about code only for commands and trust boundaries.",
+    # T4: what stands behind a wrong `no` is the final security review (skills/build/SKILL.md, Final verification).
+    "a wrong `no` that the code reviewer does not catch is left to the security review of the whole change, at the "
+    "end of the run",
+    # T4: what the seal of a queue run on Opus 5.5 enforces, in place of a claim no committed file makes.
+    # T4 fix: the check as standards/run-folder.md:309-312 states it, and `context.md` when there is one.
+    "In a run `/swd:queue` started on Opus 5.5, the seal accepts the plan only when, of the `Judge plan:` and "
+    "`Judge unreachable:` lines below the last `Plan checksum:` line, the last is a `Judge plan:` line whose "
+    "verdict is that the plan holds, and the principal never overrules the judge's verdict on the plan; that "
+    "judge starts from `context.md` when there is one, which the scout wrote after reading the requirement.",
+    "opens a project file only to settle a claim its verdict turns on: the project notes, for the commands they "
+    "list, the script or config a command names, and code at a trust boundary",
+    "A seal after a change to `staffing.md` alone needs no new judge line.",
     "the security reviewer is also brought in for a task marked `no` when the code reviewer reports a trust "
     "boundary the plan missed",
-    "except that the security reviewer reviews a fix again when it changes a file at a trust boundary, and the "
-    "other reviewer when the principal judges the fix larger than the finding",
+    # T4: "also", as the rule says; a `no` task's fix may be the security reviewer's first look.
+    "except that the security reviewer also reviews a fix that changes a file at a trust boundary, and the other "
+    "reviewer a fix the principal judges larger than the finding",
     "is fixed at once when the task goes back to its builder anyway or when it is at a trust boundary and the fix "
     "is small",
+    # The rules T3 added while it was built and reviewed.
+    "an `Amendment changed:` line, which names the tasks and plan sections the amendment changed",
+    "it reads every task's `- Trust boundary:` line again, as it reads every command again: a `no` on a task "
+    "that touches a trust boundary is blocking wherever it is, as far as the plan and the spec show it",
+    "The security reviewer also reviews every fix to a task marked `yes`.",
+    "A fix no reviewer asked for, one that answers a failed test run of a wave or of the final check or a failed "
+    "final QA, is reviewed by the code reviewer, and by the security reviewer too when its task is marked `yes` "
+    "or it changes a file at a trust boundary.",
+    "A low finding that changes no behaviour and breaks no rule of the standard does not by itself fail a code "
+    "review.",
+    # T4: the conditions the committed rules give (rule C6).
+    "When a plan is judged again after an amendment, and an earlier report on this run's plan did not hold, the "
+    "judge's brief has an `Earlier verdict:` line, naming the last such report,",
+    "otherwise the brief has neither line and the judge judges the whole plan",
+    "checks each `- Trust boundary:` line against what the plan and the spec show",
+    "a file with no trust-boundary note in `context.md` is not taken to hold none",
+    "On a plan the judge reads the plan, not the codebase",
+    "(`standards.md` when that file is not there)",
+    "counted from the start of the run, amendments after the gate included",
+    "the judge's verdicts or, on Fable 5.2, the principal's own judging",
+    "a task with no line, in a run from before 0.18.0, gets both reviewers",
+    "that security review comes before the task is committed, whatever a later fix review says",
+    "unless the plan's one task was `yes` and was security-reviewed",
+    "goes to the backlog as a `Finding:` line in `decisions.md`",
+    "A medium or higher finding on a pass is ruled on as before.",
+    "written in every mode, by the architect or, in quick mode, by the principal",
 )
 STALE_018 = (
     "every task reviewed for quality and security",
     "Reads the run folder and the project",
     "a second judging reads only what the amendment changed",
+    # T4: claims no committed file makes.
+    "written by the architect in every mode",
+    "the only independent check on the plan",
+    "The judge reads the plan, not the codebase",
+    "The scout path is closed.",
 )
-README_PRODUCTION_018 = "the whole change reviewed for security unless the plan's one task was `yes`"
+README_PRODUCTION_018 = "the whole change reviewed for security unless the plan's one task was `yes` and was security-reviewed"
 
 
 class ScoutPath018Test(unittest.TestCase):
@@ -3075,8 +3115,24 @@ class ScoutPath018Test(unittest.TestCase):
                     self.assertNotIn(stale, text)
         with self.subTest(file="README.md", needle="production bullet"):
             self.assertIn(README_PRODUCTION_018, readme)
+            self.assertIn("line says `yes` (or it has no such line, in a run from before 0.18.0)", readme)
+        with self.subTest(file="CHANGELOG.md 0.18.0", needle="queue marker caveat"):
+            # skills/queue/SKILL.md:49-52; the README states it in its permissions section.
+            self.assertIn("This rests on Claude Code passing the queue's marker on to the commands a run executes, "
+                          "which has not been tried on a live Claude Code; if it does not, the run judges the plan "
+                          "by itself and goes on.", entry)
         self.assertTrue(entry.endswith("No permission rule is added."), entry[-60:])
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        # The prose is wrapped: the 0.18.0 entry, and the README from the standards paragraph to `## Models`.
+        raw_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        start = raw_readme.index("Every agent but the judge gets its part")
+        for name, block in (
+            ("CHANGELOG.md 0.18.0", changelog.split("\n## 0.18.0\n", 1)[1].split("\n## ", 1)[0]),
+            ("README.md", raw_readme[start:raw_readme.index("\n## Models", start)]),
+        ):
+            for line in block.splitlines():
+                with self.subTest(file=name, wide=line[:40]):
+                    self.assertLessEqual(len(line), 79)
         self.assertIn("## 0.17.0", changelog)
         self.assertEqual(changelog.count("## 0.18.0"), 1)
 
