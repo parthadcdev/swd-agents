@@ -906,7 +906,10 @@ def main(argv=None):
     if args.finish:
         problems = check_finish(run_dir, project_dir)
     elif args.seal:
-        problems = (check_plan(run_dir) + trust_problems(load_plan(run_dir)[0]) + check_conductor(run_dir) + check_finish_choice(run_dir)
+        # A plan unchanged since its last seal (one sealed before 0.18.0, say) is not held to the trust line.
+        seals = SEAL_RE.findall(read(run_dir / "decisions.md") or "")
+        trust = [] if seals and seals[-1] == plan_checksum(run_dir, missing="") else trust_problems(load_plan(run_dir)[0])
+        problems = (check_plan(run_dir) + trust + check_conductor(run_dir) + check_finish_choice(run_dir)
                     + check_staffing(run_dir) + check_judge(run_dir, unattended=unattended))
         if not problems:
             print(f"sealed plan.md: {seal_plan(run_dir)}")

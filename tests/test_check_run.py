@@ -972,6 +972,29 @@ class CheckRunTest(unittest.TestCase):
         self.assertEqual((done.returncode, done.stdout), (0, ""))
         self.assertEqual(self.cli("--plan", str(run)).stdout.splitlines(), [self.MISSING, self.MISSING.replace("T1", "T2")])
 
+    def test_a_sealed_plan_without_the_line_seals_again_after_a_staffing_change(self):
+        repo, run = make_run(self.tmp)
+        self.set_trust(run, None, None)
+        self.cr.seal_plan(run)
+        with open(run / "staffing.md", "a", encoding="utf-8") as f:
+            f.write("\n")
+        seal = self.cli("--seal", str(run))
+        self.assertEqual(seal.returncode, 0, seal.stdout)
+        self.assertEqual(self.cr.check_seal(run), [])
+
+    def test_an_amended_sealed_plan_without_the_line_is_refused_by_the_seal(self):
+        repo, run = make_run(self.tmp)
+        self.set_trust(run, None, None)
+        self.cr.seal_plan(run)
+        with open(run / "plan.md", "a", encoding="utf-8") as f:
+            f.write("\n")
+        with open(run / "decisions.md", "a", encoding="utf-8") as f:
+            f.write("Plan judged: the amended plan meets the criteria.\n")
+        before = (run / "decisions.md").read_text(encoding="utf-8")
+        seal = self.cli("--seal", str(run))
+        self.assertEqual((seal.returncode, seal.stdout.splitlines()), (1, [self.MISSING, self.MISSING.replace("T1", "T2")]))
+        self.assertEqual((run / "decisions.md").read_text(encoding="utf-8"), before)
+
     def test_a_task_marked_no_needs_no_security_report_but_a_present_one_is_read(self):
         repo, run = make_run(self.tmp)
         self.set_trust(run, "yes (x)", "no")
